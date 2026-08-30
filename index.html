@@ -461,8 +461,8 @@ async function buscarEnCatalogo(categoriaExacta) {
       return `
         <div class="lista-sobre" style="padding:8px;">
           ${foto}
-          <div class="nro" style="font-size:14px; line-height:1.25;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}</div>
+          <div class="nro" style="font-size:15.4px; line-height:1.25;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. <span style="font-weight:600;">${p.cod}</span></div>
           <div style="display:flex; flex-direction:column;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
