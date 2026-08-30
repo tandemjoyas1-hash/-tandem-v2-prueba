@@ -1600,8 +1600,12 @@ function pantallaReportes() {
     <div class="card">
       <h1>Reportes</h1>
       <label>Mes</label>
-      <input type="month" id="rp-mes" value="${mesActualISO()}" onchange="cargarReportes()">
+      <input type="month" id="rp-mes" value="${mesActualISO()}" onchange="cargarReportes(); cargarMejoresClientes();">
       <div id="rp-resumen"></div>
+    </div>
+    <div class="card">
+      <h1>🏆 Mejores clientes del mes</h1>
+      <div id="rp-clientes"></div>
     </div>
     <div class="card">
       <h1>Gastos fijos</h1>
@@ -1621,6 +1625,7 @@ function pantallaReportes() {
     </div>
   `);
   cargarReportes();
+  cargarMejoresClientes();
   cargarGastosFijos();
 }
 window.pantallaReportes = pantallaReportes;
@@ -1704,6 +1709,45 @@ async function cargarReportes() {
   `;
 }
 window.cargarReportes = cargarReportes;
+
+async function cargarMejoresClientes() {
+  const mesISO = document.getElementById('rp-mes').value || mesActualISO();
+  const clientesBox = document.getElementById('rp-clientes');
+  clientesBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const { desde, hasta } = rangoDelMes(mesISO);
+
+  const { data: sobresDelMes, error } = await sb
+    .from('sobres')
+    .select('precio_total, clientes(id, nombre)')
+    .gte('fecha_entrada', desde)
+    .lt('fecha_entrada', hasta);
+
+  if (error) { clientesBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const totalesPorCliente = {};
+  (sobresDelMes || []).forEach(s => {
+    if (!s.clientes) return;
+    const nombre = s.clientes.nombre;
+    totalesPorCliente[nombre] = (totalesPorCliente[nombre] || 0) + (Number(s.precio_total) || 0);
+  });
+
+  const ranking = Object.entries(totalesPorCliente)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  if (ranking.length === 0) {
+    clientesBox.innerHTML = `<div class="vacio">Sin sobres cargados ese mes todavía</div>`;
+    return;
+  }
+
+  clientesBox.innerHTML = ranking.map(([nombre, total], i) => `
+    <div class="lista-sobre">
+      <div class="nro">${i + 1}. ${nombre} — $${total.toLocaleString('es-AR')}</div>
+    </div>
+  `).join('');
+}
+window.cargarMejoresClientes = cargarMejoresClientes;
 
 async function cargarGastosFijos() {
   const listaBox = document.getElementById('gf-lista');
