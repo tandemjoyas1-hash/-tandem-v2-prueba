@@ -1583,14 +1583,18 @@ async function cargarCajaDelDia() {
 
   const efectivoNetoHoy = (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
 
+  const iconosMedio = {
+    EFECTIVO: '💵', TARJETA: '💳', MERCADOPAGO: '📱', TRANSFERENCIA: '🏦',
+    UALA: '🟣', 'CUENTA CORRIENTE': '📒'
+  };
   const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
   const filasMedios = todosLosMedios.length === 0
     ? ''
     : todosLosMedios.map(medio => {
         const neto = (porMedioIngresa[medio] || 0) - (porMedioEgresa[medio] || 0);
         return `
-        <div style="display:flex; justify-content:space-between; padding:4px 0;">
-          <span>${medio}</span><strong>$${neto.toLocaleString('es-AR')}</strong>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0ead9;">
+          <span>${iconosMedio[medio] || '💰'} ${medio}</span><strong style="color:#2f6d1f;">$${neto.toLocaleString('es-AR')}</strong>
         </div>
       `;
       }).join('');
@@ -1632,21 +1636,34 @@ async function cargarCajaDelDia() {
   window._fechaCajaActual = fecha;
 
   resBox.innerHTML = `
-    <div class="lista-sobre" style="background:#eaf3de;">
-      <div style="font-size:13px; color:#555;">💵 Efectivo que queda hoy (después de gastos y retiros)</div>
-      <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
-    </div>
-
-    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
-      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
-      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
-      <div style="font-size:18px; font-weight:700; margin-top:6px;">
-        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
+    <div style="display:flex; align-items:center; gap:10px; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:12px; padding:8px 12px; margin-bottom:10px;">
+      <div style="font-size:20px;">💵</div>
+      <div style="flex:1;">
+        <div style="font-size:11px; color:#3b5c1f; font-weight:600;">Efectivo en caja hoy</div>
+        <div style="font-size:17px; font-weight:800; color:#1f4a0a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
       </div>
     </div>
 
-    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
-    <div class="lista-sobre">${filasMedios}</div>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <div style="flex:1; background:#e3f2e1; border-radius:12px; padding:10px; text-align:center;">
+        <div style="font-size:18px;">⬆️</div>
+        <div style="font-size:10.5px; color:#2f6d1f; font-weight:600;">ENTRÓ</div>
+        <div style="font-size:14px; font-weight:800; color:#1f4a0a;">$${totalIngresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div style="flex:1; background:#fbe6df; border-radius:12px; padding:10px; text-align:center;">
+        <div style="font-size:18px;">⬇️</div>
+        <div style="font-size:10.5px; color:#c1401f; font-weight:600;">SALIÓ</div>
+        <div style="font-size:14px; font-weight:800; color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div style="flex:1; background:#e2ecfb; border-radius:12px; padding:10px; text-align:center;">
+        <div style="font-size:18px;">📊</div>
+        <div style="font-size:10.5px; color:#2455a8; font-weight:600;">NETO</div>
+        <div style="font-size:14px; font-weight:800; color:#173e7d;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</div>
+      </div>
+    </div>
+
+    <label style="margin-top:16px;">🎨 Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
+    <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec);">${filasMedios}</div>
 
     <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
     <div class="lista-movil-caja">${filasMovimientos}</div>
