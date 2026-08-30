@@ -111,6 +111,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaCuentaCorriente()">🧾 Cta Cte</button>
       <button onclick="pantallaBuscarSobre()">🔍 Sobre</button>
       <button onclick="pantallaBoletas()">📦 Boleta</button>
+      <button onclick="pantallaCajaDelDia()">📅 Caja</button>
     </div>`;
 }
 
@@ -1289,6 +1290,99 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
   `;
 }
 window.marcarBoletaRetirada = marcarBoletaRetirada;
+
+// ============================================================
+// PANTALLA 9: Caja del día — totales y movimientos de una fecha
+// ============================================================
+function fechaHoyISO() {
+  const hoy = new Date();
+  const offset = hoy.getTimezoneOffset();
+  const local = new Date(hoy.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function pantallaCajaDelDia() {
+  const hoy = fechaHoyISO();
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Caja del día</h1>
+      <label>Fecha</label>
+      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
+      <div id="cd-resultado"></div>
+    </div>
+  `);
+  cargarCajaDelDia();
+}
+window.pantallaCajaDelDia = pantallaCajaDelDia;
+
+async function cargarCajaDelDia() {
+  const fecha = document.getElementById('cd-fecha').value;
+  const resBox = document.getElementById('cd-resultado');
+  resBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const { data: movimientos, error } = await sb
+    .from('movimientos_caja')
+    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, created_at')
+    .eq('fecha', fecha)
+    .order('created_at');
+
+  if (error) {
+    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+    return;
+  }
+
+  if (!movimientos || movimientos.length === 0) {
+    resBox.innerHTML = `<div class="vacio">Sin movimientos registrados ese día</div>`;
+    return;
+  }
+
+  let totalIngresa = 0, totalEgresa = 0;
+  const porMedio = {};
+  movimientos.forEach(m => {
+    const monto = Number(m.monto) || 0;
+    if (m.ingresa_egresa === 'INGRESA') {
+      totalIngresa += monto;
+      const medio = m.medio_pago || '(sin medio)';
+      porMedio[medio] = (porMedio[medio] || 0) + monto;
+    } else {
+      totalEgresa += monto;
+    }
+  });
+
+  const filasMedios = Object.keys(porMedio).length === 0
+    ? ''
+    : Object.entries(porMedio).map(([medio, monto]) => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0;">
+          <span>${medio}</span><strong>$${monto.toLocaleString('es-AR')}</strong>
+        </div>
+      `).join('');
+
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre">
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  resBox.innerHTML = `
+    <div class="lista-sobre" style="background:#f7f7f7;">
+      <div>Entró: <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+      <div>Salió: <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      <div style="font-size:20px; font-weight:700; margin-top:6px;">
+        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
+      </div>
+    </div>
+
+    <label style="margin-top:16px;">Por medio de pago</label>
+    <div class="lista-sobre">${filasMedios}</div>
+
+    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    ${filasMovimientos}
+  `;
+}
+window.cargarCajaDelDia = cargarCajaDelDia;
 
 // Arranque
 // ============================================================
