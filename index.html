@@ -75,10 +75,10 @@
     gap: 2px;
   }
   .nav button {
-    flex: 1 0 64px;
+    flex: 1 0 76px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2px;
-    padding: 8px 4px;
+    gap: 4px;
+    padding: 12px 4px;
     border: none;
     background: none;
     font-size: 10px;
@@ -87,10 +87,11 @@
     border-radius: 10px;
     cursor: pointer;
     white-space: nowrap;
+    min-height: 62px;
   }
   .nav button:active { background: #f4efe4; }
-  .nav-icon { font-size: 19px; line-height: 1; }
-  .nav-label { font-size: 9.5px; letter-spacing: 0.2px; }
+  .nav-icon { font-size: 24px; line-height: 1; }
+  .nav-label { font-size: 10.5px; letter-spacing: 0.2px; }
 
   .lista-sobre {
     border: 1px solid #ece5d4; border-radius: 12px; padding: 13px; margin-bottom: 10px;
@@ -101,6 +102,29 @@
   .lista-sobre .desc { color: #8a8378; font-size: 13px; margin-bottom: 8px; }
   .lista-sobre select, .lista-sobre input { margin-bottom: 8px; }
   .vacio { text-align: center; color: #a39c8d; padding: 24px 10px; font-size: 14px; }
+
+  /* ===== Tabla estilo Excel para Caja del Día en pantallas grandes ===== */
+  .tabla-caja { display: none; }
+  .tabla-caja table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .tabla-caja th {
+    text-align: left; padding: 10px 12px; background: #f4efe4; color: #4a453d;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px;
+    border-bottom: 2px solid #e6ddc9; position: sticky; top: 0;
+  }
+  .tabla-caja td { padding: 9px 12px; border-bottom: 1px solid #f0ebe0; }
+  .tabla-caja tr:nth-child(even) td { background: #fbf9f4; }
+  .tabla-caja tr:hover td { background: #fdf5e2; }
+  .tabla-caja .col-monto { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tabla-caja .ingresa { color: #2f6d1f; }
+  .tabla-caja .egresa { color: #9a3a1e; }
+  .lista-movil-caja { display: block; }
+
+  @media (min-width: 720px) {
+    .tabla-caja { display: block; max-width: 900px; margin: 0 auto; }
+    .lista-movil-caja { display: none; }
+    .card { max-width: 900px; }
+    .usuario-actual, .nav { max-width: 900px; }
+  }
 </style>
 </head>
 <body>
@@ -133,14 +157,14 @@ function pintarUsuarioActual() {
       <button onclick="cerrarSesion()">Cambiar</button>
     </div>
     <div class="nav">
+      <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
-      <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
-      <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
+      <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
       <button onclick="pantallaCuentaCorriente()"><span class="nav-icon">🧾</span><span class="nav-label">CTA CTE</span></button>
-      <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
+      <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
+      <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
-      <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaPagoParcial()"><span class="nav-icon">💵</span><span class="nav-label">PARCIAL</span></button>
       <button onclick="pantallaEgreso()"><span class="nav-icon">➖</span><span class="nav-label">EGRESO</span></button>
       <button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>
@@ -1406,6 +1430,29 @@ async function cargarCajaDelDia() {
     </div>
   `).join('');
 
+  const filasTabla = movimientos.map(m => `
+    <tr>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tablaCaja = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
+
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
 
@@ -1452,7 +1499,8 @@ async function cargarCajaDelDia() {
     <div class="lista-sobre">${filasMedios}</div>
 
     <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    ${filasMovimientos}
+    <div class="lista-movil-caja">${filasMovimientos}</div>
+    ${tablaCaja}
   `;
 }
 window.cargarCajaDelDia = cargarCajaDelDia;
