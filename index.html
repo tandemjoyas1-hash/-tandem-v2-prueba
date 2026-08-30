@@ -881,7 +881,15 @@ async function buscarSobreDetalle() {
 window.buscarSobreDetalle = buscarSobreDetalle;
 
 // Arranque
-pantallaLogin();
+// ============================================================
+// TEMPORAL (mientras seguimos probando): se saltea el login y
+// entra directo como usuario "Prueba". El botón "Cambiar" arriba
+// sigue funcionando para volver a la pantalla de login normal
+// cuando haga falta. Para reactivar el login de entrada, volver
+// a dejar solo: pantallaLogin();
+// ============================================================
+usuarioActual = { id: null, nombre: 'Prueba', rol: 'ADMIN' };
+pantallaNuevaEntrada();
 </script>
 </body>
 </html>
