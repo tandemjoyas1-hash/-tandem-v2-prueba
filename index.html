@@ -1680,7 +1680,7 @@ async function cargarReportes() {
 
   const { data: sobresDelMes } = await sb
     .from('sobres')
-    .select('id')
+    .select('id, canal, precio_total')
     .gte('fecha_entrada', desde)
     .lt('fecha_entrada', hasta);
 
@@ -1695,6 +1695,13 @@ async function cargarReportes() {
     }
   });
 
+  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES: { cantidad: 0, total: 0 } };
+  (sobresDelMes || []).forEach(s => {
+    const canal = (s.canal === 'REDES') ? 'REDES' : 'LOCAL';
+    porCanal[canal].cantidad += 1;
+    porCanal[canal].total += Number(s.precio_total) || 0;
+  });
+
   resBox.innerHTML = `
     <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
       <div>Sobres nuevos este mes: <strong>${(sobresDelMes || []).length}</strong></div>
@@ -1705,6 +1712,11 @@ async function cargarReportes() {
     <div class="lista-sobre" style="margin-top:10px;">
       <div>💳 Facturable (Tarjeta, MP Fiser, Transferencia): <strong>$${facturable.toLocaleString('es-AR')}</strong></div>
       <div>💵 No facturable (Efectivo, Uala, MP Laureano, etc.): <strong>$${noFacturable.toLocaleString('es-AR')}</strong></div>
+    </div>
+    <div class="lista-sobre" style="margin-top:10px;">
+      <div style="font-weight:700; margin-bottom:6px;">📍 Por canal</div>
+      <div>🏪 Local: <strong>${porCanal.LOCAL.cantidad} sobres — $${porCanal.LOCAL.total.toLocaleString('es-AR')}</strong></div>
+      <div>📱 Redes: <strong>${porCanal.REDES.cantidad} sobres — $${porCanal.REDES.total.toLocaleString('es-AR')}</strong></div>
     </div>
   `;
 }
