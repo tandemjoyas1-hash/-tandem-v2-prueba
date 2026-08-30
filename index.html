@@ -800,77 +800,68 @@ window.buscarClienteCC = buscarClienteCC;
 async function verCuentaCliente(clienteId, nombreCliente) {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando cuenta de ${nombreCliente}...</p></div>`);
 
+  // "COMPRÓ" = TODOS los sobres de este cliente, tengan o no saldo pendiente hoy
+  // (igual que la planilla vieja: la columna DEBE suma el total de cada trabajo,
+  // independientemente de si ya se retiró o no).
   const { data: sobres } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_entrada')
-    .eq('cliente_id', clienteId);
-
-  const idsSobres = sobres.map(s => s.id);
-
-  const { data: movimientos } = await sb
-    .from('movimientos_caja')
-    .select('sobre_id, monto, ingresa_egresa, codigo, medio_pago, fecha, descripcion')
     .eq('cliente_id', clienteId)
-    .eq('ingresa_egresa', 'INGRESA');
+    .order('fecha_entrada');
 
-  const pagadoPorSobre = {};
-  let pagosSueltos = 0;
-  (movimientos || []).forEach(m => {
-    if (m.sobre_id) {
-      pagadoPorSobre[m.sobre_id] = (pagadoPorSobre[m.sobre_id] || 0) + Number(m.monto);
-    } else if (Number(m.codigo) === 502) {
-      pagosSueltos += Number(m.monto);
-    }
-  });
+  // "FUE PAGANDO" = todos los pagos a cuenta (código 502), sea que se hayan
+  // aplicado a un sobre puntual o como pago suelto.
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('monto, fecha, descripcion, sobre_id')
+    .eq('cliente_id', clienteId)
+    .eq('ingresa_egresa', 'INGRESA')
+    .eq('codigo', 502)
+    .order('fecha');
 
-  const sobresConDeuda = sobres
-    .map(s => ({ ...s, saldo: Math.max(0, (Number(s.precio_total) || 0) - (pagadoPorSobre[s.id] || 0)) }))
-    .filter(s => s.saldo > 0);
+  const debe = (sobres || []).reduce((acc, s) => acc + (Number(s.precio_total) || 0), 0);
+  const haber = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
+  const saldo = debe - haber;
 
-  const totalSobres = sobresConDeuda.reduce((acc, s) => acc + s.saldo, 0);
-  const totalAdeudado = Math.max(0, totalSobres - pagosSueltos);
-
-  const filasSobres = sobresConDeuda.length === 0
-    ? `<div class="vacio">Sin sobres con saldo pendiente</div>`
-    : sobresConDeuda.map(s => `
+  const filasCompras = (sobres || []).length === 0
+    ? `<div class="vacio">Sin compras registradas</div>`
+    : sobres.map(s => `
         <div class="lista-sobre">
-          <div class="nro">#${s.numero} — $${s.saldo.toLocaleString('es-AR')}</div>
+          <div class="nro">#${s.numero} — $${(Number(s.precio_total) || 0).toLocaleString('es-AR')}</div>
+          <div class="cli">${s.fecha_entrada ? new Date(s.fecha_entrada).toLocaleDateString('es-AR') : ''}</div>
           <div class="desc">${s.descripcion || ''}</div>
         </div>
       `).join('');
 
-  const numeroPorSobre = {};
-  sobres.forEach(s => { numeroPorSobre[s.id] = s.numero; });
-
-  const movimientosOrdenados = [...(movimientos || [])].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-
-  const filasMovimientos = movimientosOrdenados.length === 0
-    ? `<div class="vacio">Todavía no hay movimientos registrados</div>`
-    : movimientosOrdenados.map(m => {
-        const esPago = Number(m.codigo) === 502;
-        const etiqueta = esPago ? '💵 Pago' : '🧾 Cobro';
-        const sobreTxt = m.sobre_id ? ('sobre #' + (numeroPorSobre[m.sobre_id] || '?')) : 'pago suelto a cuenta';
-        return `
-          <div class="lista-sobre">
-            <div class="nro">${etiqueta}: $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
-            <div class="cli">${new Date(m.fecha).toLocaleDateString('es-AR')} · ${sobreTxt}</div>
-            <div class="desc">${m.descripcion || ''}</div>
-          </div>
-        `;
-      }).join('');
+  const filasPagos = (pagos || []).length === 0
+    ? `<div class="vacio">Sin pagos registrados</div>`
+    : pagos.map(p => `
+        <div class="lista-sobre">
+          <div class="nro">$${Number(p.monto).toLocaleString('es-AR')}</div>
+          <div class="cli">${new Date(p.fecha).toLocaleDateString('es-AR')}</div>
+          <div class="desc">${p.descripcion || ''}</div>
+        </div>
+      `).join('');
 
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>${nombreCliente}</h1>
       <div class="sub">Cuenta corriente</div>
-      <div style="font-size:24px; font-weight:700; color:#993c1d; margin:10px 0;">
-        Debe: $${totalAdeudado.toLocaleString('es-AR')}
-      </div>
-      ${pagosSueltos > 0 ? `<small>(ya tiene $${pagosSueltos.toLocaleString('es-AR')} de pagos sueltos a favor)</small>` : ''}
 
-      <label style="margin-top:20px;">Sobres con saldo pendiente</label>
-      ${filasSobres}
+      <div class="lista-sobre" style="background:#f7f7f7;">
+        <div>Le vendimos a crédito (debe): <strong>$${debe.toLocaleString('es-AR')}</strong></div>
+        <div>Nos pagó (haber): <strong>$${haber.toLocaleString('es-AR')}</strong></div>
+        <div style="font-size:20px; font-weight:700; color:${saldo > 0 ? '#993c1d' : '#27500a'}; margin-top:6px;">
+          ${saldo > 0 ? 'Saldo que nos debe: $' + saldo.toLocaleString('es-AR') : (saldo < 0 ? 'Tiene a favor: $' + Math.abs(saldo).toLocaleString('es-AR') : 'Cuenta al día ($0)')}
+        </div>
+      </div>
+
+      <label style="margin-top:18px;">🛒 Compró (a crédito)</label>
+      ${filasCompras}
+
+      <label style="margin-top:18px;">💵 Fue pagando</label>
+      ${filasPagos}
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
 
@@ -887,11 +878,6 @@ async function verCuentaCliente(clienteId, nombreCliente) {
       </select>
       <button class="btn btn-verde" onclick="registrarPagoCC('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}')">Registrar pago</button>
       <div id="cc-pago-msg"></div>
-
-      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
-
-      <label>📜 Movimientos (del más reciente al más viejo)</label>
-      ${filasMovimientos}
 
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCuentaCorriente()">← Buscar otro cliente</button>
     </div>
