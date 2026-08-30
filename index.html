@@ -110,6 +110,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaRetiro()">💰 Retiro</button>
       <button onclick="pantallaCuentaCorriente()">🧾 Cta Cte</button>
       <button onclick="pantallaBuscarSobre()">🔍 Sobre</button>
+      <button onclick="pantallaBoletas()">📦 Boleta</button>
     </div>`;
 }
 
@@ -879,6 +880,261 @@ async function buscarSobreDetalle() {
   `;
 }
 window.buscarSobreDetalle = buscarSobreDetalle;
+
+// ============================================================
+// PANTALLA 8: Boletas — cuando un cliente se lleva varios sobres juntos
+// ============================================================
+function pantallaBoletas() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Boletas</h1>
+      <div class="sub">Para clientes que se llevan varios sobres juntos</div>
+      <button class="btn btn-verde" onclick="pantallaGenerarBoleta()">➕ Generar boleta nueva</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaBuscarBoleta()">🔍 Buscar boleta existente</button>
+    </div>
+  `);
+}
+window.pantallaBoletas = pantallaBoletas;
+
+// --- Generar boleta nueva ---
+function pantallaGenerarBoleta() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Generar boleta</h1>
+      <label>Nombre del cliente</label>
+      <input type="text" id="gb-buscar" placeholder="Ej: Zipiur">
+      <button class="btn btn-verde" onclick="buscarClienteParaBoleta()">Buscar</button>
+      <div id="gb-resultado"></div>
+    </div>
+  `);
+}
+window.pantallaGenerarBoleta = pantallaGenerarBoleta;
+
+async function buscarClienteParaBoleta() {
+  const nombre = document.getElementById('gb-buscar').value.trim();
+  const resBox = document.getElementById('gb-resultado');
+  if (!nombre) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: clientes, error } = await sb
+    .from('clientes')
+    .select('id, nombre, telefono')
+    .ilike('nombre', '%' + nombre + '%')
+    .limit(10);
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (clientes.length === 0) { resBox.innerHTML = `<div class="vacio">No se encontró ningún cliente.</div>`; return; }
+
+  if (clientes.length > 1) {
+    resBox.innerHTML = clientes.map(c => `
+      <div class="lista-sobre">
+        <div class="nro">${c.nombre}</div>
+        <button class="btn btn-outline" onclick='mostrarSobresParaBoleta(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)}, ${JSON.stringify(c.telefono || "")})'>Elegir</button>
+      </div>
+    `).join('');
+    return;
+  }
+
+  mostrarSobresParaBoleta(clientes[0].id, clientes[0].nombre, clientes[0].telefono || '');
+}
+window.buscarClienteParaBoleta = buscarClienteParaBoleta;
+
+async function mostrarSobresParaBoleta(clienteId, nombreCliente, telefono) {
+  const resBox = document.getElementById('gb-resultado');
+  resBox.innerHTML = `<div class="msg">Cargando sobres de ${nombreCliente}...</div>`;
+
+  const { data: sobres } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total')
+    .eq('cliente_id', clienteId)
+    .is('fecha_salida', null);
+
+  if (!sobres || sobres.length === 0) {
+    resBox.innerHTML = `<div class="vacio">${nombreCliente} no tiene sobres pendientes de retirar.</div>`;
+    return;
+  }
+
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('sobre_id, monto')
+    .in('sobre_id', sobres.map(s => s.id))
+    .eq('ingresa_egresa', 'INGRESA');
+
+  const pagadoPorSobre = {};
+  (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
+
+  const filas = sobres.map(s => {
+    const saldo = Math.max(0, (Number(s.precio_total) || 0) - (pagadoPorSobre[s.id] || 0));
+    return `
+      <div class="lista-sobre">
+        <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-saldo="${saldo}" style="width:auto;">
+          <span><strong>#${s.numero}</strong> — ${s.descripcion || ''} — $${saldo.toLocaleString('es-AR')}</span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  resBox.innerHTML = `
+    ${filas}
+    <button class="btn btn-verde" style="margin-top:10px;"
+      onclick='confirmarGenerarBoleta(${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)})'>
+      Generar boleta con los seleccionados
+    </button>
+    <div id="gb-msg"></div>
+  `;
+}
+window.mostrarSobresParaBoleta = mostrarSobresParaBoleta;
+
+async function confirmarGenerarBoleta(clienteId, nombreCliente, telefono) {
+  const msgBox = document.getElementById('gb-msg');
+  const seleccionados = [...document.querySelectorAll('.chk-boleta:checked')];
+
+  if (seleccionados.length === 0) {
+    msgBox.innerHTML = `<div class="msg msg-error">Marcá al menos un sobre.</div>`;
+    return;
+  }
+
+  msgBox.innerHTML = `<div class="msg">Generando...</div>`;
+
+  const total = seleccionados.reduce((acc, el) => acc + Number(el.dataset.saldo), 0);
+
+  const { data: boleta, error } = await sb
+    .from('boletas')
+    .insert({ cliente_id: clienteId, total: total, telefono: telefono, estado: 'PENDIENTE' })
+    .select('id, numero')
+    .single();
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const filas = seleccionados.map(el => ({ boleta_id: boleta.id, sobre_id: el.dataset.sobre }));
+  await sb.from('boleta_sobres').insert(filas);
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta N° ${boleta.numero} generada — Total: $${total.toLocaleString('es-AR')}</div>`;
+}
+window.confirmarGenerarBoleta = confirmarGenerarBoleta;
+
+// --- Buscar boleta existente ---
+function pantallaBuscarBoleta() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Buscar boleta</h1>
+      <label>N° de boleta</label>
+      <input type="text" id="bb-numero" placeholder="Ej: 3">
+      <button class="btn btn-verde" onclick="buscarBoletaDetalle()">Buscar</button>
+      <div id="bb-resultado"></div>
+    </div>
+  `);
+}
+window.pantallaBuscarBoleta = pantallaBuscarBoleta;
+
+async function buscarBoletaDetalle() {
+  const numero = document.getElementById('bb-numero').value.trim();
+  const resBox = document.getElementById('bb-resultado');
+  if (!numero) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: boleta, error } = await sb
+    .from('boletas')
+    .select('id, numero, total, telefono, estado, clientes(id, nombre)')
+    .eq('numero', numero)
+    .maybeSingle();
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!boleta) { resBox.innerHTML = `<div class="vacio">No se encontró esa boleta.</div>`; return; }
+
+  const { data: relaciones } = await sb
+    .from('boleta_sobres')
+    .select('sobres(id, numero, descripcion, precio_total, fecha_salida)')
+    .eq('boleta_id', boleta.id);
+
+  const sobresBoleta = (relaciones || []).map(r => r.sobres);
+  const todosRetirados = sobresBoleta.every(s => s.fecha_salida);
+
+  const filas = sobresBoleta.map(s => `
+    <div class="lista-sobre">
+      <div class="nro">#${s.numero} ${s.fecha_salida ? '✅' : ''}</div>
+      <div class="desc">${s.descripcion || ''} — $${(Number(s.precio_total) || 0).toLocaleString('es-AR')}</div>
+    </div>
+  `).join('');
+
+  resBox.innerHTML = `
+    <div style="margin-top:16px;">
+      <div class="nro" style="font-size:18px;">Boleta N° ${boleta.numero} — ${boleta.clientes ? boleta.clientes.nombre : ''}</div>
+      <div style="font-weight:700; margin:8px 0;">Total: $${(Number(boleta.total) || 0).toLocaleString('es-AR')} · Estado: ${boleta.estado}</div>
+      ${filas}
+      ${todosRetirados ? `<div class="msg msg-ok" style="margin-top:10px;">Todos los sobres ya fueron retirados.</div>` : `
+        <label style="margin-top:14px;">Medio de pago (para todo el total)</label>
+        <select id="bb-medio">
+          <option>EFECTIVO</option>
+          <option>TARJETA FISER</option>
+          <option>TRANSFERENCIA SANTANDER</option>
+          <option>MERCADO PAGO FISER</option>
+          <option>MERCADO PAGO LAUREANO</option>
+          <option>UALA CARLA</option>
+          <option>LEMON LAUREANO</option>
+          <option>CUENTA CORRIENTE</option>
+        </select>
+        <button class="btn btn-verde" onclick='marcarBoletaRetirada(${JSON.stringify(boleta.id)}, ${JSON.stringify(boleta.numero)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.id : null)})'>
+          Confirmar retiro de toda la boleta
+        </button>
+      `}
+      <div id="bb-msg"></div>
+    </div>
+  `;
+}
+window.buscarBoletaDetalle = buscarBoletaDetalle;
+
+async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId) {
+  const msgBox = document.getElementById('bb-msg');
+  const medioPago = document.getElementById('bb-medio').value;
+  const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: relaciones } = await sb
+    .from('boleta_sobres')
+    .select('sobres(id, numero, precio_total, tipo_cliente, fecha_salida)')
+    .eq('boleta_id', boletaId);
+
+  for (const r of relaciones) {
+    const s = r.sobres;
+    if (s.fecha_salida) continue;
+
+    await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', s.id);
+
+    const { data: pagos } = await sb.from('movimientos_caja').select('monto').eq('sobre_id', s.id).eq('ingresa_egresa', 'INGRESA');
+    const pagado = (pagos || []).reduce((acc, m) => acc + Number(m.monto), 0);
+    const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
+    const montoCobrado = esCuentaCorriente ? 0 : saldo;
+
+    if (montoCobrado > 0) {
+      await sb.from('movimientos_caja').insert({
+        vendedora: usuarioActual.nombre,
+        descripcion: 'cobro saldo sobre ' + s.numero + ' (boleta ' + numeroBoleta + ')',
+        ingresa_egresa: 'INGRESA',
+        tipo_cliente: s.tipo_cliente,
+        medio_pago: medioPago,
+        monto: montoCobrado,
+        cliente_id: clienteId,
+        sobre_id: s.id
+      });
+    }
+
+    await sb.from('historial_sobres').insert({
+      sobre_id: s.id,
+      evento: 'RETIRADO',
+      detalle: 'Retirado como parte de la boleta ' + numeroBoleta + ' (entregó: ' + usuarioActual.nombre + ')'
+    });
+  }
+
+  await sb.from('boletas').update({ estado: 'RETIRADA' }).eq('id', boletaId);
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>`;
+}
+window.marcarBoletaRetirada = marcarBoletaRetirada;
 
 // Arranque
 // ============================================================
