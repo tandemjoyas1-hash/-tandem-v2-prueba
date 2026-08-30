@@ -108,6 +108,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaTaller()">🛠 Taller</button>
       <button onclick="pantallaListoLista()">✅ Listo</button>
       <button onclick="pantallaRetiro()">💰 Retiro</button>
+      <button onclick="pantallaCuentaCorriente()">🧾 Cta Cte</button>
     </div>`;
 }
 
@@ -618,6 +619,167 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente) {
   pantallaRetiro();
 }
 window.confirmarRetiro = confirmarRetiro;
+
+// ============================================================
+// PANTALLA 6: Cuenta Corriente — buscar cliente y ver/saldar su deuda
+// ============================================================
+function pantallaCuentaCorriente() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Cuenta Corriente</h1>
+      <div class="sub">Buscar un cliente mayorista/taller</div>
+      <label>Nombre del cliente</label>
+      <input type="text" id="cc-buscar" placeholder="Ej: Zipiur">
+      <button class="btn btn-verde" onclick="buscarClienteCC()">Buscar</button>
+      <div id="cc-resultado"></div>
+    </div>
+  `);
+}
+window.pantallaCuentaCorriente = pantallaCuentaCorriente;
+
+async function buscarClienteCC() {
+  const nombre = document.getElementById('cc-buscar').value.trim();
+  const resBox = document.getElementById('cc-resultado');
+  if (!nombre) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data, error } = await sb
+    .from('clientes')
+    .select('id, nombre, tipo_cliente')
+    .ilike('nombre', '%' + nombre + '%')
+    .limit(10);
+
+  if (error) {
+    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+    return;
+  }
+  if (data.length === 0) {
+    resBox.innerHTML = `<div class="vacio">No se encontró ningún cliente con ese nombre.</div>`;
+    return;
+  }
+  if (data.length === 1) {
+    verCuentaCliente(data[0].id, data[0].nombre);
+    return;
+  }
+
+  resBox.innerHTML = data.map(c => `
+    <div class="lista-sobre">
+      <div class="nro">${c.nombre}</div>
+      <div class="cli">${c.tipo_cliente}</div>
+      <button class="btn btn-outline" onclick="verCuentaCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">Ver cuenta</button>
+    </div>
+  `).join('');
+}
+window.buscarClienteCC = buscarClienteCC;
+
+async function verCuentaCliente(clienteId, nombreCliente) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando cuenta de ${nombreCliente}...</p></div>`);
+
+  const { data: sobres } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, fecha_entrada')
+    .eq('cliente_id', clienteId);
+
+  const idsSobres = sobres.map(s => s.id);
+
+  const { data: movimientos } = await sb
+    .from('movimientos_caja')
+    .select('sobre_id, monto, ingresa_egresa, codigo, medio_pago, fecha, descripcion')
+    .eq('cliente_id', clienteId)
+    .eq('ingresa_egresa', 'INGRESA');
+
+  const pagadoPorSobre = {};
+  let pagosSueltos = 0;
+  (movimientos || []).forEach(m => {
+    if (m.sobre_id) {
+      pagadoPorSobre[m.sobre_id] = (pagadoPorSobre[m.sobre_id] || 0) + Number(m.monto);
+    } else if (Number(m.codigo) === 502) {
+      pagosSueltos += Number(m.monto);
+    }
+  });
+
+  const sobresConDeuda = sobres
+    .map(s => ({ ...s, saldo: Math.max(0, (Number(s.precio_total) || 0) - (pagadoPorSobre[s.id] || 0)) }))
+    .filter(s => s.saldo > 0);
+
+  const totalSobres = sobresConDeuda.reduce((acc, s) => acc + s.saldo, 0);
+  const totalAdeudado = Math.max(0, totalSobres - pagosSueltos);
+
+  const filasSobres = sobresConDeuda.length === 0
+    ? `<div class="vacio">Sin sobres con saldo pendiente</div>`
+    : sobresConDeuda.map(s => `
+        <div class="lista-sobre">
+          <div class="nro">#${s.numero} — $${s.saldo.toLocaleString('es-AR')}</div>
+          <div class="desc">${s.descripcion || ''}</div>
+        </div>
+      `).join('');
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>${nombreCliente}</h1>
+      <div class="sub">Cuenta corriente</div>
+      <div style="font-size:24px; font-weight:700; color:#993c1d; margin:10px 0;">
+        Debe: $${totalAdeudado.toLocaleString('es-AR')}
+      </div>
+      ${pagosSueltos > 0 ? `<small>(ya tiene $${pagosSueltos.toLocaleString('es-AR')} de pagos sueltos a favor)</small>` : ''}
+
+      <label style="margin-top:20px;">Sobres con saldo pendiente</label>
+      ${filasSobres}
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <label>Registrar un pago a cuenta</label>
+      <input type="number" id="cc-monto" placeholder="Monto que paga">
+      <select id="cc-medio">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+      </select>
+      <button class="btn btn-verde" onclick="registrarPagoCC('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}')">Registrar pago</button>
+      <div id="cc-pago-msg"></div>
+
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCuentaCorriente()">← Buscar otro cliente</button>
+    </div>
+  `);
+}
+window.verCuentaCliente = verCuentaCliente;
+
+async function registrarPagoCC(clienteId, nombreCliente) {
+  const msgBox = document.getElementById('cc-pago-msg');
+  const monto = parseFloat(document.getElementById('cc-monto').value) || 0;
+  const medioPago = document.getElementById('cc-medio').value;
+
+  if (monto <= 0) {
+    msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`;
+    return;
+  }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    codigo: 502,
+    descripcion: 'Pago a cuenta - ' + nombreCliente,
+    ingresa_egresa: 'INGRESA',
+    medio_pago: medioPago,
+    monto: monto,
+    cliente_id: clienteId
+  });
+
+  if (error) {
+    msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+    return;
+  }
+
+  verCuentaCliente(clienteId, nombreCliente);
+}
+window.registrarPagoCC = registrarPagoCC;
 
 // Arranque
 pantallaLogin();
