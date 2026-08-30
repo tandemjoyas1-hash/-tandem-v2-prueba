@@ -980,14 +980,19 @@ function pantallaBuscarSobre() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>Buscar sobre</h1>
-      <div class="sub">Ver historial completo y pagos</div>
-      <label>N° de sobre</label>
+      <h1>Sobres</h1>
+      <label>Buscar por N° de sobre</label>
       <input type="text" id="bs-numero" placeholder="Ej: 4801">
       <button class="btn btn-verde" onclick="buscarSobreDetalle()">Buscar</button>
       <div id="bs-resultado"></div>
     </div>
+    <div class="card">
+      <h1>📋 Todos los sobres activos</h1>
+      <div class="sub">Sin retirar todavía, sea cual sea la etapa</div>
+      <div id="bs-todos-lista"></div>
+    </div>
   `);
+  cargarTodosLosSobres();
 }
 window.pantallaBuscarSobre = pantallaBuscarSobre;
 
@@ -997,6 +1002,29 @@ function estadoDeSobre(s) {
   if (s.baja_taller) return '🛠 En taller (' + (s.orfebre || '') + ')';
   return '🆕 Recién ingresado';
 }
+
+async function cargarTodosLosSobres() {
+  const listaBox = document.getElementById('bs-todos-lista');
+  listaBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const { data: sobres, error } = await sb
+    .from('sobres')
+    .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, clientes(nombre)')
+    .is('fecha_salida', null)
+    .order('fecha_entrada');
+
+  if (error) { listaBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!sobres || sobres.length === 0) { listaBox.innerHTML = `<div class="vacio">No hay sobres activos ahora mismo 🎉</div>`; return; }
+
+  listaBox.innerHTML = sobres.map(s => `
+    <div class="lista-sobre" onclick="document.getElementById('bs-numero').value='${s.numero}'; buscarSobreDetalle(); window.scrollTo({top:0, behavior:'smooth'});" style="cursor:pointer;">
+      <div class="nro">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+      <div class="cli">${estadoDeSobre(s)}</div>
+      <div class="desc">${s.descripcion || ''}</div>
+    </div>
+  `).join('');
+}
+window.cargarTodosLosSobres = cargarTodosLosSobres;
 
 async function buscarSobreDetalle() {
   const numero = document.getElementById('bs-numero').value.trim();
@@ -1462,7 +1490,28 @@ async function cargarCajaDelDia() {
       <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
     </div>
 
-    <div class="lista-sobre" style="margin-top:10px;">
+    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      <div style="font-size:18px; font-weight:700; margin-top:6px;">
+        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
+      </div>
+    </div>
+
+    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
+    <div class="lista-sobre">${filasMedios}</div>
+
+    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja">${filasMovimientos}</div>
+    ${tablaCaja}
+
+    <div style="text-align:center; margin-top:20px;">
+      <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
+        🔍 ¿Cambio de turno o fin del día? Contar la caja física
+      </a>
+    </div>
+
+    <div id="cd-contar-box" class="lista-sobre" style="display:none; margin-top:10px;">
       <div style="font-weight:700; margin-bottom:8px;">🔍 Contar caja física</div>
       <label>¿Cuánto efectivo hay realmente en el cajón?</label>
       <input type="number" id="cd-contado" placeholder="0" oninput="if(this.value) document.getElementById('cd-billetes-box').style.display='none';">
@@ -1483,24 +1532,9 @@ async function cargarCajaDelDia() {
         <button class="btn btn-outline" style="margin-top:8px;" onclick="usarTotalBilletes()">Usar este total</button>
       </div>
 
-      <button class="btn btn-verde" style="margin-top:10px;" onclick="compararCaja()">Comparar</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="compararCaja()">Comparar</button>
       <div id="cd-diferencia-msg"></div>
     </div>
-
-    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
-      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
-      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
-      <div style="font-size:18px; font-weight:700; margin-top:6px;">
-        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
-      </div>
-    </div>
-
-    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
-    <div class="lista-sobre">${filasMedios}</div>
-
-    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja">${filasMovimientos}</div>
-    ${tablaCaja}
   `;
 }
 window.cargarCajaDelDia = cargarCajaDelDia;
