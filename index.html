@@ -1378,6 +1378,13 @@ window.marcarBoletaRetirada = marcarBoletaRetirada;
 // ============================================================
 // PANTALLA 9: Caja del día — totales y movimientos de una fecha
 // ============================================================
+function etiquetaTipoCliente(tipo) {
+  if (tipo === 'MAYORISTA') return 'Mayorista';
+  if (tipo === 'TALLER') return 'Taller';
+  if (tipo === 'CONSUMIDOR_FINAL') return 'Por menor';
+  return '';
+}
+
 function fechaHoyISO() {
   const hoy = new Date();
   const offset = hoy.getTimezoneOffset();
@@ -1407,7 +1414,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, created_at')
+    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, tipo_cliente, created_at, clientes(nombre)')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -1453,7 +1460,7 @@ async function cargarCajaDelDia() {
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre">
       <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}</div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}</div>
     </div>
   `).join('');
@@ -1462,6 +1469,8 @@ async function cargarCajaDelDia() {
     <tr>
       <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
       <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
       <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
       <td>${m.medio_pago || ''}</td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
@@ -1474,7 +1483,7 @@ async function cargarCajaDelDia() {
     <div class="tabla-caja">
       <table>
         <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
         </thead>
         <tbody>${filasTabla}</tbody>
       </table>
