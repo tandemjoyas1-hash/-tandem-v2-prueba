@@ -839,6 +839,26 @@ async function verCuentaCliente(clienteId, nombreCliente) {
         </div>
       `).join('');
 
+  const numeroPorSobre = {};
+  sobres.forEach(s => { numeroPorSobre[s.id] = s.numero; });
+
+  const movimientosOrdenados = [...(movimientos || [])].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+  const filasMovimientos = movimientosOrdenados.length === 0
+    ? `<div class="vacio">Todavía no hay movimientos registrados</div>`
+    : movimientosOrdenados.map(m => {
+        const esPago = Number(m.codigo) === 502;
+        const etiqueta = esPago ? '💵 Pago' : '🧾 Cobro';
+        const sobreTxt = m.sobre_id ? ('sobre #' + (numeroPorSobre[m.sobre_id] || '?')) : 'pago suelto a cuenta';
+        return `
+          <div class="lista-sobre">
+            <div class="nro">${etiqueta}: $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
+            <div class="cli">${new Date(m.fecha).toLocaleDateString('es-AR')} · ${sobreTxt}</div>
+            <div class="desc">${m.descripcion || ''}</div>
+          </div>
+        `;
+      }).join('');
+
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -867,6 +887,11 @@ async function verCuentaCliente(clienteId, nombreCliente) {
       </select>
       <button class="btn btn-verde" onclick="registrarPagoCC('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}')">Registrar pago</button>
       <div id="cc-pago-msg"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <label>📜 Movimientos (del más reciente al más viejo)</label>
+      ${filasMovimientos}
 
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCuentaCorriente()">← Buscar otro cliente</button>
     </div>
