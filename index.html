@@ -401,9 +401,9 @@ async function buscarEnCatalogo() {
 
     const { data: productos, error } = await sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor')
+      .select('cod, cat, descripcion, medidas, peso, labor, foto')
       .or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%')
-      .limit(20);
+      .limit(10);
 
     if (error) throw error;
 
@@ -426,8 +426,11 @@ async function buscarEnCatalogo() {
         </button>
       `;
 
+      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; max-height:180px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:8px;">` : '';
+
       return `
         <div class="lista-sobre">
+          ${foto}
           <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
           <div class="cli">${p.cat} · cód. ${p.cod}</div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
