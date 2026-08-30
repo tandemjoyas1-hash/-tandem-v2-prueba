@@ -107,6 +107,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaNuevaEntrada()">➕ Entrada</button>
       <button onclick="pantallaTaller()">🛠 Taller</button>
       <button onclick="pantallaListoLista()">✅ Listo</button>
+      <button onclick="pantallaRetiro()">💰 Retiro</button>
     </div>`;
 }
 
@@ -498,6 +499,125 @@ async function marcarListo(sobreId, numero) {
   pantallaListoLista();
 }
 window.marcarListo = marcarListo;
+
+// ============================================================
+// PANTALLA 5: Retiro — sobres listos, esperando que el cliente pase a pagar y llevárselo
+// ============================================================
+async function pantallaRetiro() {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: sobres, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre)')
+    .not('listo', 'is', null)
+    .is('fecha_salida', null)
+    .order('listo');
+
+  if (error) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">${error.message}</p></div>`);
+    return;
+  }
+
+  if (sobres.length === 0) {
+    render(`${pintarUsuarioActual()}<div class="card"><h1>Retiro</h1><div class="vacio">No hay sobres listos esperando retiro 🎉</div></div>`);
+    return;
+  }
+
+  const ids = sobres.map(s => s.id);
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('sobre_id, monto')
+    .in('sobre_id', ids)
+    .eq('ingresa_egresa', 'INGRESA');
+
+  const pagadoPorSobre = {};
+  (pagos || []).forEach(p => {
+    pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto);
+  });
+
+  const filas = sobres.map(s => {
+    const total = Number(s.precio_total) || 0;
+    const pagado = pagadoPorSobre[s.id] || 0;
+    const saldo = Math.max(0, total - pagado);
+    return `
+      <div class="lista-sobre" id="fila-${s.id}">
+        <div class="nro">#${s.numero}</div>
+        <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
+        <div class="desc">${s.descripcion || ''}</div>
+        <div style="font-weight:700; margin-bottom:8px;">Saldo: $${saldo.toLocaleString('es-AR')}</div>
+        <select id="medio-${s.id}">
+          <option>EFECTIVO</option>
+          <option>TARJETA FISER</option>
+          <option>TRANSFERENCIA SANTANDER</option>
+          <option>MERCADO PAGO FISER</option>
+          <option>MERCADO PAGO LAUREANO</option>
+          <option>UALA CARLA</option>
+          <option>LEMON LAUREANO</option>
+          <option>CUENTA CORRIENTE</option>
+        </select>
+        <button class="btn btn-verde" onclick="confirmarRetiro('${s.id}', '${s.numero}', ${saldo}, '${s.tipo_cliente || 'CONSUMIDOR_FINAL'}')">Confirmar cobro y entregar</button>
+        <div id="msg-${s.id}"></div>
+      </div>
+    `;
+  }).join('');
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Retiro</h1>
+      <div class="sub">Sobres listos para entregar</div>
+      ${filas}
+    </div>
+  `);
+}
+window.pantallaRetiro = pantallaRetiro;
+
+async function confirmarRetiro(sobreId, numero, saldo, tipoCliente) {
+  const msgBox = document.getElementById('msg-' + sobreId);
+  const medioPago = document.getElementById('medio-' + sobreId).value;
+  const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
+  const montoCobrado = esCuentaCorriente ? 0 : saldo;
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: sobreData, error: errFecha } = await sb
+    .from('sobres')
+    .update({ fecha_salida: new Date().toISOString() })
+    .eq('id', sobreId)
+    .select('cliente_id')
+    .single();
+
+  if (errFecha) {
+    msgBox.innerHTML = `<div class="msg msg-error">${errFecha.message}</div>`;
+    return;
+  }
+
+  if (montoCobrado > 0) {
+    await sb.from('movimientos_caja').insert({
+      vendedora: usuarioActual.nombre,
+      descripcion: 'cobro saldo sobre ' + numero,
+      ingresa_egresa: 'INGRESA',
+      tipo_cliente: tipoCliente,
+      medio_pago: medioPago,
+      monto: montoCobrado,
+      cliente_id: sobreData.cliente_id,
+      sobre_id: sobreId
+    });
+  }
+
+  const detalle = esCuentaCorriente
+    ? 'Se lo llevó, queda en cuenta corriente'
+    : (montoCobrado > 0 ? 'Retirado y cobrado $' + montoCobrado : 'Retirado, sin saldo pendiente');
+
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId,
+    evento: 'RETIRADO',
+    detalle: detalle + ' (entregó: ' + usuarioActual.nombre + ')'
+  });
+
+  pantallaRetiro();
+}
+window.confirmarRetiro = confirmarRetiro;
 
 // Arranque
 pantallaLogin();
