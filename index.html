@@ -112,6 +112,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaBuscarSobre()">🔍 Sobre</button>
       <button onclick="pantallaBoletas()">📦 Boleta</button>
       <button onclick="pantallaCajaDelDia()">📅 Caja</button>
+      <button onclick="pantallaPagoParcial()">💵 Pago parcial</button>
     </div>`;
 }
 
@@ -1383,6 +1384,119 @@ async function cargarCajaDelDia() {
   `;
 }
 window.cargarCajaDelDia = cargarCajaDelDia;
+
+// ============================================================
+// PANTALLA 10: Pago Parcial — un cliente paga una parte de un
+// sobre que TODAVÍA NO retira (no es cuenta corriente, es una
+// seña extra sobre un trabajo puntual que sigue en el local).
+// ============================================================
+function pantallaPagoParcial() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Pago parcial</h1>
+      <div class="sub">Para un sobre que sigue en el local y el cliente va pagando de a poco</div>
+      <label>N° de sobre</label>
+      <input type="text" id="pp-numero" placeholder="Ej: 4801">
+      <button class="btn btn-verde" onclick="buscarSobreParaPagoParcial()">Buscar</button>
+      <div id="pp-resultado"></div>
+    </div>
+  `);
+}
+window.pantallaPagoParcial = pantallaPagoParcial;
+
+async function buscarSobreParaPagoParcial() {
+  const numero = document.getElementById('pp-numero').value.trim();
+  const resBox = document.getElementById('pp-resultado');
+  if (!numero) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: s, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, fecha_salida, clientes(nombre)')
+    .eq('numero', numero)
+    .maybeSingle();
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!s) { resBox.innerHTML = `<div class="vacio">No se encontró ningún sobre con ese número.</div>`; return; }
+  if (s.fecha_salida) { resBox.innerHTML = `<div class="msg msg-error">Ese sobre ya fue retirado. Un pago sobre un sobre ya entregado se maneja por Cuenta Corriente, no acá.</div>`; return; }
+
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('monto')
+    .eq('sobre_id', s.id)
+    .eq('ingresa_egresa', 'INGRESA');
+
+  const pagado = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
+  const precioTotal = Number(s.precio_total) || 0;
+  const saldo = precioTotal > 0 ? Math.max(0, precioTotal - pagado) : null;
+
+  resBox.innerHTML = `
+    <div style="margin-top:16px;">
+      <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+      <div class="desc">${s.descripcion || ''}</div>
+      <div style="font-weight:700; margin:8px 0;">
+        ${precioTotal > 0 ? 'Precio total: $' + precioTotal.toLocaleString('es-AR') + ' · Pagado: $' + pagado.toLocaleString('es-AR') + ' · Saldo: $' + saldo.toLocaleString('es-AR') : 'Este sobre todavía no tiene precio cargado'}
+      </div>
+
+      <label>Monto que paga ahora</label>
+      <input type="number" id="pp-monto">
+      <label>Medio de pago</label>
+      <select id="pp-medio">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+      </select>
+      <button class="btn btn-verde" onclick='confirmarPagoParcial(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo})'>Registrar pago</button>
+      <div id="pp-msg"></div>
+    </div>
+  `;
+}
+window.buscarSobreParaPagoParcial = buscarSobreParaPagoParcial;
+
+async function confirmarPagoParcial(sobreId, numero, saldoActual) {
+  const msgBox = document.getElementById('pp-msg');
+  const monto = parseFloat(document.getElementById('pp-monto').value) || 0;
+  const medioPago = document.getElementById('pp-medio').value;
+
+  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+  if (saldoActual !== null && monto > saldoActual) {
+    msgBox.innerHTML = `<div class="msg msg-error">Ese monto es mayor al saldo pendiente ($${saldoActual.toLocaleString('es-AR')}). Si paga todo, usá Retiro.</div>`;
+    return;
+  }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: sobreData } = await sb.from('sobres').select('cliente_id, tipo_cliente').eq('id', sobreId).single();
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    descripcion: 'pago parcial sobre ' + numero,
+    ingresa_egresa: 'INGRESA',
+    tipo_cliente: sobreData ? sobreData.tipo_cliente : null,
+    medio_pago: medioPago,
+    monto: monto,
+    cliente_id: sobreData ? sobreData.cliente_id : null,
+    sobre_id: sobreId
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const nuevoSaldo = saldoActual !== null ? Math.max(0, saldoActual - monto) : null;
+
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId,
+    evento: 'PAGO PARCIAL',
+    detalle: 'Pagó $' + monto + ' (' + medioPago + ') — cargado por ' + usuarioActual.nombre + (nuevoSaldo !== null ? '. Saldo restante: $' + nuevoSaldo : '')
+  });
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Pago de $${monto.toLocaleString('es-AR')} registrado.${nuevoSaldo !== null ? ' Saldo restante: $' + nuevoSaldo.toLocaleString('es-AR') : ''}</div>`;
+}
+window.confirmarPagoParcial = confirmarPagoParcial;
 
 // Arranque
 // ============================================================
