@@ -160,6 +160,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
+      <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
       <button onclick="pantallaCuentaCorriente()"><span class="nav-icon">🧾</span><span class="nav-label">CTA CTE</span></button>
       <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
@@ -353,15 +354,23 @@ function irAlCatalogoDesdeEntrada() {
 }
 window.irAlCatalogoDesdeEntrada = irAlCatalogoDesdeEntrada;
 
+function abrirCatalogoParaConsulta() {
+  // Modo consulta: solo para pasar presupuestos, no crea ni modifica ningún sobre
+  _borradorEntrada = null;
+  pantallaCatalogo();
+}
+window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
+
 function pantallaCatalogo() {
+  const esConsulta = !_borradorEntrada;
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>🔎 Catálogo</h1>
-      <div class="sub">Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy</div>
+      <h1>💍 Catálogo</h1>
+      <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
       <div id="cat-resultado" style="margin-top:10px;"></div>
-      <button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>
+      ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
   document.getElementById('cat-buscar').focus();
@@ -449,11 +458,10 @@ async function buscarEnCatalogo() {
 window.buscarEnCatalogo = buscarEnCatalogo;
 
 function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
+  if (!_borradorEntrada) return; // modo consulta: solo mirar precios, no hay nada que "elegir"
   _productoSeleccionado = { cod, cat };
-  if (_borradorEntrada) {
-    _borradorEntrada.trabajo = descripcion + (listaPrecio ? ' (' + listaPrecio + ')' : '');
-    _borradorEntrada.total = precio;
-  }
+  _borradorEntrada.trabajo = descripcion + (listaPrecio ? ' (' + listaPrecio + ')' : '');
+  _borradorEntrada.total = precio;
   pantallaNuevaEntrada();
   restaurarBorradorEntrada();
 }
