@@ -12,7 +12,7 @@
     background: #f4efe4;
     margin: 0;
     padding: 16px;
-    padding-bottom: 92px; /* deja lugar para el menú fijo de abajo */
+    padding-bottom: 106px; /* deja lugar para el menú fijo de abajo */
     color: #2c2c2a;
   }
   .card {
@@ -75,23 +75,23 @@
     gap: 2px;
   }
   .nav button {
-    flex: 1 0 76px;
+    flex: 1 0 82px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 4px;
-    padding: 12px 4px;
+    gap: 5px;
+    padding: 14px 4px;
     border: none;
     background: none;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     color: #6b6459;
     border-radius: 10px;
     cursor: pointer;
     white-space: nowrap;
-    min-height: 62px;
+    min-height: 72px;
   }
   .nav button:active { background: #f4efe4; }
-  .nav-icon { font-size: 24px; line-height: 1; }
-  .nav-label { font-size: 10.5px; letter-spacing: 0.2px; }
+  .nav-icon { font-size: 28px; line-height: 1; }
+  .nav-label { font-size: 11.5px; letter-spacing: 0.2px; }
 
   .lista-sobre {
     border: 1px solid #ece5d4; border-radius: 12px; padding: 13px; margin-bottom: 10px;
@@ -1662,39 +1662,35 @@ async function cargarCajaDelDia() {
   const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientos(movimientos);
 
   resBox.innerHTML = `
-    <div style="display:flex; align-items:center; gap:10px; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:12px; padding:8px 12px; margin-bottom:10px;">
-      <div style="font-size:20px;">💵</div>
-      <div style="flex:1;">
-        <div style="font-size:11px; color:#3b5c1f; font-weight:600;">Efectivo en caja hoy</div>
-        <div style="font-size:17px; font-weight:800; color:#1f4a0a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div style="flex:1.3; display:flex; align-items:center; gap:8px; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:10px; padding:7px 10px;">
+        <div style="font-size:16px;">💵</div>
+        <div>
+          <div style="font-size:9.5px; color:#3b5c1f; font-weight:600; line-height:1.2;">Efectivo hoy</div>
+          <div style="font-size:14px; font-weight:800; color:#1f4a0a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+        </div>
+      </div>
+      <div style="flex:1; background:#e3f2e1; border-radius:10px; padding:6px; text-align:center;">
+        <div style="font-size:9.5px; color:#2f6d1f; font-weight:600;">⬆️ ENTRÓ</div>
+        <div style="font-size:12.5px; font-weight:800; color:#1f4a0a;">$${totalIngresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div style="flex:1; background:#fbe6df; border-radius:10px; padding:6px; text-align:center;">
+        <div style="font-size:9.5px; color:#c1401f; font-weight:600;">⬇️ SALIÓ</div>
+        <div style="font-size:12.5px; font-weight:800; color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</div>
       </div>
     </div>
 
-    <div style="display:flex; gap:8px; margin-bottom:10px;">
-      <div style="flex:1; background:#e3f2e1; border-radius:12px; padding:10px; text-align:center;">
-        <div style="font-size:18px;">⬆️</div>
-        <div style="font-size:10.5px; color:#2f6d1f; font-weight:600;">ENTRÓ</div>
-        <div style="font-size:14px; font-weight:800; color:#1f4a0a;">$${totalIngresa.toLocaleString('es-AR')}</div>
-      </div>
-      <div style="flex:1; background:#fbe6df; border-radius:12px; padding:10px; text-align:center;">
-        <div style="font-size:18px;">⬇️</div>
-        <div style="font-size:10.5px; color:#c1401f; font-weight:600;">SALIÓ</div>
-        <div style="font-size:14px; font-weight:800; color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</div>
-      </div>
-      <div style="flex:1; background:#e2ecfb; border-radius:12px; padding:10px; text-align:center;">
-        <div style="font-size:18px;">📊</div>
-        <div style="font-size:10.5px; color:#2455a8; font-weight:600;">NETO</div>
-        <div style="font-size:14px; font-weight:800; color:#173e7d;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</div>
-      </div>
+    <details style="margin-bottom:10px;">
+      <summary style="cursor:pointer; font-size:12.5px; color:#6b6459; font-weight:600; padding:4px 0;">🎨 Ver por medio de pago</summary>
+      <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec); margin-top:6px;">${filasMedios}</div>
+    </details>
+
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+      <span style="font-size:16px;">🔎</span>
+      <input type="text" id="cd-buscar" placeholder="Buscar por nombre de cliente..." oninput="filtrarCajaDelDia()" style="flex:1; padding:9px 12px; font-size:14px;">
     </div>
 
-    <label style="margin-top:16px;">🎨 Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
-    <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec);">${filasMedios}</div>
-
-    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
-    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
-
-    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <label id="cd-contador" style="margin-top:4px;">Movimientos (${movimientos.length})</label>
     <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
     <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
