@@ -480,7 +480,7 @@ async function pantallaListoLista() {
           <a href="#" onclick="toggleItems('${s.id}'); return false;" style="font-size:13px; color:#3b6d11;">➕ ¿Tiene varios ítems distintos?</a>
         </div>
         <div id="items-box-${s.id}" style="display:none; margin-top:8px;">
-          <small>Un ítem por línea, así: Descripción - Precio</small>
+          <small>Un ítem por línea. Con o sin guión, las dos formas andan: "Anillo grabado - 3000" o "Anillo grabado 3000"</small>
           <textarea id="items-${s.id}" rows="3" placeholder="Anillo grabado - 3000&#10;Cadena soldada - 1500" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:14px;"></textarea>
         </div>
       ` : ''}
@@ -528,18 +528,18 @@ async function marcarListo(sobreId, numero) {
     return;
   }
 
-  // Si cargó ítems (uno por línea: "Descripción - Precio"), el precio total sale de sumarlos
+  // Si cargó ítems (uno por línea, con o sin guión: "Descripción - Precio" o "Descripción Precio"),
+  // el precio total sale de sumarlos. Se toma como precio el ÚLTIMO número de la línea.
   let items = [];
   let precio = precioInput ? parseFloat(precioInput.value) || null : null;
   if (itemsInput && itemsInput.value.trim()) {
     const lineas = itemsInput.value.split('\n').map(l => l.trim()).filter(l => l);
     items = lineas.map(linea => {
-      const idx = linea.lastIndexOf('-');
-      if (idx === -1) return { descripcion: linea, precio: 0 };
-      return {
-        descripcion: linea.slice(0, idx).trim(),
-        precio: parseFloat(linea.slice(idx + 1).replace(/[^\d.]/g, '')) || 0
-      };
+      const m = linea.match(/^(.*\S)\s*[-–:]?\s*([\d.,]*\d)\s*$/);
+      if (!m) return { descripcion: linea, precio: 0 };
+      const descripcion = m[1].replace(/[-–:]\s*$/, '').trim();
+      const precioNum = parseFloat(m[2].replace(/\./g, '').replace(',', '.')) || 0;
+      return { descripcion: descripcion, precio: precioNum };
     });
     precio = items.reduce((acc, it) => acc + it.precio, 0);
   }
