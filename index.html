@@ -429,7 +429,7 @@ async function buscarEnCatalogo() {
       const menor = mayor * 1.67;
 
       const boton = (etiqueta, precio) => `
-        <button type="button" class="btn btn-outline" style="margin-top:6px; padding:10px;"
+        <button type="button" class="btn btn-outline" style="margin-top:6px; padding:5px; font-size:12px;"
           onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
           ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
         </button>
@@ -440,7 +440,7 @@ async function buscarEnCatalogo() {
       return `
         <div class="lista-sobre">
           ${foto}
-          <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="nro" style="font-size:19px; line-height:1.3;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
           <div class="cli">${p.cat} · cód. ${p.cod}</div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
             ${boton('Zipiur', zipiur)}
