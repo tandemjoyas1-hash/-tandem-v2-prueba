@@ -113,6 +113,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaBoletas()">📦 Boleta</button>
       <button onclick="pantallaCajaDelDia()">📅 Caja</button>
       <button onclick="pantallaPagoParcial()">💵 Pago parcial</button>
+      <button onclick="pantallaEgreso()">➖ Egreso</button>
     </div>`;
 }
 
@@ -1497,6 +1498,77 @@ async function confirmarPagoParcial(sobreId, numero, saldoActual) {
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Pago de $${monto.toLocaleString('es-AR')} registrado.${nuevoSaldo !== null ? ' Saldo restante: $' + nuevoSaldo.toLocaleString('es-AR') : ''}</div>`;
 }
 window.confirmarPagoParcial = confirmarPagoParcial;
+
+// ============================================================
+// PANTALLA 11: Egreso — gastos, packaging, retiros de caja, etc.
+// ============================================================
+function pantallaEgreso() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Registrar egreso</h1>
+      <div class="sub">Gastos, packaging, retiro de caja, etc.</div>
+
+      <label>Tipo de egreso</label>
+      <select id="eg-tipo">
+        <option value="200">Packaging</option>
+        <option value="500">Diferencia de caja</option>
+        <option value="550">Sale de caja</option>
+        <option value="0">Otro / gasto general</option>
+      </select>
+
+      <label>Descripción</label>
+      <input type="text" id="eg-descripcion" placeholder="Ej: compra de bolsitas, alquiler, etc.">
+
+      <label>Monto</label>
+      <input type="number" id="eg-monto" placeholder="0">
+
+      <label>Medio de pago / de dónde sale</label>
+      <select id="eg-medio">
+        <option>EFECTIVO</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+      </select>
+
+      <button class="btn btn-verde" onclick="guardarEgreso()">Registrar egreso</button>
+      <div id="eg-msg"></div>
+    </div>
+  `);
+}
+window.pantallaEgreso = pantallaEgreso;
+
+async function guardarEgreso() {
+  const msgBox = document.getElementById('eg-msg');
+  const codigo = parseInt(document.getElementById('eg-tipo').value) || null;
+  const descripcion = document.getElementById('eg-descripcion').value.trim();
+  const monto = parseFloat(document.getElementById('eg-monto').value) || 0;
+  const medioPago = document.getElementById('eg-medio').value;
+
+  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
+  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    codigo: codigo || null,
+    descripcion: descripcion,
+    ingresa_egresa: 'EGRESA',
+    medio_pago: medioPago,
+    monto: monto,
+    canal: 'LOCAL'
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Egreso de $${monto.toLocaleString('es-AR')} registrado.</div>`;
+  document.getElementById('eg-descripcion').value = '';
+  document.getElementById('eg-monto').value = '';
+}
+window.guardarEgreso = guardarEgreso;
 
 // Arranque
 // ============================================================
