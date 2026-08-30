@@ -64,13 +64,12 @@
 <div id="app"></div>
 
 <script>
-
 // ============================================================
 // CONEXIÓN a Supabase — proyecto "Catálogo Tándem", cajón tandem
 // ============================================================
 const SUPABASE_URL = 'https://vbkpczhbudktbkclqncy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wpv2kS2qMJFBhEOlGrWg3g_FWt8IFZn';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   db: { schema: 'tandem' }
 });
 
@@ -102,7 +101,7 @@ window.cerrarSesion = cerrarSesion;
 // ============================================================
 async function pantallaLogin() {
   render(`<div class="card"><p>Cargando usuarios...</p></div>`);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('usuarios')
     .select('id, nombre, rol')
     .eq('activo', true)
@@ -139,7 +138,7 @@ async function intentarLogin() {
     return;
   }
 
-  const { data: usuario, error } = await supabase
+  const { data: usuario, error } = await db
     .from('usuarios')
     .select('id, nombre, rol, pin')
     .eq('id', usuarioId)
@@ -152,7 +151,7 @@ async function intentarLogin() {
 
   if (!usuario.pin) {
     // Primera vez: se guarda el PIN que acaba de escribir
-    const { error: errUpdate } = await supabase
+    const { error: errUpdate } = await db
       .from('usuarios')
       .update({ pin: pin })
       .eq('id', usuarioId);
@@ -223,8 +222,6 @@ function pantallaNuevaEntrada() {
   `);
 }
 
-window.guardarNuevaEntrada = guardarNuevaEntrada;
-
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = document.getElementById('ne-sobre').value.trim();
@@ -248,7 +245,7 @@ async function guardarNuevaEntrada() {
 
   // 1) Buscar si el cliente ya existe (por nombre, sin importar mayúsc/minúsc)
   let clienteId;
-  const { data: clienteExistente } = await supabase
+  const { data: clienteExistente } = await db
     .from('clientes')
     .select('id')
     .ilike('nombre', nombreCliente)
@@ -258,7 +255,7 @@ async function guardarNuevaEntrada() {
   if (clienteExistente) {
     clienteId = clienteExistente.id;
   } else {
-    const { data: clienteNuevo, error: errCliente } = await supabase
+    const { data: clienteNuevo, error: errCliente } = await db
       .from('clientes')
       .insert({ nombre: nombreCliente, tipo_cliente: tipoCliente })
       .select('id')
@@ -271,7 +268,7 @@ async function guardarNuevaEntrada() {
   }
 
   // 2) Crear el sobre
-  const { data: sobreNuevo, error: errSobre } = await supabase
+  const { data: sobreNuevo, error: errSobre } = await db
     .from('sobres')
     .insert({
       numero: numeroSobre,
@@ -293,7 +290,7 @@ async function guardarNuevaEntrada() {
 
   // 3) Si hay seña, registrar el movimiento de caja
   if (sena > 0) {
-    await supabase.from('movimientos_caja').insert({
+    await db.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
       descripcion: 'seña sobre ' + numeroSobre,
       ingresa_egresa: 'INGRESA',
@@ -306,7 +303,7 @@ async function guardarNuevaEntrada() {
   }
 
   // 4) Historial
-  await supabase.from('historial_sobres').insert({
+  await db.from('historial_sobres').insert({
     sobre_id: sobreNuevo.id,
     evento: 'ENTRADA',
     detalle: 'Ingresó al local (dio entrada: ' + usuarioActual.nombre + ')'
@@ -319,6 +316,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
 }
+window.guardarNuevaEntrada = guardarNuevaEntrada;
 
 // Arranque
 pantallaLogin();
