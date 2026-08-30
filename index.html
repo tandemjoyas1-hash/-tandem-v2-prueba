@@ -1545,6 +1545,62 @@ function pantallaCajaDelDia() {
 }
 window.pantallaCajaDelDia = pantallaCajaDelDia;
 
+function renderFilasMovimientos(movimientos) {
+  if (movimientos.length === 0) {
+    return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
+  }
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre">
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  const filasTabla = movimientos.map(m => `
+    <tr>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tablaCaja = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
+
+  return { lista: filasMovimientos, tabla: tablaCaja };
+}
+
+function filtrarCajaDelDia() {
+  const q = (document.getElementById('cd-buscar').value || '').trim().toLowerCase();
+  const todos = window._movimientosCajaActual || [];
+  const filtrados = q === '' ? todos : todos.filter(m => {
+    const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
+    const vendedora = (m.vendedora || '').toLowerCase();
+    const desc = (m.descripcion || '').toLowerCase();
+    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
+  });
+  const { lista, tabla } = renderFilasMovimientos(filtrados);
+  document.getElementById('cd-contador').textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
+  document.getElementById('cd-lista-movimientos').innerHTML = lista;
+  document.getElementById('cd-tabla-movimientos').innerHTML = tabla;
+}
+window.filtrarCajaDelDia = filtrarCajaDelDia;
+
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
   const resBox = document.getElementById('cd-resultado');
@@ -1599,41 +1655,11 @@ async function cargarCajaDelDia() {
       `;
       }).join('');
 
-  const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}</div>
-    </div>
-  `).join('');
-
-  const filasTabla = movimientos.map(m => `
-    <tr>
-      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
-      <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
-      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
-      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
-        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
-      </td>
-    </tr>
-  `).join('');
-
-  const tablaCaja = `
-    <div class="tabla-caja">
-      <table>
-        <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
-        </thead>
-        <tbody>${filasTabla}</tbody>
-      </table>
-    </div>
-  `;
-
+  window._movimientosCajaActual = movimientos;
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
+
+  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientos(movimientos);
 
   resBox.innerHTML = `
     <div style="display:flex; align-items:center; gap:10px; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:12px; padding:8px 12px; margin-bottom:10px;">
@@ -1665,9 +1691,12 @@ async function cargarCajaDelDia() {
     <label style="margin-top:16px;">🎨 Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
     <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec);">${filasMedios}</div>
 
-    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja">${filasMovimientos}</div>
-    ${tablaCaja}
+    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
+    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
+
+    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
+    <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
     <div style="text-align:center; margin-top:20px;">
       <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
