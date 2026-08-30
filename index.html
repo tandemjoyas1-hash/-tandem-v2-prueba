@@ -413,12 +413,29 @@ async function buscarEnCatalogo() {
     }
 
     resBox.innerHTML = productos.map(p => {
-      const precio = Math.round((Number(p.peso) || 0) * _precioGramoActual + (Number(p.labor) || 0));
+      const metal = (Number(p.peso) || 0) * _precioGramoActual;
+      const zipiur = metal + (Number(p.labor) || 0);
+      const mayor = zipiur * 1.2;
+      const redes = mayor * 1.4;
+      const menor = mayor * 1.67;
+
+      const boton = (etiqueta, precio) => `
+        <button type="button" class="btn btn-outline" style="margin-top:6px; padding:10px;"
+          onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
+          ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
+        </button>
+      `;
+
       return `
-        <div class="lista-sobre" style="cursor:pointer;" onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${precio})'>
+        <div class="lista-sobre">
           <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
           <div class="cli">${p.cat} · cód. ${p.cod}</div>
-          <div class="desc" style="font-weight:700; color:#2f6d1f;">$${precio.toLocaleString('es-AR')}</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+            ${boton('Zipiur', zipiur)}
+            ${boton('Mayor', mayor)}
+            ${boton('Redes', redes)}
+            ${boton('Menor', menor)}
+          </div>
         </div>
       `;
     }).join('');
@@ -428,10 +445,10 @@ async function buscarEnCatalogo() {
 }
 window.buscarEnCatalogo = buscarEnCatalogo;
 
-function elegirProductoCatalogo(cod, cat, descripcion, precio) {
+function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
   _productoSeleccionado = { cod, cat };
   if (_borradorEntrada) {
-    _borradorEntrada.trabajo = descripcion;
+    _borradorEntrada.trabajo = descripcion + (listaPrecio ? ' (' + listaPrecio + ')' : '');
     _borradorEntrada.total = precio;
   }
   pantallaNuevaEntrada();
