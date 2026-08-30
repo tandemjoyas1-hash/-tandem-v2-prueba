@@ -109,6 +109,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaListoLista()">✅ Listo</button>
       <button onclick="pantallaRetiro()">💰 Retiro</button>
       <button onclick="pantallaCuentaCorriente()">🧾 Cta Cte</button>
+      <button onclick="pantallaBuscarSobre()">🔍 Sobre</button>
     </div>`;
 }
 
@@ -780,6 +781,104 @@ async function registrarPagoCC(clienteId, nombreCliente) {
   verCuentaCliente(clienteId, nombreCliente);
 }
 window.registrarPagoCC = registrarPagoCC;
+
+// ============================================================
+// PANTALLA 7: Buscar Sobre — ver el historial y los pagos completos de un sobre
+// ============================================================
+function pantallaBuscarSobre() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Buscar sobre</h1>
+      <div class="sub">Ver historial completo y pagos</div>
+      <label>N° de sobre</label>
+      <input type="text" id="bs-numero" placeholder="Ej: 4801">
+      <button class="btn btn-verde" onclick="buscarSobreDetalle()">Buscar</button>
+      <div id="bs-resultado"></div>
+    </div>
+  `);
+}
+window.pantallaBuscarSobre = pantallaBuscarSobre;
+
+function estadoDeSobre(s) {
+  if (s.fecha_salida) return '✅ Retirado';
+  if (s.listo) return '🟢 Listo para retirar';
+  if (s.baja_taller) return '🛠 En taller (' + (s.orfebre || '') + ')';
+  return '🆕 Recién ingresado';
+}
+
+async function buscarSobreDetalle() {
+  const numero = document.getElementById('bs-numero').value.trim();
+  const resBox = document.getElementById('bs-resultado');
+  if (!numero) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: s, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, clientes(nombre, telefono)')
+    .eq('numero', numero)
+    .maybeSingle();
+
+  if (error) {
+    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+    return;
+  }
+  if (!s) {
+    resBox.innerHTML = `<div class="vacio">No se encontró ningún sobre con ese número.</div>`;
+    return;
+  }
+
+  const { data: historial } = await sb
+    .from('historial_sobres')
+    .select('fecha_hora, evento, detalle')
+    .eq('sobre_id', s.id)
+    .order('fecha_hora');
+
+  const { data: movimientos } = await sb
+    .from('movimientos_caja')
+    .select('fecha, monto, medio_pago, descripcion')
+    .eq('sobre_id', s.id)
+    .eq('ingresa_egresa', 'INGRESA');
+
+  const pagado = (movimientos || []).reduce((acc, m) => acc + Number(m.monto), 0);
+  const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
+
+  const filasHistorial = (historial || []).length === 0
+    ? `<div class="vacio">Sin eventos registrados todavía</div>`
+    : historial.map(h => `
+        <div class="lista-sobre">
+          <div class="nro">${h.evento}</div>
+          <div class="cli">${new Date(h.fecha_hora).toLocaleString('es-AR')}</div>
+          <div class="desc">${h.detalle || ''}</div>
+        </div>
+      `).join('');
+
+  const filasPagos = (movimientos || []).length === 0
+    ? `<div class="vacio">Sin pagos registrados todavía</div>`
+    : movimientos.map(m => `
+        <div class="lista-sobre">
+          <div class="nro">$${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
+          <div class="cli">${new Date(m.fecha).toLocaleDateString('es-AR')}</div>
+          <div class="desc">${m.descripcion || ''}</div>
+        </div>
+      `).join('');
+
+  resBox.innerHTML = `
+    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #eee;">
+      <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
+      <div class="desc">${s.descripcion || ''}</div>
+      <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
+      <div>Precio total: $${(Number(s.precio_total) || 0).toLocaleString('es-AR')} · Pagado: $${pagado.toLocaleString('es-AR')} · Saldo: $${saldo.toLocaleString('es-AR')}</div>
+
+      <label style="margin-top:18px;">📜 Historial</label>
+      ${filasHistorial}
+
+      <label style="margin-top:10px;">💵 Pagos registrados</label>
+      ${filasPagos}
+    </div>
+  `;
+}
+window.buscarSobreDetalle = buscarSobreDetalle;
 
 // Arranque
 pantallaLogin();
