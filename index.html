@@ -1323,26 +1323,6 @@ async function cargarCajaDelDia() {
   const resBox = document.getElementById('cd-resultado');
   resBox.innerHTML = `<div class="msg">Cargando...</div>`;
 
-  // Efectivo acumulado en el cajón: TODO lo que entró y salió en efectivo
-  // desde siempre, no solo el día elegido.
-  const { data: movEfectivo } = await sb
-    .from('movimientos_caja')
-    .select('ingresa_egresa, monto')
-    .eq('medio_pago', 'EFECTIVO');
-
-  let efectivoEnCaja = 0;
-  (movEfectivo || []).forEach(m => {
-    const monto = Number(m.monto) || 0;
-    efectivoEnCaja += m.ingresa_egresa === 'INGRESA' ? monto : -monto;
-  });
-
-  const bloqueEfectivo = `
-    <div class="lista-sobre" style="background:#eaf3de; margin-bottom:16px;">
-      <div style="font-size:13px; color:#555;">💵 Efectivo en caja ahora mismo</div>
-      <div style="font-size:24px; font-weight:700; color:#27500a;">$${efectivoEnCaja.toLocaleString('es-AR')}</div>
-    </div>
-  `;
-
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
     .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, created_at')
@@ -1350,12 +1330,12 @@ async function cargarCajaDelDia() {
     .order('created_at');
 
   if (error) {
-    resBox.innerHTML = bloqueEfectivo + `<div class="msg msg-error">${error.message}</div>`;
+    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
     return;
   }
 
   if (!movimientos || movimientos.length === 0) {
-    resBox.innerHTML = bloqueEfectivo + `<div class="vacio">Sin movimientos registrados ese día</div>`;
+    resBox.innerHTML = `<div class="vacio">Sin movimientos registrados ese día</div>`;
     return;
   }
 
@@ -1388,7 +1368,7 @@ async function cargarCajaDelDia() {
     </div>
   `).join('');
 
-  resBox.innerHTML = bloqueEfectivo + `
+  resBox.innerHTML = `
     <div class="lista-sobre" style="background:#f7f7f7;">
       <div>Entró: <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
       <div>Salió: <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
