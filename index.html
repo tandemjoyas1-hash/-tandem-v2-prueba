@@ -114,6 +114,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaCajaDelDia()">📅 Caja</button>
       <button onclick="pantallaPagoParcial()">💵 Pago parcial</button>
       <button onclick="pantallaEgreso()">➖ Egreso</button>
+      <button onclick="pantallaReportes()">📊 Reportes</button>
     </div>`;
 }
 
@@ -1582,6 +1583,203 @@ async function guardarEgreso() {
   document.getElementById('eg-monto').value = '';
 }
 window.guardarEgreso = guardarEgreso;
+
+// ============================================================
+// PANTALLA 12: Reportes — resumen mensual y gastos fijos
+// ============================================================
+const MEDIOS_FACTURABLES = ['TARJETA FISER', 'MERCADO PAGO FISER', 'TRANSFERENCIA SANTANDER'];
+
+function mesActualISO() {
+  const hoy = new Date();
+  return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+}
+
+function pantallaReportes() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Reportes</h1>
+      <label>Mes</label>
+      <input type="month" id="rp-mes" value="${mesActualISO()}" onchange="cargarReportes()">
+      <div id="rp-resumen"></div>
+    </div>
+    <div class="card">
+      <h1>Gastos fijos</h1>
+      <div class="sub">Alquiler, expensas, luz, etc.</div>
+      <button class="btn btn-outline" onclick="toggleNuevoGastoFijo()">➕ Agregar gasto fijo nuevo</button>
+      <div id="gf-nuevo-form" style="display:none; margin-top:10px;">
+        <label>Nombre</label>
+        <input type="text" id="gf-nombre" placeholder="Ej: Alquiler">
+        <label>Monto estimado</label>
+        <input type="number" id="gf-monto" placeholder="0">
+        <label>Día del mes que vence (opcional)</label>
+        <input type="number" id="gf-dia" placeholder="Ej: 10" min="1" max="31">
+        <button class="btn btn-verde" onclick="guardarGastoFijo()">Guardar</button>
+        <div id="gf-nuevo-msg"></div>
+      </div>
+      <div id="gf-lista" style="margin-top:14px;"></div>
+    </div>
+  `);
+  cargarReportes();
+  cargarGastosFijos();
+}
+window.pantallaReportes = pantallaReportes;
+
+function toggleNuevoGastoFijo() {
+  const form = document.getElementById('gf-nuevo-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleNuevoGastoFijo = toggleNuevoGastoFijo;
+
+async function guardarGastoFijo() {
+  const msgBox = document.getElementById('gf-nuevo-msg');
+  const nombre = document.getElementById('gf-nombre').value.trim();
+  const monto = parseFloat(document.getElementById('gf-monto').value) || null;
+  const dia = parseInt(document.getElementById('gf-dia').value) || null;
+
+  if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre.</div>`; return; }
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('gastos_fijos').insert({ nombre: nombre, monto_estimado: monto, dia_vencimiento: dia });
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  document.getElementById('gf-nombre').value = '';
+  document.getElementById('gf-monto').value = '';
+  document.getElementById('gf-dia').value = '';
+  toggleNuevoGastoFijo();
+  cargarGastosFijos();
+}
+window.guardarGastoFijo = guardarGastoFijo;
+
+function rangoDelMes(mesISO) {
+  const [anio, mes] = mesISO.split('-').map(Number);
+  const desde = anio + '-' + String(mes).padStart(2, '0') + '-01';
+  const siguiente = mes === 12 ? (anio + 1) + '-01-01' : anio + '-' + String(mes + 1).padStart(2, '0') + '-01';
+  return { desde, hasta: siguiente };
+}
+
+async function cargarReportes() {
+  const mesISO = document.getElementById('rp-mes').value || mesActualISO();
+  const resBox = document.getElementById('rp-resumen');
+  resBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const { desde, hasta } = rangoDelMes(mesISO);
+
+  const { data: movimientos, error } = await sb
+    .from('movimientos_caja')
+    .select('ingresa_egresa, medio_pago, monto')
+    .gte('fecha', desde)
+    .lt('fecha', hasta);
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const { data: sobresDelMes } = await sb
+    .from('sobres')
+    .select('id')
+    .gte('fecha_entrada', desde)
+    .lt('fecha_entrada', hasta);
+
+  let ingresos = 0, egresos = 0, facturable = 0, noFacturable = 0;
+  (movimientos || []).forEach(m => {
+    const monto = Number(m.monto) || 0;
+    if (m.ingresa_egresa === 'INGRESA') {
+      ingresos += monto;
+      if (MEDIOS_FACTURABLES.includes(m.medio_pago)) facturable += monto; else noFacturable += monto;
+    } else {
+      egresos += monto;
+    }
+  });
+
+  resBox.innerHTML = `
+    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+      <div>Sobres nuevos este mes: <strong>${(sobresDelMes || []).length}</strong></div>
+      <div>Ingresos: <strong style="color:#27500a;">$${ingresos.toLocaleString('es-AR')}</strong></div>
+      <div>Egresos: <strong style="color:#993c1d;">$${egresos.toLocaleString('es-AR')}</strong></div>
+      <div style="font-size:18px; font-weight:700; margin-top:6px;">Neto: $${(ingresos - egresos).toLocaleString('es-AR')}</div>
+    </div>
+    <div class="lista-sobre" style="margin-top:10px;">
+      <div>💳 Facturable (Tarjeta, MP Fiser, Transferencia): <strong>$${facturable.toLocaleString('es-AR')}</strong></div>
+      <div>💵 No facturable (Efectivo, Uala, MP Laureano, etc.): <strong>$${noFacturable.toLocaleString('es-AR')}</strong></div>
+    </div>
+  `;
+}
+window.cargarReportes = cargarReportes;
+
+async function cargarGastosFijos() {
+  const listaBox = document.getElementById('gf-lista');
+  listaBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const mesISO = document.getElementById('rp-mes').value || mesActualISO();
+  const { desde, hasta } = rangoDelMes(mesISO);
+
+  const { data: gastos, error } = await sb.from('gastos_fijos').select('id, nombre, monto_estimado, dia_vencimiento').eq('activo', true).order('nombre');
+  if (error) { listaBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  if (!gastos || gastos.length === 0) {
+    listaBox.innerHTML = `<div class="vacio">Todavía no cargaste ningún gasto fijo.</div>`;
+    return;
+  }
+
+  const { data: pagosDelMes } = await sb
+    .from('movimientos_caja')
+    .select('gasto_fijo_id, monto')
+    .not('gasto_fijo_id', 'is', null)
+    .gte('fecha', desde)
+    .lt('fecha', hasta);
+
+  const pagadoPorGasto = {};
+  (pagosDelMes || []).forEach(p => { pagadoPorGasto[p.gasto_fijo_id] = (pagadoPorGasto[p.gasto_fijo_id] || 0) + Number(p.monto); });
+
+  listaBox.innerHTML = gastos.map(g => {
+    const pagado = pagadoPorGasto[g.id];
+    return `
+      <div class="lista-sobre">
+        <div class="nro">${g.nombre} ${g.monto_estimado ? '— aprox $' + Number(g.monto_estimado).toLocaleString('es-AR') : ''}</div>
+        ${g.dia_vencimiento ? `<div class="cli">Vence el día ${g.dia_vencimiento}</div>` : ''}
+        ${pagado
+          ? `<div class="msg msg-ok" style="margin-top:6px;">✅ Pagado este mes: $${pagado.toLocaleString('es-AR')}</div>`
+          : `
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <input type="number" id="gf-pago-${g.id}" placeholder="Monto pagado" style="flex:1;">
+              <select id="gf-medio-${g.id}" style="flex:1;">
+                <option>EFECTIVO</option>
+                <option>TRANSFERENCIA SANTANDER</option>
+                <option>MERCADO PAGO FISER</option>
+                <option>MERCADO PAGO LAUREANO</option>
+                <option>UALA CARLA</option>
+              </select>
+            </div>
+            <button class="btn btn-verde" style="margin-top:8px;" onclick="marcarGastoFijoPagado('${g.id}', '${g.nombre.replace(/'/g, "\\'")}')">Marcar pagado</button>
+          `
+        }
+        <div id="gf-msg-${g.id}"></div>
+      </div>
+    `;
+  }).join('');
+}
+window.cargarGastosFijos = cargarGastosFijos;
+
+async function marcarGastoFijoPagado(gastoId, nombre) {
+  const msgBox = document.getElementById('gf-msg-' + gastoId);
+  const monto = parseFloat(document.getElementById('gf-pago-' + gastoId).value) || 0;
+  const medioPago = document.getElementById('gf-medio-' + gastoId).value;
+
+  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    descripcion: nombre,
+    ingresa_egresa: 'EGRESA',
+    medio_pago: medioPago,
+    monto: monto,
+    gasto_fijo_id: gastoId
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  cargarGastosFijos();
+}
+window.marcarGastoFijoPagado = marcarGastoFijoPagado;
 
 // Arranque
 // ============================================================
