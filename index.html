@@ -306,14 +306,7 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
-      <div style="text-align:right; margin-top:-6px;">
-        <a href="#" onclick="document.getElementById('ne-catalogo-box').style.display='block'; return false;" style="font-size:13px; color:#3b6d11;">🔎 Buscar en el catálogo (precio automático)</a>
-      </div>
-
-      <div id="ne-catalogo-box" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
-        <input type="text" id="ne-catalogo-buscar" placeholder="Nombre o código del producto" oninput="buscarEnCatalogo()">
-        <div id="ne-catalogo-resultado" style="margin-top:8px; max-height:260px; overflow-y:auto;"></div>
-      </div>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="irAlCatalogoDesdeEntrada()">🔎 Buscar en el catálogo (precio automático)</button>
 
       <label>Precio total (si ya lo sabés)</label>
       <input type="number" id="ne-total" placeholder="0">
@@ -343,47 +336,106 @@ const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functio
 
 let _productoSeleccionado = null; // { cat, cod } del último producto elegido del catálogo
 let _precioGramoActual = null;
+let _borradorEntrada = null; // guarda lo ya escrito en Entrada antes de ir al catálogo
+
+function irAlCatalogoDesdeEntrada() {
+  _borradorEntrada = {
+    sobre: document.getElementById('ne-sobre').value,
+    cliente: document.getElementById('ne-cliente').value,
+    telefono: document.getElementById('ne-telefono').value,
+    tipoCliente: document.getElementById('ne-tipo-cliente').value,
+    trabajo: document.getElementById('ne-trabajo').value,
+    total: document.getElementById('ne-total').value,
+    sena: document.getElementById('ne-sena').value,
+    medioPago: document.getElementById('ne-medio-pago').value
+  };
+  pantallaCatalogo();
+}
+window.irAlCatalogoDesdeEntrada = irAlCatalogoDesdeEntrada;
+
+function pantallaCatalogo() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>🔎 Catálogo</h1>
+      <div class="sub">Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy</div>
+      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
+      <div id="cat-resultado" style="margin-top:10px;"></div>
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>
+    </div>
+  `);
+  document.getElementById('cat-buscar').focus();
+}
+window.pantallaCatalogo = pantallaCatalogo;
+
+function volverAEntradaSinElegir() {
+  pantallaNuevaEntrada();
+  restaurarBorradorEntrada();
+}
+window.volverAEntradaSinElegir = volverAEntradaSinElegir;
+
+function restaurarBorradorEntrada() {
+  if (!_borradorEntrada) return;
+  document.getElementById('ne-sobre').value = _borradorEntrada.sobre;
+  document.getElementById('ne-cliente').value = _borradorEntrada.cliente;
+  document.getElementById('ne-telefono').value = _borradorEntrada.telefono;
+  document.getElementById('ne-tipo-cliente').value = _borradorEntrada.tipoCliente;
+  document.getElementById('ne-trabajo').value = _borradorEntrada.trabajo;
+  document.getElementById('ne-total').value = _borradorEntrada.total;
+  document.getElementById('ne-sena').value = _borradorEntrada.sena;
+  document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
+}
 
 async function buscarEnCatalogo() {
-  const termino = document.getElementById('ne-catalogo-buscar').value.trim();
-  const resBox = document.getElementById('ne-catalogo-resultado');
+  const termino = document.getElementById('cat-buscar').value.trim();
+  const resBox = document.getElementById('cat-resultado');
   if (!termino) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
-  if (_precioGramoActual === null) {
-    const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-    _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  try {
+    if (_precioGramoActual === null) {
+      const { data: config, error: errConfig } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
+      if (errConfig) throw errConfig;
+      _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+    }
+
+    const { data: productos, error } = await sb.schema('public')
+      .from('products')
+      .select('cod, cat, descripcion, medidas, peso, labor')
+      .or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%')
+      .limit(20);
+
+    if (error) throw error;
+
+    if (!productos || productos.length === 0) {
+      resBox.innerHTML = `<div class="vacio">Sin resultados para "${termino}"</div>`;
+      return;
+    }
+
+    resBox.innerHTML = productos.map(p => {
+      const precio = Math.round((Number(p.peso) || 0) * _precioGramoActual + (Number(p.labor) || 0));
+      return `
+        <div class="lista-sobre" style="cursor:pointer;" onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${precio})'>
+          <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="cli">${p.cat} · cód. ${p.cod}</div>
+          <div class="desc" style="font-weight:700; color:#2f6d1f;">$${precio.toLocaleString('es-AR')}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
-
-  const { data: productos, error } = await sb.schema('public')
-    .from('products')
-    .select('cod, cat, descripcion, medidas, peso, labor')
-    .or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%')
-    .limit(15);
-
-  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
-  if (!productos || productos.length === 0) { resBox.innerHTML = `<div class="vacio">Sin resultados</div>`; return; }
-
-  resBox.innerHTML = productos.map(p => {
-    const precio = Math.round((Number(p.peso) || 0) * _precioGramoActual + (Number(p.labor) || 0));
-    return `
-      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${precio})'>
-        <div class="nro" style="font-size:14px;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-        <div class="cli">${p.cat} · cód. ${p.cod}</div>
-        <div class="desc" style="font-weight:700; color:#2f6d1f;">$${precio.toLocaleString('es-AR')}</div>
-      </div>
-    `;
-  }).join('');
 }
 window.buscarEnCatalogo = buscarEnCatalogo;
 
 function elegirProductoCatalogo(cod, cat, descripcion, precio) {
-  document.getElementById('ne-trabajo').value = descripcion;
-  document.getElementById('ne-total').value = precio;
   _productoSeleccionado = { cod, cat };
-  document.getElementById('ne-catalogo-box').style.display = 'none';
-  document.getElementById('ne-catalogo-buscar').value = '';
-  document.getElementById('ne-catalogo-resultado').innerHTML = '';
+  if (_borradorEntrada) {
+    _borradorEntrada.trabajo = descripcion;
+    _borradorEntrada.total = precio;
+  }
+  pantallaNuevaEntrada();
+  restaurarBorradorEntrada();
 }
 window.elegirProductoCatalogo = elegirProductoCatalogo;
 
