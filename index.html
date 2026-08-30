@@ -1340,25 +1340,33 @@ async function cargarCajaDelDia() {
   }
 
   let totalIngresa = 0, totalEgresa = 0;
-  const porMedio = {};
+  const porMedioIngresa = {};
+  const porMedioEgresa = {};
   movimientos.forEach(m => {
     const monto = Number(m.monto) || 0;
+    const medio = m.medio_pago || '(sin medio)';
     if (m.ingresa_egresa === 'INGRESA') {
       totalIngresa += monto;
-      const medio = m.medio_pago || '(sin medio)';
-      porMedio[medio] = (porMedio[medio] || 0) + monto;
+      porMedioIngresa[medio] = (porMedioIngresa[medio] || 0) + monto;
     } else {
       totalEgresa += monto;
+      porMedioEgresa[medio] = (porMedioEgresa[medio] || 0) + monto;
     }
   });
 
-  const filasMedios = Object.keys(porMedio).length === 0
+  const efectivoNetoHoy = (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
+
+  const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
+  const filasMedios = todosLosMedios.length === 0
     ? ''
-    : Object.entries(porMedio).map(([medio, monto]) => `
+    : todosLosMedios.map(medio => {
+        const neto = (porMedioIngresa[medio] || 0) - (porMedioEgresa[medio] || 0);
+        return `
         <div style="display:flex; justify-content:space-between; padding:4px 0;">
-          <span>${medio}</span><strong>$${monto.toLocaleString('es-AR')}</strong>
+          <span>${medio}</span><strong>$${neto.toLocaleString('es-AR')}</strong>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre">
@@ -1369,15 +1377,20 @@ async function cargarCajaDelDia() {
   `).join('');
 
   resBox.innerHTML = `
-    <div class="lista-sobre" style="background:#f7f7f7;">
-      <div>Entró: <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
-      <div>Salió: <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
-      <div style="font-size:20px; font-weight:700; margin-top:6px;">
+    <div class="lista-sobre" style="background:#eaf3de;">
+      <div style="font-size:13px; color:#555;">💵 Efectivo que queda hoy (después de gastos y retiros)</div>
+      <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    </div>
+
+    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      <div style="font-size:18px; font-weight:700; margin-top:6px;">
         Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
       </div>
     </div>
 
-    <label style="margin-top:16px;">Por medio de pago</label>
+    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
     <div class="lista-sobre">${filasMedios}</div>
 
     <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
