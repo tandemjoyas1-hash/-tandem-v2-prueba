@@ -226,6 +226,10 @@ function pantallaNuevaEntrada() {
       <h1>Nueva entrada</h1>
       <div class="sub">Cargar un sobre nuevo</div>
 
+      <input type="file" id="ne-foto" accept="image/*" capture="environment" style="display:none;" onchange="leerFotoSobre()">
+      <button class="btn btn-outline" onclick="document.getElementById('ne-foto').click()">📷 Leer sobre por foto</button>
+      <div id="ne-foto-msg"></div>
+
       <label>N° de sobre</label>
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
 
@@ -268,6 +272,53 @@ function pantallaNuevaEntrada() {
     </div>
   `);
 }
+
+const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functions/v1';
+
+function archivoABase64(archivo) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(lector.result.split(',')[1]);
+    lector.onerror = reject;
+    lector.readAsDataURL(archivo);
+  });
+}
+
+async function leerFotoSobre() {
+  const input = document.getElementById('ne-foto');
+  const msgBox = document.getElementById('ne-foto-msg');
+  const archivo = input.files[0];
+  if (!archivo) return;
+
+  msgBox.innerHTML = `<div class="msg">📷 Leyendo la foto, esperá unos segundos...</div>`;
+
+  try {
+    const base64 = await archivoABase64(archivo);
+    const resp = await fetch(SUPABASE_FUNCIONES_URL + '/leer-sobre', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imagen: base64 })
+    });
+    const datos = await resp.json();
+
+    if (datos.error) {
+      msgBox.innerHTML = `<div class="msg msg-error">${datos.error}</div>`;
+      return;
+    }
+
+    if (datos.numero_sobre) document.getElementById('ne-sobre').value = datos.numero_sobre;
+    if (datos.cliente) document.getElementById('ne-cliente').value = datos.cliente;
+    if (datos.telefono) document.getElementById('ne-telefono').value = datos.telefono;
+    if (datos.trabajo) document.getElementById('ne-trabajo').value = datos.trabajo;
+    if (datos.total) document.getElementById('ne-total').value = datos.total;
+    if (datos.senia) document.getElementById('ne-sena').value = datos.senia;
+
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Listo, revisá los datos antes de guardar.</div>`;
+  } catch (err) {
+    msgBox.innerHTML = `<div class="msg msg-error">No se pudo leer la foto: ${err.message}</div>`;
+  }
+}
+window.leerFotoSobre = leerFotoSobre;
 
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
