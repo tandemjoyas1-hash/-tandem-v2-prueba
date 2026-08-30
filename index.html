@@ -220,8 +220,8 @@ async function pantallaLogin() {
       <div class="sub">Sistema nuevo — versión de prueba</div>
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
-      <label>Tu PIN (4 números)</label>
-      <input type="tel" inputmode="numeric" maxlength="4" id="pin-input" placeholder="••••">
+      <label>Tu PIN (2 números)</label>
+      <input type="tel" inputmode="numeric" maxlength="2" id="pin-input" placeholder="••">
       <button class="btn btn-verde" onclick="intentarLogin()">Entrar</button>
       <div id="login-msg"></div>
       <small>Si es tu primera vez, escribí el PIN que quieras usar de ahora en más.</small>
@@ -234,8 +234,8 @@ async function intentarLogin() {
   const pin = document.getElementById('pin-input').value.trim();
   const msgBox = document.getElementById('login-msg');
 
-  if (!/^\d{4}$/.test(pin)) {
-    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 4 números.</div>`;
+  if (!/^\d{2}$/.test(pin)) {
+    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 números.</div>`;
     return;
   }
 
