@@ -1377,10 +1377,21 @@ async function cargarCajaDelDia() {
     </div>
   `).join('');
 
+  window._efectivoNetoHoyActual = efectivoNetoHoy;
+  window._fechaCajaActual = fecha;
+
   resBox.innerHTML = `
     <div class="lista-sobre" style="background:#eaf3de;">
       <div style="font-size:13px; color:#555;">💵 Efectivo que queda hoy (después de gastos y retiros)</div>
       <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    </div>
+
+    <div class="lista-sobre" style="margin-top:10px;">
+      <div style="font-weight:700; margin-bottom:8px;">🔍 Contar caja física</div>
+      <label>¿Cuánto efectivo hay realmente en el cajón?</label>
+      <input type="number" id="cd-contado" placeholder="0">
+      <button class="btn btn-verde" onclick="compararCaja()">Comparar</button>
+      <div id="cd-diferencia-msg"></div>
     </div>
 
     <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
@@ -1399,6 +1410,52 @@ async function cargarCajaDelDia() {
   `;
 }
 window.cargarCajaDelDia = cargarCajaDelDia;
+
+async function compararCaja() {
+  const msgBox = document.getElementById('cd-diferencia-msg');
+  const contado = parseFloat(document.getElementById('cd-contado').value);
+  if (isNaN(contado)) { msgBox.innerHTML = `<div class="msg msg-error">Poné cuánto contaste.</div>`; return; }
+
+  const esperado = window._efectivoNetoHoyActual || 0;
+  const diferencia = contado - esperado;
+
+  if (diferencia === 0) {
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Coincide perfecto, no hay diferencia.</div>`;
+    return;
+  }
+
+  const tipo = diferencia > 0 ? 'sobra' : 'falta';
+  msgBox.innerHTML = `
+    <div class="msg msg-error">
+      ⚠️ ${tipo === 'sobra' ? 'Sobran' : 'Faltan'} $${Math.abs(diferencia).toLocaleString('es-AR')}
+      <div style="margin-top:8px;">
+        <button class="btn btn-outline" onclick="registrarDiferenciaCaja(${diferencia})">Registrar esta diferencia</button>
+      </div>
+    </div>
+  `;
+}
+window.compararCaja = compararCaja;
+
+async function registrarDiferenciaCaja(diferencia) {
+  const msgBox = document.getElementById('cd-diferencia-msg');
+  const esFaltante = diferencia < 0;
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    codigo: 500,
+    descripcion: 'Diferencia de caja detectada (' + (esFaltante ? 'faltante' : 'sobrante') + ')',
+    ingresa_egresa: esFaltante ? 'EGRESA' : 'INGRESA',
+    medio_pago: 'EFECTIVO',
+    monto: Math.abs(diferencia),
+    fecha: window._fechaCajaActual
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Diferencia registrada.</div>`;
+  cargarCajaDelDia();
+}
+window.registrarDiferenciaCaja = registrarDiferenciaCaja;
 
 // ============================================================
 // PANTALLA 10: Pago Parcial — un cliente paga una parte de un
