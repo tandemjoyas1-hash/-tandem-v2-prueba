@@ -84,7 +84,7 @@
 // ============================================================
 const SUPABASE_URL = 'https://vbkpczhbudktbkclqncy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wpv2kS2qMJFBhEOlGrWg3g_FWt8IFZn';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   db: { schema: 'tandem' }
 });
 
@@ -121,7 +121,7 @@ window.cerrarSesion = cerrarSesion;
 // ============================================================
 async function pantallaLogin() {
   render(`<div class="card"><p>Cargando usuarios...</p></div>`);
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('usuarios')
     .select('id, nombre, rol')
     .eq('activo', true)
@@ -158,7 +158,7 @@ async function intentarLogin() {
     return;
   }
 
-  const { data: usuario, error } = await supabase
+  const { data: usuario, error } = await sb
     .from('usuarios')
     .select('id, nombre, rol, pin')
     .eq('id', usuarioId)
@@ -171,7 +171,7 @@ async function intentarLogin() {
 
   if (!usuario.pin) {
     // Primera vez: se guarda el PIN que acaba de escribir
-    const { error: errUpdate } = await supabase
+    const { error: errUpdate } = await sb
       .from('usuarios')
       .update({ pin: pin })
       .eq('id', usuarioId);
@@ -265,7 +265,7 @@ async function guardarNuevaEntrada() {
 
   // 1) Buscar si el cliente ya existe (por nombre, sin importar mayúsc/minúsc)
   let clienteId;
-  const { data: clienteExistente } = await supabase
+  const { data: clienteExistente } = await sb
     .from('clientes')
     .select('id')
     .ilike('nombre', nombreCliente)
@@ -275,7 +275,7 @@ async function guardarNuevaEntrada() {
   if (clienteExistente) {
     clienteId = clienteExistente.id;
   } else {
-    const { data: clienteNuevo, error: errCliente } = await supabase
+    const { data: clienteNuevo, error: errCliente } = await sb
       .from('clientes')
       .insert({ nombre: nombreCliente, tipo_cliente: tipoCliente })
       .select('id')
@@ -288,7 +288,7 @@ async function guardarNuevaEntrada() {
   }
 
   // 2) Crear el sobre
-  const { data: sobreNuevo, error: errSobre } = await supabase
+  const { data: sobreNuevo, error: errSobre } = await sb
     .from('sobres')
     .insert({
       numero: numeroSobre,
@@ -310,7 +310,7 @@ async function guardarNuevaEntrada() {
 
   // 3) Si hay seña, registrar el movimiento de caja
   if (sena > 0) {
-    await supabase.from('movimientos_caja').insert({
+    await sb.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
       descripcion: 'seña sobre ' + numeroSobre,
       ingresa_egresa: 'INGRESA',
@@ -323,7 +323,7 @@ async function guardarNuevaEntrada() {
   }
 
   // 4) Historial
-  await supabase.from('historial_sobres').insert({
+  await sb.from('historial_sobres').insert({
     sobre_id: sobreNuevo.id,
     evento: 'ENTRADA',
     detalle: 'Ingresó al local (dio entrada: ' + usuarioActual.nombre + ')'
@@ -344,7 +344,7 @@ window.guardarNuevaEntrada = guardarNuevaEntrada;
 async function pantallaTaller() {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, clientes(nombre)')
     .is('baja_taller', null)
@@ -392,7 +392,7 @@ async function bajarATaller(sobreId, numero) {
   const msgBox = document.getElementById('msg-' + sobreId);
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
-  const { error } = await supabase
+  const { error } = await sb
     .from('sobres')
     .update({ baja_taller: new Date().toISOString(), orfebre: orfebre })
     .eq('id', sobreId);
@@ -402,7 +402,7 @@ async function bajarATaller(sobreId, numero) {
     return;
   }
 
-  await supabase.from('historial_sobres').insert({
+  await sb.from('historial_sobres').insert({
     sobre_id: sobreId,
     evento: 'BAJA A TALLER',
     detalle: 'Asignado a ' + orfebre + ' (lo bajó: ' + usuarioActual.nombre + ')'
@@ -418,7 +418,7 @@ window.bajarATaller = bajarATaller;
 async function pantallaListoLista() {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, orfebre, precio_total, clientes(nombre)')
     .not('baja_taller', 'is', null)
@@ -471,7 +471,7 @@ async function marcarListo(sobreId, numero) {
 
   if (retorno) {
     // Vuelve con el mismo orfebre: no se marca listo, solo queda el registro
-    await supabase.from('historial_sobres').insert({
+    await sb.from('historial_sobres').insert({
       sobre_id: sobreId,
       evento: 'RETORNO',
       detalle: 'Vuelve con el mismo orfebre (controlado por ' + usuarioActual.nombre + ')'
@@ -483,13 +483,13 @@ async function marcarListo(sobreId, numero) {
   const cambios = { listo: new Date().toISOString(), controlado_por: usuarioActual.nombre };
   if (precio) cambios.precio_total = precio;
 
-  const { error } = await supabase.from('sobres').update(cambios).eq('id', sobreId);
+  const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
   if (error) {
     msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
     return;
   }
 
-  await supabase.from('historial_sobres').insert({
+  await sb.from('historial_sobres').insert({
     sobre_id: sobreId,
     evento: 'LISTO PARA RETIRAR',
     detalle: 'Controlado por ' + usuarioActual.nombre
