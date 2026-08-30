@@ -121,6 +121,26 @@ function cerrarSesion() {
 window.cerrarSesion = cerrarSesion;
 
 // ============================================================
+// AUXILIAR: arma un link de WhatsApp a partir de un teléfono
+// (asume números argentinos guardados como 10 dígitos, ej:
+// 3511234567) y un mensaje. Devuelve null si no hay teléfono.
+// ============================================================
+function linkWhatsApp(telefono, mensaje) {
+  if (!telefono) return null;
+  let limpio = String(telefono).replace(/\D/g, '');
+  if (!limpio) return null;
+  if (limpio.startsWith('0')) limpio = limpio.slice(1);
+  if (!limpio.startsWith('54')) limpio = '549' + limpio;
+  return 'https://wa.me/' + limpio + '?text=' + encodeURIComponent(mensaje);
+}
+
+function botonWhatsApp(telefono, mensaje) {
+  const link = linkWhatsApp(telefono, mensaje);
+  if (!link) return `<small>Este cliente no tiene teléfono cargado, no se puede avisar por WhatsApp.</small>`;
+  return `<a href="${link}" target="_blank" class="btn btn-outline" style="display:block; text-align:center; text-decoration:none; margin-top:8px;">📱 Avisar por WhatsApp</a>`;
+}
+
+// ============================================================
 // PANTALLA 1: elegir usuario + PIN
 // ============================================================
 async function pantallaLogin() {
@@ -212,6 +232,9 @@ function pantallaNuevaEntrada() {
       <label>Cliente</label>
       <input type="text" id="ne-cliente" placeholder="Nombre del cliente">
 
+      <label>Teléfono (para WhatsApp, opcional)</label>
+      <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
+
       <label>Tipo de cliente</label>
       <select id="ne-tipo-cliente">
         <option value="CONSUMIDOR_FINAL">Consumidor final</option>
@@ -252,6 +275,7 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
+  const telefono = document.getElementById('ne-telefono').value.trim();
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
   const medioPago = document.getElementById('ne-medio-pago').value;
@@ -278,10 +302,14 @@ async function guardarNuevaEntrada() {
 
   if (clienteExistente) {
     clienteId = clienteExistente.id;
+    if (telefono) {
+      // Solo completa el teléfono si el cliente no tenía uno cargado (no pisa uno ya existente)
+      await sb.from('clientes').update({ telefono: telefono }).eq('id', clienteId).is('telefono', null);
+    }
   } else {
     const { data: clienteNuevo, error: errCliente } = await sb
       .from('clientes')
-      .insert({ nombre: nombreCliente, tipo_cliente: tipoCliente })
+      .insert({ nombre: nombreCliente, tipo_cliente: tipoCliente, telefono: telefono || null })
       .select('id')
       .single();
     if (errCliente) {
@@ -339,6 +367,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-trabajo').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
+  document.getElementById('ne-telefono').value = '';
 }
 window.guardarNuevaEntrada = guardarNuevaEntrada;
 
@@ -445,7 +474,16 @@ async function pantallaListoLista() {
       <div class="nro">#${s.numero}</div>
       <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'} — orfebre: ${s.orfebre || '-'}</div>
       <div class="desc">${s.descripcion || ''}</div>
-      ${!s.precio_total ? `<input type="number" id="precio-${s.id}" placeholder="Precio (si no estaba puesto)">` : ''}
+      ${!s.precio_total ? `
+        <input type="number" id="precio-${s.id}" placeholder="Precio único (si es un solo trabajo)">
+        <div style="text-align:right;">
+          <a href="#" onclick="toggleItems('${s.id}'); return false;" style="font-size:13px; color:#3b6d11;">➕ ¿Tiene varios ítems distintos?</a>
+        </div>
+        <div id="items-box-${s.id}" style="display:none; margin-top:8px;">
+          <small>Un ítem por línea, así: Descripción - Precio</small>
+          <textarea id="items-${s.id}" rows="3" placeholder="Anillo grabado - 3000&#10;Cadena soldada - 1500" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:14px;"></textarea>
+        </div>
+      ` : ''}
       <label style="font-weight:400; display:flex; align-items:center; gap:6px;">
         <input type="checkbox" id="retorno-${s.id}" style="width:auto;"> Necesita volver a taller (no está terminado)
       </label>
@@ -465,11 +503,17 @@ async function pantallaListoLista() {
 }
 window.pantallaListoLista = pantallaListoLista;
 
+function toggleItems(sobreId) {
+  const box = document.getElementById('items-box-' + sobreId);
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleItems = toggleItems;
+
 async function marcarListo(sobreId, numero) {
   const msgBox = document.getElementById('msg-' + sobreId);
   const retorno = document.getElementById('retorno-' + sobreId).checked;
   const precioInput = document.getElementById('precio-' + sobreId);
-  const precio = precioInput ? parseFloat(precioInput.value) || null : null;
+  const itemsInput = document.getElementById('items-' + sobreId);
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
@@ -484,6 +528,22 @@ async function marcarListo(sobreId, numero) {
     return;
   }
 
+  // Si cargó ítems (uno por línea: "Descripción - Precio"), el precio total sale de sumarlos
+  let items = [];
+  let precio = precioInput ? parseFloat(precioInput.value) || null : null;
+  if (itemsInput && itemsInput.value.trim()) {
+    const lineas = itemsInput.value.split('\n').map(l => l.trim()).filter(l => l);
+    items = lineas.map(linea => {
+      const idx = linea.lastIndexOf('-');
+      if (idx === -1) return { descripcion: linea, precio: 0 };
+      return {
+        descripcion: linea.slice(0, idx).trim(),
+        precio: parseFloat(linea.slice(idx + 1).replace(/[^\d.]/g, '')) || 0
+      };
+    });
+    precio = items.reduce((acc, it) => acc + it.precio, 0);
+  }
+
   const cambios = { listo: new Date().toISOString(), controlado_por: usuarioActual.nombre };
   if (precio) cambios.precio_total = precio;
 
@@ -491,6 +551,10 @@ async function marcarListo(sobreId, numero) {
   if (error) {
     msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
     return;
+  }
+
+  if (items.length > 0) {
+    await sb.from('items_sobre').insert(items.map(it => ({ sobre_id: sobreId, descripcion: it.descripcion, precio: it.precio })));
   }
 
   await sb.from('historial_sobres').insert({
@@ -511,7 +575,7 @@ async function pantallaRetiro() {
 
   const { data: sobres, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre)')
+    .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
     .not('listo', 'is', null)
     .is('fecha_salida', null)
     .order('listo');
@@ -558,7 +622,7 @@ async function pantallaRetiro() {
           <option>LEMON LAUREANO</option>
           <option>CUENTA CORRIENTE</option>
         </select>
-        <button class="btn btn-verde" onclick="confirmarRetiro('${s.id}', '${s.numero}', ${saldo}, '${s.tipo_cliente || 'CONSUMIDOR_FINAL'}')">Confirmar cobro y entregar</button>
+        <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
         <div id="msg-${s.id}"></div>
       </div>
     `;
@@ -575,7 +639,7 @@ async function pantallaRetiro() {
 }
 window.pantallaRetiro = pantallaRetiro;
 
-async function confirmarRetiro(sobreId, numero, saldo, tipoCliente) {
+async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreCliente, telefonoCliente) {
   const msgBox = document.getElementById('msg-' + sobreId);
   const medioPago = document.getElementById('medio-' + sobreId).value;
   const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
@@ -618,7 +682,14 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente) {
     detalle: detalle + ' (entregó: ' + usuarioActual.nombre + ')'
   });
 
-  pantallaRetiro();
+  const mensajeWa = esCuentaCorriente
+    ? `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu pedido N° ${numero} en Joyería Tándem fue retirado. Queda un saldo de $${saldo.toLocaleString('es-AR')} en tu cuenta corriente. 💍`
+    : `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu pedido N° ${numero} en Joyería Tándem fue retirado y pagado correctamente. ¡Gracias por tu confianza! 💍`;
+
+  document.getElementById('fila-' + sobreId).innerHTML = `
+    <div class="msg msg-ok">✅ Sobre ${numero} retirado.</div>
+    ${botonWhatsApp(telefonoCliente, mensajeWa)}
+  `;
 }
 window.confirmarRetiro = confirmarRetiro;
 
@@ -841,6 +912,11 @@ async function buscarSobreDetalle() {
     .eq('sobre_id', s.id)
     .eq('ingresa_egresa', 'INGRESA');
 
+  const { data: items } = await sb
+    .from('items_sobre')
+    .select('descripcion, precio')
+    .eq('sobre_id', s.id);
+
   const pagado = (movimientos || []).reduce((acc, m) => acc + Number(m.monto), 0);
   const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
 
@@ -870,6 +946,15 @@ async function buscarSobreDetalle() {
       <div class="desc">${s.descripcion || ''}</div>
       <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
       <div>Precio total: $${(Number(s.precio_total) || 0).toLocaleString('es-AR')} · Pagado: $${pagado.toLocaleString('es-AR')} · Saldo: $${saldo.toLocaleString('es-AR')}</div>
+
+      ${(items && items.length > 0) ? `
+        <label style="margin-top:14px;">🧾 Ítems de este sobre</label>
+        ${items.map(it => `
+          <div class="lista-sobre">
+            <div class="nro">${it.descripcion} — $${Number(it.precio).toLocaleString('es-AR')}</div>
+          </div>
+        `).join('')}
+      ` : ''}
 
       <label style="margin-top:18px;">📜 Historial</label>
       ${filasHistorial}
@@ -1039,7 +1124,7 @@ async function buscarBoletaDetalle() {
 
   const { data: boleta, error } = await sb
     .from('boletas')
-    .select('id, numero, total, telefono, estado, clientes(id, nombre)')
+    .select('id, numero, total, telefono, estado, clientes(id, nombre, telefono)')
     .eq('numero', numero)
     .maybeSingle();
 
@@ -1078,7 +1163,7 @@ async function buscarBoletaDetalle() {
           <option>LEMON LAUREANO</option>
           <option>CUENTA CORRIENTE</option>
         </select>
-        <button class="btn btn-verde" onclick='marcarBoletaRetirada(${JSON.stringify(boleta.id)}, ${JSON.stringify(boleta.numero)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.id : null)})'>
+        <button class="btn btn-verde" onclick='marcarBoletaRetirada(${JSON.stringify(boleta.id)}, ${JSON.stringify(boleta.numero)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.id : null)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.nombre : '')}, ${JSON.stringify(boleta.clientes ? boleta.clientes.telefono : (boleta.telefono || ''))}, ${Number(boleta.total) || 0})'>
           Confirmar retiro de toda la boleta
         </button>
       `}
@@ -1088,7 +1173,7 @@ async function buscarBoletaDetalle() {
 }
 window.buscarBoletaDetalle = buscarBoletaDetalle;
 
-async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId) {
+async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCliente, telefonoCliente, totalBoleta) {
   const msgBox = document.getElementById('bb-msg');
   const medioPago = document.getElementById('bb-medio').value;
   const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
@@ -1132,7 +1217,14 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId) {
 
   await sb.from('boletas').update({ estado: 'RETIRADA' }).eq('id', boletaId);
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>`;
+  const mensajeWa = esCuentaCorriente
+    ? `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu boleta N° ${numeroBoleta} en Joyería Tándem fue retirada. Queda un saldo de $${totalBoleta.toLocaleString('es-AR')} en tu cuenta corriente. 💍`
+    : `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu boleta N° ${numeroBoleta} en Joyería Tándem fue retirada y pagada correctamente. ¡Gracias por tu confianza! 💍`;
+
+  msgBox.innerHTML = `
+    <div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>
+    ${botonWhatsApp(telefonoCliente, mensajeWa)}
+  `;
 }
 window.marcarBoletaRetirada = marcarBoletaRetirada;
 
