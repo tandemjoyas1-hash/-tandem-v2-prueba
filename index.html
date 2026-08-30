@@ -1325,7 +1325,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, created_at')
+    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, created_at')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -1370,7 +1370,7 @@ async function cargarCajaDelDia() {
 
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}</div>
       <div class="desc">${m.descripcion || ''}</div>
     </div>
