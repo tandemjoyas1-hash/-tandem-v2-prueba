@@ -1389,8 +1389,25 @@ async function cargarCajaDelDia() {
     <div class="lista-sobre" style="margin-top:10px;">
       <div style="font-weight:700; margin-bottom:8px;">🔍 Contar caja física</div>
       <label>¿Cuánto efectivo hay realmente en el cajón?</label>
-      <input type="number" id="cd-contado" placeholder="0">
-      <button class="btn btn-verde" onclick="compararCaja()">Comparar</button>
+      <input type="number" id="cd-contado" placeholder="0" oninput="if(this.value) document.getElementById('cd-billetes-box').style.display='none';">
+
+      <div style="text-align:right; margin-top:4px;">
+        <a href="#" onclick="document.getElementById('cd-billetes-box').style.display='block'; return false;" style="font-size:13px; color:#3b6d11;">🧮 Contar billete por billete</a>
+      </div>
+
+      <div id="cd-billetes-box" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
+        ${[20000, 10000, 2000, 1000, 500, 200, 100].map(valor => `
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+            <span style="width:70px; font-weight:600;">$${valor.toLocaleString('es-AR')}</span>
+            <span>×</span>
+            <input type="number" min="0" class="cd-billete-cantidad" data-valor="${valor}" placeholder="0" oninput="actualizarTotalBilletes()" style="flex:1; padding:8px;">
+          </div>
+        `).join('')}
+        <div style="font-weight:700; margin-top:8px; text-align:right;">Total: $<span id="cd-total-billetes">0</span></div>
+        <button class="btn btn-outline" style="margin-top:8px;" onclick="usarTotalBilletes()">Usar este total</button>
+      </div>
+
+      <button class="btn btn-verde" style="margin-top:10px;" onclick="compararCaja()">Comparar</button>
       <div id="cd-diferencia-msg"></div>
     </div>
 
@@ -1435,6 +1452,25 @@ async function compararCaja() {
   `;
 }
 window.compararCaja = compararCaja;
+
+function actualizarTotalBilletes() {
+  const inputs = document.querySelectorAll('.cd-billete-cantidad');
+  let total = 0;
+  inputs.forEach(inp => {
+    const cantidad = parseInt(inp.value) || 0;
+    const valor = parseInt(inp.dataset.valor);
+    total += cantidad * valor;
+  });
+  document.getElementById('cd-total-billetes').textContent = total.toLocaleString('es-AR');
+}
+window.actualizarTotalBilletes = actualizarTotalBilletes;
+
+function usarTotalBilletes() {
+  const total = document.getElementById('cd-total-billetes').textContent.replace(/\./g, '');
+  document.getElementById('cd-contado').value = total;
+  document.getElementById('cd-billetes-box').style.display = 'none';
+}
+window.usarTotalBilletes = usarTotalBilletes;
 
 async function registrarDiferenciaCaja(diferencia) {
   const msgBox = document.getElementById('cd-diferencia-msg');
