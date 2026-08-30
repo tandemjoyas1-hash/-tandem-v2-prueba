@@ -104,17 +104,17 @@ function pintarUsuarioActual() {
       <button onclick="cerrarSesion()">Cambiar</button>
     </div>
     <div class="nav">
-      <button onclick="pantallaNuevaEntrada()">➕ Entrada</button>
-      <button onclick="pantallaTaller()">🛠 Taller</button>
-      <button onclick="pantallaListoLista()">✅ Listo</button>
-      <button onclick="pantallaRetiro()">💰 Retiro</button>
-      <button onclick="pantallaCuentaCorriente()">🧾 Cta Cte</button>
-      <button onclick="pantallaBuscarSobre()">🔍 Sobre</button>
-      <button onclick="pantallaBoletas()">📦 Boleta</button>
-      <button onclick="pantallaCajaDelDia()">📅 Caja</button>
-      <button onclick="pantallaPagoParcial()">💵 Pago parcial</button>
-      <button onclick="pantallaEgreso()">➖ Egreso</button>
-      <button onclick="pantallaReportes()">📊 Reportes</button>
+      <button onclick="pantallaNuevaEntrada()">📥 ENTRADA</button>
+      <button onclick="pantallaTaller()">🔨 TALLER</button>
+      <button onclick="pantallaListoLista()">🔄 REGRESO</button>
+      <button onclick="pantallaRetiro()">💰 RETIRO</button>
+      <button onclick="pantallaCuentaCorriente()">🧾 CTA CTE</button>
+      <button onclick="pantallaBuscarSobre()">🔍 SOBRE</button>
+      <button onclick="pantallaBoletas()">📦 BOLETA</button>
+      <button onclick="pantallaCajaDelDia()">📅 CAJA</button>
+      <button onclick="pantallaPagoParcial()">💵 PAGO PARCIAL</button>
+      <button onclick="pantallaEgreso()">➖ EGRESO</button>
+      <button onclick="pantallaReportes()">📊 REPORTES</button>
     </div>`;
 }
 
@@ -227,7 +227,7 @@ function pantallaNuevaEntrada() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>Nueva entrada</h1>
+      <h1>📥 Entrada</h1>
       <div class="sub">Cargar un sobre nuevo</div>
 
       <input type="file" id="ne-foto" accept="image/*" capture="environment" style="display:none;" onchange="leerFotoSobre()">
@@ -445,7 +445,7 @@ async function pantallaTaller() {
   }
 
   if (data.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>Taller</h1><div class="vacio">No hay sobres esperando bajar a taller 🎉</div></div>`);
+    render(`${pintarUsuarioActual()}<div class="card"><h1>🔨 Bajar al taller</h1><div class="vacio">No hay sobres esperando bajar a taller 🎉</div></div>`);
     return;
   }
 
@@ -467,7 +467,7 @@ async function pantallaTaller() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>Taller</h1>
+      <h1>🔨 Bajar al taller</h1>
       <div class="sub">Sobres pendientes de asignar a un orfebre</div>
       ${filas}
     </div>
@@ -520,7 +520,7 @@ async function pantallaListoLista() {
   }
 
   if (data.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>Listo</h1><div class="vacio">No hay sobres en el banco de trabajo ahora 🎉</div></div>`);
+    render(`${pintarUsuarioActual()}<div class="card"><h1>🔄 Regreso</h1><div class="vacio">No hay sobres en el banco de trabajo ahora 🎉</div></div>`);
     return;
   }
 
@@ -550,7 +550,7 @@ async function pantallaListoLista() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>Listo</h1>
+      <h1>🔄 Regreso</h1>
       <div class="sub">Control final antes de avisarle al cliente</div>
       ${filas}
     </div>
@@ -641,7 +641,7 @@ async function pantallaRetiro() {
   }
 
   if (sobres.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>Retiro</h1><div class="vacio">No hay sobres listos esperando retiro 🎉</div></div>`);
+    render(`${pintarUsuarioActual()}<div class="card"><h1>💰 Retiro</h1><div class="vacio">No hay sobres listos esperando retiro 🎉</div></div>`);
     return;
   }
 
@@ -686,7 +686,7 @@ async function pantallaRetiro() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>Retiro</h1>
+      <h1>💰 Retiro</h1>
       <div class="sub">Sobres listos para entregar</div>
       ${filas}
     </div>
