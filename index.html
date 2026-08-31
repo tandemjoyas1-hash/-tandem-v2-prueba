@@ -371,12 +371,12 @@ function pantallaCatalogo() {
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
 
-      <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
         <div>
-          <div style="font-size:12px; color:#8a8378;">Precio del gramo (plata)</div>
-          <div id="cat-precio-gramo-texto" style="font-size:20px; font-weight:700;">Cargando...</div>
+          <div style="font-size:10px; color:#8a8378;">Precio del gramo</div>
+          <div id="cat-precio-gramo-texto" style="font-size:14px; font-weight:700;">Cargando...</div>
         </div>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:10px 16px;" onclick="togglePrecioGramo()">Cambiar</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;" onclick="togglePrecioGramo()">Cambiar</button>
       </div>
       <div id="cat-precio-gramo-form" style="display:none; margin-top:8px;">
         <input type="number" id="cat-precio-gramo-nuevo" placeholder="Nuevo precio del gramo">
@@ -384,9 +384,9 @@ function pantallaCatalogo() {
         <div id="cat-precio-gramo-msg"></div>
       </div>
 
-      <div style="display:flex; gap:6px; margin-top:10px; justify-content:flex-end;">
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="toggleAjusteGeneral()">📈 Ajuste M.Obra</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
+      <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="toggleAjusteGeneral()">📈 Ajuste M.Obra</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
       </div>
 
       <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
@@ -501,7 +501,7 @@ async function pantallaEditarProducto(cod) {
       <input type="number" id="ep-labor" value="${p.labor || 0}">
 
       <label>Cambiar foto (opcional)</label>
-      <input type="file" id="ep-foto" accept="image/*">
+      <input type="file" id="ep-foto" accept="image/*" capture="environment">
 
       <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
       <div id="ep-msg"></div>
@@ -560,7 +560,7 @@ function pantallaAgregarProducto() {
       <input type="number" id="ap-labor" placeholder="0">
 
       <label>Foto (opcional)</label>
-      <input type="file" id="ap-foto" accept="image/*">
+      <input type="file" id="ap-foto" accept="image/*" capture="environment">
 
       <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
       <div id="ap-msg"></div>
