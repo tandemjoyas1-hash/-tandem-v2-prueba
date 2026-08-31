@@ -2020,27 +2020,26 @@ async function cargarCajaDelDia() {
   window._fechaCajaActual = fecha;
 
   resBox.innerHTML = `
-    <div class="lista-sobre" style="background:#eaf3de;">
-      <div style="font-size:13px; color:#555;">💵 Efectivo que queda hoy (después de gastos y retiros)</div>
-      <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Total de ingresos hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#2f6d1f;">$${totalIngresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Total de egresos hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalEgresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Retiros de efectivo hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalRetiros.toLocaleString('es-AR')}</div>
+      </div>
+      <div style="background:#1a1a1a; border-radius:14px; padding:12px; text-align:center;">
+        <div style="font-size:11px; color:#d4af6a; margin-bottom:4px;">Efectivo en caja hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#d4af6a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+      </div>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-top:10px;">
-      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
-        <div style="font-size:11px; color:#8a8378;">Ingresos hoy</div>
-        <div style="font-size:16px; font-weight:700; color:#2f6d1f;">$${totalIngresa.toLocaleString('es-AR')}</div>
-      </div>
-      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
-        <div style="font-size:11px; color:#8a8378;">Egresos hoy</div>
-        <div style="font-size:16px; font-weight:700; color:#9a3a1e;">$${totalEgresa.toLocaleString('es-AR')}</div>
-      </div>
-      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
-        <div style="font-size:11px; color:#8a8378;">Retiros hoy</div>
-        <div style="font-size:16px; font-weight:700; color:#9a3a1e;">$${totalRetiros.toLocaleString('es-AR')}</div>
-      </div>
-    </div>
-
-    <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:6px;">
+    <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:8px;">
       Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
     </div>
 
