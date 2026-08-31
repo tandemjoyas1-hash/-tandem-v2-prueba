@@ -361,6 +361,8 @@ function abrirCatalogoParaConsulta() {
 }
 window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
+const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
+
 function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
   render(`
@@ -369,6 +371,11 @@ function pantallaCatalogo() {
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+        ${CATEGORIAS_CATALOGO.map(c => `
+          <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 12px; font-size:12.5px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
+        `).join('')}
+      </div>
       <div id="cat-resultado" style="margin-top:10px;"></div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
@@ -376,6 +383,12 @@ function pantallaCatalogo() {
   document.getElementById('cat-buscar').focus();
 }
 window.pantallaCatalogo = pantallaCatalogo;
+
+function buscarPorCategoriaCatalogo(cat) {
+  document.getElementById('cat-buscar').value = '';
+  buscarEnCatalogo(cat);
+}
+window.buscarPorCategoriaCatalogo = buscarPorCategoriaCatalogo;
 
 function volverAEntradaSinElegir() {
   pantallaNuevaEntrada();
@@ -395,10 +408,10 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
 }
 
-async function buscarEnCatalogo() {
+async function buscarEnCatalogo(categoriaExacta) {
   const termino = document.getElementById('cat-buscar').value.trim();
   const resBox = document.getElementById('cat-resultado');
-  if (!termino) { resBox.innerHTML = ''; return; }
+  if (!termino && !categoriaExacta) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   try {
@@ -408,17 +421,22 @@ async function buscarEnCatalogo() {
       _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
     }
 
-    const { data: productos, error } = await sb.schema('public')
+    let consulta = sb.schema('public')
       .from('products')
       .select('cod, cat, descripcion, medidas, peso, labor, foto')
-      .or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%')
       .order('foto', { ascending: false, nullsFirst: false })
-      .limit(10);
+      .limit(categoriaExacta ? 40 : 10);
+
+    consulta = categoriaExacta
+      ? consulta.eq('cat', categoriaExacta)
+      : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%');
+
+    const { data: productos, error } = await consulta;
 
     if (error) throw error;
 
     if (!productos || productos.length === 0) {
-      resBox.innerHTML = `<div class="vacio">Sin resultados para "${termino}"</div>`;
+      resBox.innerHTML = `<div class="vacio">Sin resultados para "${categoriaExacta || termino}"</div>`;
       return;
     }
 
