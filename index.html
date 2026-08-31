@@ -652,6 +652,47 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
 }
 
+let _fotosProductosActuales = {};
+
+function actualizarBarraCompartir() {
+  const seleccionados = document.querySelectorAll('.cat-chk-compartir:checked');
+  const barra = document.getElementById('cat-compartir-barra');
+  const cantidadTxt = document.getElementById('cat-compartir-cantidad');
+  if (seleccionados.length === 0) {
+    barra.style.display = 'none';
+    return;
+  }
+  barra.style.display = 'flex';
+  cantidadTxt.textContent = seleccionados.length + (seleccionados.length === 1 ? ' foto elegida' : ' fotos elegidas');
+}
+window.actualizarBarraCompartir = actualizarBarraCompartir;
+
+async function compartirFotosSeleccionadas() {
+  const seleccionados = [...document.querySelectorAll('.cat-chk-compartir:checked')];
+  if (seleccionados.length === 0) return;
+
+  try {
+    const archivos = await Promise.all(seleccionados.map(async (chk, i) => {
+      const dataUri = _fotosProductosActuales[chk.dataset.cod];
+      const resp = await fetch(dataUri);
+      const blob = await resp.blob();
+      const ext = blob.type.split('/')[1] || 'png';
+      return new File([blob], 'producto-' + (i + 1) + '.' + ext, { type: blob.type });
+    }));
+
+    const descripciones = seleccionados.map(chk => chk.dataset.desc).join(', ');
+
+    if (navigator.canShare && navigator.canShare({ files: archivos })) {
+      await navigator.share({ files: archivos, text: 'Joyería Tándem: ' + descripciones });
+    } else {
+      alert('Tu navegador no permite compartir fotos así directamente. Probá desde el celu (Chrome o Safari) en vez de la compu.');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') alert('No se pudo compartir: ' + err.message);
+  }
+}
+window.compartirFotosSeleccionadas = compartirFotosSeleccionadas;
+
 async function buscarEnCatalogo(categoriaExacta) {
   const termino = document.getElementById('cat-buscar').value.trim();
   const resBox = document.getElementById('cat-resultado');
@@ -684,7 +725,12 @@ async function buscarEnCatalogo(categoriaExacta) {
       return;
     }
 
-    resBox.innerHTML = `<div class="cat-grid">` + productos.map(p => {
+    resBox.innerHTML = `
+      <div id="cat-compartir-barra" style="display:none; position:sticky; top:0; z-index:5; background:#2f6d1f; color:white; padding:10px 14px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span id="cat-compartir-cantidad" style="font-weight:700; font-size:13px;"></span>
+        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Compartir por WhatsApp</button>
+      </div>
+      <div class="cat-grid">` + productos.map(p => {
       const metal = (Number(p.peso) || 0) * _precioGramoActual;
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
@@ -702,6 +748,12 @@ async function buscarEnCatalogo(categoriaExacta) {
 
       return `
         <div class="lista-sobre">
+          ${p.foto ? `
+            <label style="display:flex; align-items:center; gap:6px; font-weight:400; font-size:12px; margin-bottom:4px;">
+              <input type="checkbox" class="cat-chk-compartir" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onchange="actualizarBarraCompartir()" style="width:auto;">
+              Elegir para enviar
+            </label>
+          ` : ''}
           ${foto}
           <div class="nro" style="font-size:13px;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
           <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}<br>M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
@@ -715,6 +767,9 @@ async function buscarEnCatalogo(categoriaExacta) {
         </div>
       `;
     }).join('') + `</div>`;
+
+    _fotosProductosActuales = {};
+    productos.forEach(p => { if (p.foto) _fotosProductosActuales[p.cod] = p.foto; });
   } catch (err) {
     resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
