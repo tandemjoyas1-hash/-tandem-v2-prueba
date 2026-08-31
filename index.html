@@ -730,12 +730,11 @@ async function buscarEnCatalogo(categoriaExacta) {
     let consulta = sb.schema('public')
       .from('products')
       .select('cod, cat, descripcion, medidas, peso, labor, foto')
-      .order('foto', { ascending: false, nullsFirst: false })
       .limit(categoriaExacta ? 40 : 10);
 
     consulta = categoriaExacta
-      ? consulta.eq('cat', categoriaExacta)
-      : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%');
+      ? consulta.eq('cat', categoriaExacta).order('cod', { ascending: true })
+      : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').order('foto', { ascending: false, nullsFirst: false });
 
     const { data: productos, error } = await consulta;
 
