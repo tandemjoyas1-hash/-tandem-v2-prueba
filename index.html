@@ -677,18 +677,35 @@ async function compartirFotosSeleccionadas() {
       const resp = await fetch(dataUri);
       const blob = await resp.blob();
       const ext = blob.type.split('/')[1] || 'png';
-      return new File([blob], 'producto-' + (i + 1) + '.' + ext, { type: blob.type });
+      const nombreLimpio = (chk.dataset.desc || 'producto').replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 30).replace(/\s+/g, '-');
+      return new File([blob], nombreLimpio + '.' + ext, { type: blob.type });
     }));
 
-    const descripciones = seleccionados.map(chk => chk.dataset.desc).join(', ');
-
+    // En celu: intenta abrir directo el menú de compartir (WhatsApp, etc.)
     if (navigator.canShare && navigator.canShare({ files: archivos })) {
+      const descripciones = seleccionados.map(chk => chk.dataset.desc).join(', ');
       await navigator.share({ files: archivos, text: 'Joyería Tándem: ' + descripciones });
-    } else {
-      alert('Tu navegador no permite compartir fotos así directamente. Probá desde el celu (Chrome o Safari) en vez de la compu.');
+      return;
     }
+
+    // En compu (o si el celu no soporta compartir archivos): descarga todas las fotos elegidas
+    // de una sola vez, para adjuntarlas juntas en WhatsApp Web (📎 → Fotos y videos → elegís varias).
+    archivos.forEach((archivo, i) => {
+      setTimeout(() => {
+        const url = URL.createObjectURL(archivo);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = archivo.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, i * 200); // un pequeño espacio entre cada descarga para que el navegador no las bloquee
+    });
+
+    alert('Se descargaron ' + archivos.length + ' foto(s). Ahora abrí WhatsApp Web → 📎 (adjuntar) → Fotos y videos, y elegí esos archivos de tu carpeta de Descargas — se pueden mandar todas juntas en un mismo mensaje.');
   } catch (err) {
-    if (err.name !== 'AbortError') alert('No se pudo compartir: ' + err.message);
+    if (err.name !== 'AbortError') alert('No se pudo descargar: ' + err.message);
   }
 }
 window.compartirFotosSeleccionadas = compartirFotosSeleccionadas;
@@ -728,7 +745,7 @@ async function buscarEnCatalogo(categoriaExacta) {
     resBox.innerHTML = `
       <div id="cat-compartir-barra" style="display:none; position:sticky; top:0; z-index:5; background:#2f6d1f; color:white; padding:10px 14px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
         <span id="cat-compartir-cantidad" style="font-weight:700; font-size:13px;"></span>
-        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Compartir por WhatsApp</button>
+        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
       </div>
       <div class="cat-grid">` + productos.map(p => {
       const metal = (Number(p.peso) || 0) * _precioGramoActual;
