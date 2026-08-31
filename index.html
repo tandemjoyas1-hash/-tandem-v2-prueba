@@ -384,6 +384,18 @@ function pantallaCatalogo() {
         <div id="cat-precio-gramo-msg"></div>
       </div>
 
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="toggleAjusteGeneral()">📈 Ajuste general M. Obra</button>
+        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaAgregarProducto()">➕ Agregar producto</button>
+      </div>
+
+      <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label>Aumentar la mano de obra de TODOS los productos en (%)</label>
+        <input type="number" id="cat-ajuste-porcentaje" placeholder="Ej: 10">
+        <button class="btn btn-verde" onclick="aplicarAjusteGeneralManoObra()">Aplicar a los 693 productos</button>
+        <div id="cat-ajuste-msg"></div>
+      </div>
+
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="margin-top:16px;">
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
         ${CATEGORIAS_CATALOGO.map(c => `
@@ -433,6 +445,165 @@ async function guardarPrecioGramo() {
   if (termino) buscarEnCatalogo();
 }
 window.guardarPrecioGramo = guardarPrecioGramo;
+
+function toggleAjusteGeneral() {
+  const form = document.getElementById('cat-ajuste-general-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleAjusteGeneral = toggleAjusteGeneral;
+
+async function aplicarAjusteGeneralManoObra() {
+  const msgBox = document.getElementById('cat-ajuste-msg');
+  const porcentaje = parseFloat(document.getElementById('cat-ajuste-porcentaje').value);
+  if (!porcentaje) { msgBox.innerHTML = `<div class="msg msg-error">Poné un porcentaje.</div>`; return; }
+
+  if (!confirm('¿Seguro que querés aumentar la mano de obra de TODOS los productos (693) en ' + porcentaje + '%? No se puede deshacer con un botón.')) return;
+
+  msgBox.innerHTML = `<div class="msg">Aplicando a todos los productos, un momento...</div>`;
+
+  const { data: productos, error: errLeer } = await sb.schema('public').from('products').select('cod, labor');
+  if (errLeer) { msgBox.innerHTML = `<div class="msg msg-error">${errLeer.message}</div>`; return; }
+
+  let actualizados = 0;
+  for (const p of productos) {
+    const laborNueva = Math.round((Number(p.labor) || 0) * (1 + porcentaje / 100));
+    const { error } = await sb.schema('public').from('products').update({ labor: laborNueva }).eq('cod', p.cod);
+    if (!error) actualizados++;
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Mano de obra actualizada en ${actualizados} de ${productos.length} productos.</div>`;
+  document.getElementById('cat-ajuste-porcentaje').value = '';
+}
+window.aplicarAjusteGeneralManoObra = aplicarAjusteGeneralManoObra;
+
+// --- Editar un producto puntual (mano de obra y/o foto) ---
+async function pantallaEditarProducto(cod) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).maybeSingle();
+  if (error || !p) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el producto.</p></div>`);
+    return;
+  }
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✏️ Editar producto</h1>
+      <div class="sub">${p.cat} · cód. ${p.cod}</div>
+      ${p.foto ? `<img src="${p.foto}" style="width:100%; max-height:200px; object-fit:contain; background:#fff; border-radius:8px;">` : ''}
+
+      <label>Descripción</label>
+      <input type="text" id="ep-descripcion" value="${(p.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Mano de obra</label>
+      <input type="number" id="ep-labor" value="${p.labor || 0}">
+
+      <label>Cambiar foto (opcional)</label>
+      <input type="file" id="ep-foto" accept="image/*">
+
+      <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
+      <div id="ep-msg"></div>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
+    </div>
+  `);
+}
+window.pantallaEditarProducto = pantallaEditarProducto;
+
+async function guardarEdicionProducto(cod) {
+  const msgBox = document.getElementById('ep-msg');
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const cambios = {
+    descripcion: document.getElementById('ep-descripcion').value.trim(),
+    labor: parseFloat(document.getElementById('ep-labor').value) || 0
+  };
+
+  const archivoFoto = document.getElementById('ep-foto').files[0];
+  if (archivoFoto) {
+    cambios.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+  }
+
+  const { error } = await sb.schema('public').from('products').update(cambios).eq('cod', cod);
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Guardado.</div>`;
+}
+window.guardarEdicionProducto = guardarEdicionProducto;
+
+// --- Agregar un producto nuevo ---
+function pantallaAgregarProducto() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>➕ Agregar producto</h1>
+
+      <label>Categoría</label>
+      <select id="ap-cat">
+        ${CATEGORIAS_CATALOGO.map(c => `<option>${c}</option>`).join('')}
+      </select>
+
+      <label>Código</label>
+      <input type="text" id="ap-cod" placeholder="Ej: DP.300">
+
+      <label>Descripción</label>
+      <input type="text" id="ap-descripcion" placeholder="Ej: Dije corazón plata">
+
+      <label>Medidas (opcional)</label>
+      <input type="text" id="ap-medidas" placeholder="Ej: 2cm">
+
+      <label>Peso (gramos)</label>
+      <input type="number" id="ap-peso" placeholder="0">
+
+      <label>Mano de obra</label>
+      <input type="number" id="ap-labor" placeholder="0">
+
+      <label>Foto (opcional)</label>
+      <input type="file" id="ap-foto" accept="image/*">
+
+      <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
+      <div id="ap-msg"></div>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
+    </div>
+  `);
+}
+window.pantallaAgregarProducto = pantallaAgregarProducto;
+
+async function guardarProductoNuevo() {
+  const msgBox = document.getElementById('ap-msg');
+  const cod = document.getElementById('ap-cod').value.trim();
+  const descripcion = document.getElementById('ap-descripcion').value.trim();
+  const peso = parseFloat(document.getElementById('ap-peso').value) || 0;
+
+  if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
+  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const nuevo = {
+    cod: cod,
+    cat: document.getElementById('ap-cat').value,
+    descripcion: descripcion,
+    medidas: document.getElementById('ap-medidas').value.trim() || null,
+    peso: peso,
+    labor: parseFloat(document.getElementById('ap-labor').value) || 0
+  };
+
+  const archivoFoto = document.getElementById('ap-foto').files[0];
+  if (archivoFoto) {
+    nuevo.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+  }
+
+  const { error } = await sb.schema('public').from('products').insert(nuevo);
+  if (error) {
+    const mensaje = error.code === '23505' ? 'Ya existe un producto con ese código.' : error.message;
+    msgBox.innerHTML = `<div class="msg msg-error">${mensaje}</div>`;
+    return;
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Producto "${descripcion}" agregado.</div>`;
+}
+window.guardarProductoNuevo = guardarProductoNuevo;
 
 function buscarPorCategoriaCatalogo(cat) {
   document.getElementById('cat-buscar').value = '';
@@ -510,13 +681,14 @@ async function buscarEnCatalogo(categoriaExacta) {
         <div class="lista-sobre">
           ${foto}
           <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli">${p.cat} · cód. ${p.cod}</div>
+          <div class="cli">${p.cat} · cód. ${p.cod} · M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
             ${boton('Redes', redes)}
             ${boton('Menor', menor)}
           </div>
+          <button type="button" class="btn btn-outline" style="margin-top:8px; padding:8px; font-size:13px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar mano de obra / foto</button>
         </div>
       `;
     }).join('');
