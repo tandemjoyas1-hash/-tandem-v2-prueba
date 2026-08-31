@@ -12,7 +12,7 @@
     background: #f4efe4;
     margin: 0;
     padding: 16px;
-    padding-bottom: 106px; /* deja lugar para el menú fijo de abajo */
+    padding-bottom: 92px; /* deja lugar para el menú fijo de abajo */
     color: #2c2c2a;
   }
   .card {
@@ -75,23 +75,23 @@
     gap: 2px;
   }
   .nav button {
-    flex: 1 0 82px;
+    flex: 1 0 76px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 5px;
-    padding: 14px 4px;
+    gap: 4px;
+    padding: 12px 4px;
     border: none;
     background: none;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: #6b6459;
     border-radius: 10px;
     cursor: pointer;
     white-space: nowrap;
-    min-height: 72px;
+    min-height: 62px;
   }
   .nav button:active { background: #f4efe4; }
-  .nav-icon { font-size: 28px; line-height: 1; }
-  .nav-label { font-size: 11.5px; letter-spacing: 0.2px; }
+  .nav-icon { font-size: 24px; line-height: 1; }
+  .nav-label { font-size: 10.5px; letter-spacing: 0.2px; }
 
   .lista-sobre {
     border: 1px solid #ece5d4; border-radius: 12px; padding: 13px; margin-bottom: 10px;
@@ -363,34 +363,19 @@ window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
 function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
-  const categorias = ['Dijes','Anillos Fundición','Anillos Iniciales','Pulseras','Alianzas','Anillos Sellos Hombre','Pines-Prendedores','Alianzas Plata y Oro','Pulseras Esclavas','Dijes Fundición'];
-  const botonesCategoria = categorias.map(c => `
-    <button type="button" onclick='buscarPorCategoria(${JSON.stringify(c)})'
-      style="flex:0 0 auto; padding:9px 14px; border-radius:20px; border:1.5px solid #e6ddc9; background:#fdfcf9; color:#4a453d; font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer;">
-      ${c}
-    </button>
-  `).join('');
-
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
-      <div style="display:flex; gap:6px; overflow-x:auto; padding:10px 0 4px 0; -webkit-overflow-scrolling:touch;">${botonesCategoria}</div>
-      <div id="cat-resultado" style="margin-top:6px;"></div>
+      <div id="cat-resultado" style="margin-top:10px;"></div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
   document.getElementById('cat-buscar').focus();
 }
 window.pantallaCatalogo = pantallaCatalogo;
-
-function buscarPorCategoria(categoria) {
-  document.getElementById('cat-buscar').value = categoria;
-  buscarEnCatalogo(categoria);
-}
-window.buscarPorCategoria = buscarPorCategoria;
 
 function volverAEntradaSinElegir() {
   pantallaNuevaEntrada();
@@ -410,7 +395,7 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
 }
 
-async function buscarEnCatalogo(categoriaExacta) {
+async function buscarEnCatalogo() {
   const termino = document.getElementById('cat-buscar').value.trim();
   const resBox = document.getElementById('cat-resultado');
   if (!termino) { resBox.innerHTML = ''; return; }
@@ -423,17 +408,12 @@ async function buscarEnCatalogo(categoriaExacta) {
       _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
     }
 
-    let query = sb.schema('public')
+    const { data: productos, error } = await sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, foto');
-
-    if (categoriaExacta) {
-      query = query.eq('cat', categoriaExacta).limit(60);
-    } else {
-      query = query.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').limit(10);
-    }
-
-    const { data: productos, error } = await query;
+      .select('cod, cat, descripcion, medidas, peso, labor, foto')
+      .or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%')
+      .order('foto', { ascending: false, nullsFirst: false })
+      .limit(10);
 
     if (error) throw error;
 
@@ -442,7 +422,7 @@ async function buscarEnCatalogo(categoriaExacta) {
       return;
     }
 
-    resBox.innerHTML = `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">` + productos.map(p => {
+    resBox.innerHTML = productos.map(p => {
       const metal = (Number(p.peso) || 0) * _precioGramoActual;
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
@@ -450,20 +430,20 @@ async function buscarEnCatalogo(categoriaExacta) {
       const menor = mayor * 1.67;
 
       const boton = (etiqueta, precio) => `
-        <button type="button" class="btn btn-outline" style="margin-top:4px; padding:4px 2px; font-size:13.2px; line-height:1.25;"
+        <button type="button" class="btn btn-outline" style="margin-top:6px; padding:10px;"
           onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
           ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
         </button>
       `;
 
-      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; height:100px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:6px;">` : '';
+      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; max-height:180px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:8px;">` : '';
 
       return `
-        <div class="lista-sobre" style="padding:8px;">
+        <div class="lista-sobre">
           ${foto}
-          <div class="nro" style="font-size:15.4px; line-height:1.25;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. <span style="font-weight:600;">${p.cod}</span></div>
-          <div style="display:flex; flex-direction:column;">
+          <div class="nro">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="cli">${p.cat} · cód. ${p.cod}</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
             ${boton('Redes', redes)}
@@ -471,7 +451,7 @@ async function buscarEnCatalogo(categoriaExacta) {
           </div>
         </div>
       `;
-    }).join('') + `</div>`;
+    }).join('');
   } catch (err) {
     resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
@@ -1566,62 +1546,6 @@ function pantallaCajaDelDia() {
 }
 window.pantallaCajaDelDia = pantallaCajaDelDia;
 
-function renderFilasMovimientos(movimientos) {
-  if (movimientos.length === 0) {
-    return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
-  }
-  const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}</div>
-    </div>
-  `).join('');
-
-  const filasTabla = movimientos.map(m => `
-    <tr>
-      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
-      <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
-      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
-      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
-        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
-      </td>
-    </tr>
-  `).join('');
-
-  const tablaCaja = `
-    <div class="tabla-caja">
-      <table>
-        <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
-        </thead>
-        <tbody>${filasTabla}</tbody>
-      </table>
-    </div>
-  `;
-
-  return { lista: filasMovimientos, tabla: tablaCaja };
-}
-
-function filtrarCajaDelDia() {
-  const q = (document.getElementById('cd-buscar').value || '').trim().toLowerCase();
-  const todos = window._movimientosCajaActual || [];
-  const filtrados = q === '' ? todos : todos.filter(m => {
-    const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
-    const vendedora = (m.vendedora || '').toLowerCase();
-    const desc = (m.descripcion || '').toLowerCase();
-    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
-  });
-  const { lista, tabla } = renderFilasMovimientos(filtrados);
-  document.getElementById('cd-contador').textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
-  document.getElementById('cd-lista-movimientos').innerHTML = lista;
-  document.getElementById('cd-tabla-movimientos').innerHTML = tabla;
-}
-window.filtrarCajaDelDia = filtrarCajaDelDia;
-
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
   const resBox = document.getElementById('cd-resultado');
@@ -1660,57 +1584,74 @@ async function cargarCajaDelDia() {
 
   const efectivoNetoHoy = (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
 
-  const iconosMedio = {
-    EFECTIVO: '💵', TARJETA: '💳', MERCADOPAGO: '📱', TRANSFERENCIA: '🏦',
-    UALA: '🟣', 'CUENTA CORRIENTE': '📒'
-  };
   const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
   const filasMedios = todosLosMedios.length === 0
     ? ''
     : todosLosMedios.map(medio => {
         const neto = (porMedioIngresa[medio] || 0) - (porMedioEgresa[medio] || 0);
         return `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0ead9;">
-          <span>${iconosMedio[medio] || '💰'} ${medio}</span><strong style="color:#2f6d1f;">$${neto.toLocaleString('es-AR')}</strong>
+        <div style="display:flex; justify-content:space-between; padding:4px 0;">
+          <span>${medio}</span><strong>$${neto.toLocaleString('es-AR')}</strong>
         </div>
       `;
       }).join('');
 
-  window._movimientosCajaActual = movimientos;
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre">
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  const filasTabla = movimientos.map(m => `
+    <tr>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tablaCaja = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
+
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
 
-  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientos(movimientos);
-
   resBox.innerHTML = `
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <div style="flex:1; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#3b5c1f; font-weight:600;">💵 EFECTIVO</div>
-        <div style="font-size:12.5px; font-weight:800; color:#1f4a0a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
-      </div>
-      <div style="flex:1; background:#e3f2e1; border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#2f6d1f; font-weight:600;">⬆️ ENTRÓ</div>
-        <div style="font-size:12.5px; font-weight:800; color:#1f4a0a;">$${totalIngresa.toLocaleString('es-AR')}</div>
-      </div>
-      <div style="flex:1; background:#fbe6df; border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#c1401f; font-weight:600;">⬇️ SALIÓ</div>
-        <div style="font-size:12.5px; font-weight:800; color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</div>
+    <div class="lista-sobre" style="background:#eaf3de;">
+      <div style="font-size:13px; color:#555;">💵 Efectivo que queda hoy (después de gastos y retiros)</div>
+      <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    </div>
+
+    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      <div style="font-size:18px; font-weight:700; margin-top:6px;">
+        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
       </div>
     </div>
 
-    <details style="margin-bottom:10px;">
-      <summary style="cursor:pointer; font-size:12.5px; color:#6b6459; font-weight:600; padding:4px 0;">🎨 Ver por medio de pago</summary>
-      <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec); margin-top:6px;">${filasMedios}</div>
-    </details>
+    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
+    <div class="lista-sobre">${filasMedios}</div>
 
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-      <span style="font-size:16px;">🔎</span>
-      <input type="text" id="cd-buscar" placeholder="Buscar por nombre de cliente..." oninput="filtrarCajaDelDia()" style="flex:1; padding:9px 12px; font-size:14px;">
-    </div>
-
-    <label id="cd-contador" style="margin-top:4px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
-    <div id="cd-tabla-movimientos">${tablaCaja}</div>
+    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja">${filasMovimientos}</div>
+    ${tablaCaja}
 
     <div style="text-align:center; margin-top:20px;">
       <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
