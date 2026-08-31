@@ -384,9 +384,9 @@ function pantallaCatalogo() {
         <div id="cat-precio-gramo-msg"></div>
       </div>
 
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="toggleAjusteGeneral()">📈 Ajuste general M. Obra</button>
-        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaAgregarProducto()">➕ Agregar producto</button>
+      <div style="display:flex; gap:6px; margin-top:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="toggleAjusteGeneral()">📈 Ajuste M.Obra</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
       </div>
 
       <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
@@ -396,10 +396,11 @@ function pantallaCatalogo() {
         <div id="cat-ajuste-msg"></div>
       </div>
 
-      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="margin-top:16px;">
-      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+      <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
+      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
         ${CATEGORIAS_CATALOGO.map(c => `
-          <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 12px; font-size:12.5px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
+          <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:700;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
         `).join('')}
       </div>
       <div id="cat-resultado" style="margin-top:10px;"></div>
