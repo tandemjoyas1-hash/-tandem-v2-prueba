@@ -1920,9 +1920,9 @@ function pantallaCajaDelDia() {
       <label>Fecha</label>
       <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
 
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaEgreso()">➖ Registrar egreso</button>
-        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaPagoParcial()">💵 Pago parcial</button>
+      <div style="display:flex; gap:6px; margin-top:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaEgreso()">➖ Egreso</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaPagoParcial()">💵 Parcial</button>
       </div>
 
       <div id="cd-resultado"></div>
@@ -1953,7 +1953,7 @@ async function cargarCajaDelDia() {
     return;
   }
 
-  let totalIngresa = 0, totalEgresa = 0;
+  let totalIngresa = 0, totalEgresa = 0, totalRetiros = 0;
   const porMedioIngresa = {};
   const porMedioEgresa = {};
   movimientos.forEach(m => {
@@ -1965,6 +1965,7 @@ async function cargarCajaDelDia() {
     } else {
       totalEgresa += monto;
       porMedioEgresa[medio] = (porMedioEgresa[medio] || 0) + monto;
+      if (Number(m.codigo) === 550) totalRetiros += monto;
     }
   });
 
@@ -2024,12 +2025,23 @@ async function cargarCajaDelDia() {
       <div style="font-size:26px; font-weight:700; color:#27500a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
     </div>
 
-    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
-      <div>Entró (todos los medios): <strong style="color:#27500a;">$${totalIngresa.toLocaleString('es-AR')}</strong></div>
-      <div>Salió (todos los medios): <strong style="color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</strong></div>
-      <div style="font-size:18px; font-weight:700; margin-top:6px;">
-        Neto del día: $${(totalIngresa - totalEgresa).toLocaleString('es-AR')}
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-top:10px;">
+      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
+        <div style="font-size:11px; color:#8a8378;">Ingresos hoy</div>
+        <div style="font-size:16px; font-weight:700; color:#2f6d1f;">$${totalIngresa.toLocaleString('es-AR')}</div>
       </div>
+      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
+        <div style="font-size:11px; color:#8a8378;">Egresos hoy</div>
+        <div style="font-size:16px; font-weight:700; color:#9a3a1e;">$${totalEgresa.toLocaleString('es-AR')}</div>
+      </div>
+      <div class="lista-sobre" style="text-align:center; padding:10px 6px;">
+        <div style="font-size:11px; color:#8a8378;">Retiros hoy</div>
+        <div style="font-size:16px; font-weight:700; color:#9a3a1e;">$${totalRetiros.toLocaleString('es-AR')}</div>
+      </div>
+    </div>
+
+    <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:6px;">
+      Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
     </div>
 
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
