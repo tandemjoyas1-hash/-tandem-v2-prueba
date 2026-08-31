@@ -189,8 +189,6 @@ function pintarUsuarioActual() {
       <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
-      <button onclick="pantallaPagoParcial()"><span class="nav-icon">💵</span><span class="nav-label">PARCIAL</span></button>
-      <button onclick="pantallaEgreso()"><span class="nav-icon">➖</span><span class="nav-label">EGRESO</span></button>
       <button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>
     </div>`;
 }
@@ -2514,7 +2512,7 @@ window.marcarGastoFijoPagado = marcarGastoFijoPagado;
 // a dejar solo: pantallaLogin();
 // ============================================================
 usuarioActual = { id: null, nombre: 'Prueba', rol: 'ADMIN' };
-pantallaNuevaEntrada();
+pantallaCajaDelDia();
 </script>
 </body>
 </html>
