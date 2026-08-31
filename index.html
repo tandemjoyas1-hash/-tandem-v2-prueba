@@ -313,7 +313,8 @@ function pantallaNuevaEntrada() {
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
 
       <label>Cliente</label>
-      <input type="text" id="ne-cliente" placeholder="Nombre del cliente">
+      <input type="text" id="ne-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnEntrada()" autocomplete="off">
+      <div id="ne-cliente-sugerencias"></div>
 
       <label>Teléfono (para WhatsApp, opcional)</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
@@ -774,6 +775,42 @@ async function leerFotoSobre() {
   }
 }
 window.leerFotoSobre = leerFotoSobre;
+
+let _timeoutBusquedaClienteEntrada = null;
+
+function buscarClienteEnEntrada() {
+  clearTimeout(_timeoutBusquedaClienteEntrada);
+  const nombre = document.getElementById('ne-cliente').value.trim();
+  const box = document.getElementById('ne-cliente-sugerencias');
+  if (nombre.length < 2) { box.innerHTML = ''; return; }
+
+  _timeoutBusquedaClienteEntrada = setTimeout(async () => {
+    const { data } = await sb
+      .from('clientes')
+      .select('nombre, tipo_cliente, telefono')
+      .ilike('nombre', '%' + nombre + '%')
+      .order('nombre')
+      .limit(6);
+
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+
+    box.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEnEntrada(${JSON.stringify(c.nombre)}, ${JSON.stringify(c.tipo_cliente)}, ${JSON.stringify(c.telefono || '')})'>
+        <div class="nro" style="font-size:14px;">${c.nombre}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarClienteEnEntrada = buscarClienteEnEntrada;
+
+function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
+  document.getElementById('ne-cliente').value = nombre;
+  if (tipoCliente) document.getElementById('ne-tipo-cliente').value = tipoCliente;
+  if (telefono) document.getElementById('ne-telefono').value = telefono;
+  document.getElementById('ne-cliente-sugerencias').innerHTML = '';
+}
+window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
