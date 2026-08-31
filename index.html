@@ -1803,6 +1803,12 @@ function pantallaCajaDelDia() {
       <h1>Caja del día</h1>
       <label>Fecha</label>
       <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
+
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaEgreso()">➖ Registrar egreso</button>
+        <button type="button" class="btn btn-outline" style="margin-top:0;" onclick="pantallaPagoParcial()">💵 Pago parcial</button>
+      </div>
+
       <div id="cd-resultado"></div>
     </div>
   `);
