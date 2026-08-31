@@ -1210,48 +1210,53 @@ function pantallaCuentaCorriente() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Cuenta Corriente</h1>
-      <div class="sub">Buscar un cliente mayorista/taller</div>
+      <div class="sub">Empezá a escribir y elegí de la lista — así nunca cae en la cuenta de otro cliente</div>
       <label>Nombre del cliente</label>
-      <input type="text" id="cc-buscar" placeholder="Ej: Zipiur">
-      <button class="btn btn-verde" onclick="buscarClienteCC()">Buscar</button>
+      <input type="text" id="cc-buscar" placeholder="Ej: Zipiur" oninput="buscarClienteCC()" autocomplete="off">
       <div id="cc-resultado"></div>
     </div>
   `);
+  document.getElementById('cc-buscar').focus();
 }
 window.pantallaCuentaCorriente = pantallaCuentaCorriente;
 
-async function buscarClienteCC() {
+let _timeoutBusquedaCC = null;
+
+function buscarClienteCC() {
+  clearTimeout(_timeoutBusquedaCC);
   const nombre = document.getElementById('cc-buscar').value.trim();
   const resBox = document.getElementById('cc-resultado');
+
   if (!nombre) { resBox.innerHTML = ''; return; }
-  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+  if (nombre.length < 2) { resBox.innerHTML = ''; return; }
 
-  const { data, error } = await sb
-    .from('clientes')
-    .select('id, nombre, tipo_cliente')
-    .ilike('nombre', '%' + nombre + '%')
-    .limit(10);
+  // Pequeña espera para no disparar una búsqueda por cada tecla
+  _timeoutBusquedaCC = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
-  if (error) {
-    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
-    return;
-  }
-  if (data.length === 0) {
-    resBox.innerHTML = `<div class="vacio">No se encontró ningún cliente con ese nombre.</div>`;
-    return;
-  }
-  if (data.length === 1) {
-    verCuentaCliente(data[0].id, data[0].nombre);
-    return;
-  }
+    const { data, error } = await sb
+      .from('clientes')
+      .select('id, nombre, tipo_cliente')
+      .ilike('nombre', '%' + nombre + '%')
+      .order('nombre')
+      .limit(10);
 
-  resBox.innerHTML = data.map(c => `
-    <div class="lista-sobre">
-      <div class="nro">${c.nombre}</div>
-      <div class="cli">${c.tipo_cliente}</div>
-      <button class="btn btn-outline" onclick="verCuentaCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">Ver cuenta</button>
-    </div>
-  `).join('');
+    if (error) {
+      resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+      return;
+    }
+    if (data.length === 0) {
+      resBox.innerHTML = `<div class="vacio">Ningún cliente coincide con "${nombre}"</div>`;
+      return;
+    }
+
+    resBox.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer;" onclick="verCuentaCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">
+        <div class="nro">${c.nombre}</div>
+        <div class="cli">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
 }
 window.buscarClienteCC = buscarClienteCC;
 
