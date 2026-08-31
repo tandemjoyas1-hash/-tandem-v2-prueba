@@ -147,9 +147,30 @@ let usuarioActual = null; // { id, nombre, rol }
 
 const app = document.getElementById('app');
 
+// ============================================================
+// NUEVO: cada vez que se cambia de pantalla, se guarda una "foto"
+// de lo que había antes en el historial del navegador. Así, si
+// alguien toca el botón "atrás" del celu/navegador, vuelve a la
+// pantalla anterior DENTRO de la app, en vez de salir de golpe.
+// ============================================================
+let _historialHTML = [];
+let _restaurandoHistorial = false;
+
 function render(html) {
+  if (!_restaurandoHistorial) {
+    _historialHTML.push(app.innerHTML);
+    history.pushState({ idx: _historialHTML.length }, '');
+  }
   app.innerHTML = html;
 }
+
+window.addEventListener('popstate', () => {
+  if (_historialHTML.length > 0) {
+    _restaurandoHistorial = true;
+    app.innerHTML = _historialHTML.pop();
+    _restaurandoHistorial = false;
+  }
+});
 
 function pintarUsuarioActual() {
   if (!usuarioActual) return '';
