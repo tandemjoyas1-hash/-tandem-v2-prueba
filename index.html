@@ -1019,7 +1019,7 @@ window.pantallaTaller = pantallaTaller;
 
 async function bajarATallerLote() {
   const resBox = document.getElementById('bt-resultado');
-  const numeros = document.getElementById('bt-sobres').value.trim().split(/\s+/).filter(n => n);
+  const numeros = document.getElementById('bt-sobres').value.trim().split(/[\s,]+/).filter(n => n);
   const orfebre = document.getElementById('bt-orfebre').value;
 
   if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
@@ -1087,7 +1087,7 @@ window.pantallaListoLista = pantallaListoLista;
 
 async function marcarListoLote() {
   const resBox = document.getElementById('rg-resultado');
-  const numeros = document.getElementById('rg-sobres').value.trim().split(/\s+/).filter(n => n);
+  const numeros = document.getElementById('rg-sobres').value.trim().split(/[\s,]+/).filter(n => n);
   if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
 
   resBox.innerHTML = `<div class="msg">Guardando...</div>`;
