@@ -370,7 +370,21 @@ function pantallaCatalogo() {
     <div class="card">
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
-      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
+
+      <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div>
+          <div style="font-size:12px; color:#8a8378;">Precio del gramo (plata)</div>
+          <div id="cat-precio-gramo-texto" style="font-size:20px; font-weight:700;">Cargando...</div>
+        </div>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:10px 16px;" onclick="togglePrecioGramo()">Cambiar</button>
+      </div>
+      <div id="cat-precio-gramo-form" style="display:none; margin-top:8px;">
+        <input type="number" id="cat-precio-gramo-nuevo" placeholder="Nuevo precio del gramo">
+        <button class="btn btn-verde" onclick="guardarPrecioGramo()">Guardar precio nuevo</button>
+        <div id="cat-precio-gramo-msg"></div>
+      </div>
+
+      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="margin-top:16px;">
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
         ${CATEGORIAS_CATALOGO.map(c => `
           <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 12px; font-size:12.5px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
@@ -381,8 +395,44 @@ function pantallaCatalogo() {
     </div>
   `);
   document.getElementById('cat-buscar').focus();
+  cargarPrecioGramoActual();
 }
 window.pantallaCatalogo = pantallaCatalogo;
+
+async function cargarPrecioGramoActual() {
+  const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
+  _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  const el = document.getElementById('cat-precio-gramo-texto');
+  if (el) el.textContent = '$' + _precioGramoActual.toLocaleString('es-AR');
+}
+window.cargarPrecioGramoActual = cargarPrecioGramoActual;
+
+function togglePrecioGramo() {
+  const form = document.getElementById('cat-precio-gramo-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('cat-precio-gramo-nuevo').value = _precioGramoActual || '';
+}
+window.togglePrecioGramo = togglePrecioGramo;
+
+async function guardarPrecioGramo() {
+  const msgBox = document.getElementById('cat-precio-gramo-msg');
+  const nuevo = parseFloat(document.getElementById('cat-precio-gramo-nuevo').value);
+  if (!nuevo || nuevo <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un precio válido.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  const { error } = await sb.schema('public').from('settings').update({ precio_gramo: nuevo }).eq('id', 'main');
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  _precioGramoActual = nuevo;
+  document.getElementById('cat-precio-gramo-texto').textContent = '$' + nuevo.toLocaleString('es-AR');
+  document.getElementById('cat-precio-gramo-form').style.display = 'none';
+  msgBox.innerHTML = '';
+
+  // Si había resultados en pantalla, los volvemos a calcular con el precio nuevo
+  const termino = document.getElementById('cat-buscar').value.trim();
+  if (termino) buscarEnCatalogo();
+}
+window.guardarPrecioGramo = guardarPrecioGramo;
 
 function buscarPorCategoriaCatalogo(cat) {
   document.getElementById('cat-buscar').value = '';
