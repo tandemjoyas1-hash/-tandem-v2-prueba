@@ -1430,12 +1430,12 @@ function pantallaRetiro() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>💰 Retiro</h1>
-      <div class="sub">Buscá por número de sobre o nombre del cliente</div>
+      <div class="sub">Buscá cualquier sobre activo para entregarlo — no hace falta que haya pasado por Taller/Regreso</div>
       <input type="text" id="rt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresListosParaRetiro()" autocomplete="off">
       <div id="rt-resultado"></div>
 
       <div style="text-align:center; margin-top:16px;">
-        <a href="#" onclick="mostrarTodosLosListos(); return false;" style="font-size:13px; color:#8a8378;">Ver todos los sobres listos</a>
+        <a href="#" onclick="mostrarTodosLosListos(); return false;" style="font-size:13px; color:#8a8378;">Ver todos los sobres pendientes</a>
       </div>
       <div id="rt-todos"></div>
     </div>
@@ -1491,7 +1491,7 @@ function buscarSobresListosParaRetiro() {
     resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
     let consulta = sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
-      .not('listo', 'is', null).is('fecha_salida', null).limit(8);
+      .is('fecha_salida', null).limit(8);
     const { data: porNumero } = await consulta.ilike('numero', '%' + termino + '%');
 
     let porCliente = [];
@@ -1500,7 +1500,7 @@ function buscarSobresListosParaRetiro() {
       if (clientesMatch && clientesMatch.length > 0) {
         const ids = clientesMatch.map(c => c.id);
         const { data } = await sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
-          .not('listo', 'is', null).is('fecha_salida', null).in('cliente_id', ids).limit(8);
+          .is('fecha_salida', null).in('cliente_id', ids).limit(8);
         porCliente = data || [];
       }
     }
@@ -1524,12 +1524,11 @@ async function mostrarTodosLosListos() {
   const { data: sobres, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
-    .not('listo', 'is', null)
     .is('fecha_salida', null)
-    .order('listo');
+    .order('created_at');
 
   if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
-  if (sobres.length === 0) { box.innerHTML = `<div class="vacio">No hay sobres listos esperando retiro 🎉</div>`; return; }
+  if (sobres.length === 0) { box.innerHTML = `<div class="vacio">No hay sobres pendientes de retirar 🎉</div>`; return; }
 
   const pagadoPorSobre = await pagadoPorSobres(sobres.map(s => s.id));
   box.innerHTML = sobres.map(s => filaRetiro(s, pagadoPorSobre)).join('');
