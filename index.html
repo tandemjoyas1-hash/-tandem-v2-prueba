@@ -198,6 +198,7 @@ function pintarUsuarioActual() {
     <div class="nav">
       <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
+      <button onclick="pantallaVentaDirecta()"><span class="nav-icon">🏷️</span><span class="nav-label">VENTA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
       <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
@@ -2224,7 +2225,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, tipo_cliente, created_at, clientes(nombre)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, tipo_cliente, created_at, clientes(nombre)')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -2269,15 +2270,15 @@ async function cargarCajaDelDia() {
       }).join('');
 
   const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
+    <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}</div>
     </div>
   `).join('');
 
   const filasTabla = movimientos.map(m => `
-    <tr>
+    <tr style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
       <td>${m.vendedora || ''}</td>
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
@@ -2287,6 +2288,7 @@ async function cargarCajaDelDia() {
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
       </td>
+      <td>✏️</td>
     </tr>
   `).join('');
 
@@ -2294,7 +2296,7 @@ async function cargarCajaDelDia() {
     <div class="tabla-caja">
       <table>
         <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th><th></th></tr>
         </thead>
         <tbody>${filasTabla}</tbody>
       </table>
@@ -2916,6 +2918,189 @@ async function marcarGastoFijoPagado(gastoId, nombre) {
   cargarGastosFijos();
 }
 window.marcarGastoFijoPagado = marcarGastoFijoPagado;
+
+// ============================================================
+// PANTALLA: Editar / corregir un movimiento de caja
+// ============================================================
+async function pantallaEditarMovimiento(id) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: m, error } = await sb
+    .from('movimientos_caja')
+    .select('id, fecha, descripcion, monto, medio_pago, ingresa_egresa, codigo, clientes(nombre)')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !m) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el movimiento.</p></div>`);
+    return;
+  }
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✏️ Corregir movimiento</h1>
+      <div class="sub">${m.ingresa_egresa === 'INGRESA' ? 'Entrada' : 'Salida'} del ${new Date(m.fecha).toLocaleDateString('es-AR')}${m.clientes ? ' · ' + m.clientes.nombre : ''}</div>
+
+      <label>Descripción</label>
+      <input type="text" id="em-descripcion" value="${(m.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Monto</label>
+      <input type="number" id="em-monto" value="${m.monto || 0}">
+
+      <label>Medio de pago</label>
+      <select id="em-medio">
+        ${['EFECTIVO','TARJETA FISER','TRANSFERENCIA SANTANDER','MERCADO PAGO FISER','MERCADO PAGO LAUREANO','UALA CARLA','LEMON LAUREANO','CUENTA CORRIENTE']
+          .map(op => `<option ${op === m.medio_pago ? 'selected' : ''}>${op}</option>`).join('')}
+      </select>
+
+      <button class="btn btn-verde" onclick='guardarCorreccionMovimiento(${JSON.stringify(id)})'>Guardar corrección</button>
+      <button class="btn btn-outline" style="margin-top:10px; color:#9a3a1e; border-color:#e7c9c0;" onclick='confirmarBorrarMovimiento(${JSON.stringify(id)})'>🗑️ Borrar este movimiento (fue un error)</button>
+      <div id="em-msg"></div>
+
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+    </div>
+  `);
+}
+window.pantallaEditarMovimiento = pantallaEditarMovimiento;
+
+async function guardarCorreccionMovimiento(id) {
+  const msgBox = document.getElementById('em-msg');
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('movimientos_caja').update({
+    descripcion: document.getElementById('em-descripcion').value.trim(),
+    monto: parseFloat(document.getElementById('em-monto').value) || 0,
+    medio_pago: document.getElementById('em-medio').value
+  }).eq('id', id);
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Corregido.</div>`;
+}
+window.guardarCorreccionMovimiento = guardarCorreccionMovimiento;
+
+async function confirmarBorrarMovimiento(id) {
+  if (!confirm('¿Seguro que querés borrar este movimiento? No se puede deshacer.')) return;
+  const { error } = await sb.from('movimientos_caja').delete().eq('id', id);
+  if (error) { document.getElementById('em-msg').innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  pantallaCajaDelDia();
+}
+window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
+
+// ============================================================
+// PANTALLA 13: Venta Directa — venta chica sin sobre (ej: pila, cadenita suelta)
+// ============================================================
+function pantallaVentaDirecta() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>🏷️ Venta directa</h1>
+      <div class="sub">Para lo que se vende y se lleva en el momento, sin sobre (ej: pila, arreglo chico al toque)</div>
+
+      <label>Cliente (opcional)</label>
+      <input type="text" id="vd-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnVentaDirecta()" autocomplete="off">
+      <div id="vd-cliente-sugerencias"></div>
+
+      <label>Descripción</label>
+      <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
+
+      <label>Monto</label>
+      <input type="number" id="vd-monto" placeholder="0">
+
+      <label>Medio de pago</label>
+      <select id="vd-medio-pago">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+      </select>
+
+      <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
+      <div id="vd-msg"></div>
+    </div>
+  `);
+  document.getElementById('vd-descripcion').focus();
+}
+window.pantallaVentaDirecta = pantallaVentaDirecta;
+
+let _timeoutBusquedaClienteVD = null;
+let _clienteIdVentaDirecta = null;
+
+function buscarClienteEnVentaDirecta() {
+  clearTimeout(_timeoutBusquedaClienteVD);
+  _clienteIdVentaDirecta = null;
+  const nombre = document.getElementById('vd-cliente').value.trim();
+  const box = document.getElementById('vd-cliente-sugerencias');
+  if (nombre.length < 2) { box.innerHTML = ''; return; }
+
+  _timeoutBusquedaClienteVD = setTimeout(async () => {
+    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(6);
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteVentaDirecta(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
+        <div class="nro" style="font-size:14px;">${c.nombre}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarClienteEnVentaDirecta = buscarClienteEnVentaDirecta;
+
+function elegirClienteVentaDirecta(id, nombre) {
+  _clienteIdVentaDirecta = id;
+  document.getElementById('vd-cliente').value = nombre;
+  document.getElementById('vd-cliente-sugerencias').innerHTML = '';
+}
+window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
+
+async function guardarVentaDirecta() {
+  const msgBox = document.getElementById('vd-msg');
+  const descripcion = document.getElementById('vd-descripcion').value.trim();
+  const monto = parseFloat(document.getElementById('vd-monto').value) || 0;
+  const medioPago = document.getElementById('vd-medio-pago').value;
+  const nombreCliente = document.getElementById('vd-cliente').value.trim();
+
+  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
+  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  // Si escribió un nombre pero no lo eligió de la lista, se crea como cliente nuevo (igual que en Entrada)
+  let clienteId = _clienteIdVentaDirecta;
+  if (!clienteId && nombreCliente) {
+    const { data: existente } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    if (existente) {
+      clienteId = existente.id;
+    } else {
+      const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: 'CONSUMIDOR_FINAL' }).select('id').single();
+      if (errCliente) { msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`; return; }
+      clienteId = nuevo.id;
+    }
+  }
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    descripcion: descripcion,
+    ingresa_egresa: 'INGRESA',
+    tipo_cliente: 'CONSUMIDOR_FINAL',
+    medio_pago: medioPago,
+    monto: monto,
+    canal: 'LOCAL',
+    cliente_id: clienteId
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Venta de $${monto.toLocaleString('es-AR')} registrada.</div>`;
+  document.getElementById('vd-cliente').value = '';
+  document.getElementById('vd-descripcion').value = '';
+  document.getElementById('vd-monto').value = '';
+  _clienteIdVentaDirecta = null;
+}
+window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
