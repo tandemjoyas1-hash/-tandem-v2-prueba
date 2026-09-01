@@ -160,6 +160,18 @@ const app = document.getElementById('app');
 let _historialHTML = [];
 let _restaurandoHistorial = false;
 
+// ============================================================
+// Limpia un N° de sobre: saca cualquier símbolo (#, N°, espacios, etc.)
+// y los ceros a la izquierda, para que quede solo el número puro
+// (ej: "#0801" -> "801"). Igual que hacía el sistema viejo, para que
+// no queden dos sobres "distintos" por un cero o un símbolo de más.
+// ============================================================
+function normalizarSobre(v) {
+  const soloDigitos = String(v || '').replace(/\D/g, '');
+  if (!soloDigitos) return String(v || '').trim();
+  return String(parseInt(soloDigitos, 10));
+}
+
 function render(html) {
   if (!_restaurandoHistorial) {
     _historialHTML.push(app.innerHTML);
@@ -991,7 +1003,7 @@ window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
-  const numeroSobre = document.getElementById('ne-sobre').value.trim();
+  const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
@@ -1213,7 +1225,7 @@ async function bajarATallerLote() {
     const { data: sobre, error: errBuscar } = await sb
       .from('sobres')
       .select('id, baja_taller, fecha_salida')
-      .eq('numero', numero)
+      .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
     if (errBuscar || !sobre) { errores.push(numero + ' (no existe)'); continue; }
@@ -1288,7 +1300,7 @@ async function marcarListoLote() {
     const { data: sobre } = await sb
       .from('sobres')
       .select('id, baja_taller, listo, fecha_salida')
-      .eq('numero', numero)
+      .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
     if (!sobre) { errores.push(numero + ' (no existe)'); continue; }
@@ -1328,7 +1340,7 @@ async function buscarSobreParaListo() {
   const { data: s, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, orfebre, precio_total, baja_taller, listo, fecha_salida, clientes(nombre)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error || !s) { resBox.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
@@ -1827,7 +1839,7 @@ async function buscarSobreDetalle() {
   const { data: s, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, clientes(nombre, telefono)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) {
@@ -2064,7 +2076,7 @@ async function buscarBoletaDetalle() {
   const { data: boleta, error } = await sb
     .from('boletas')
     .select('id, numero, total, telefono, estado, clientes(id, nombre, telefono)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -2451,7 +2463,7 @@ async function buscarSobreParaPagoParcial() {
   const { data: s, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_salida, clientes(nombre)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
