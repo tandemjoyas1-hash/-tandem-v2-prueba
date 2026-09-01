@@ -837,7 +837,7 @@ async function buscarEnCatalogo(categoriaExacta) {
       .limit(categoriaExacta ? 40 : 10);
 
     consulta = categoriaExacta
-      ? consulta.eq('cat', categoriaExacta).order('cod', { ascending: true })
+      ? consulta.eq('cat', categoriaExacta).order('orden_num', { ascending: true })
       : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').order('foto', { ascending: false, nullsFirst: false });
 
     const { data: productos, error } = await consulta;
@@ -1074,19 +1074,19 @@ async function guardarNuevaEntrada() {
     return;
   }
 
-  // 3) Si hay seña, registrar el movimiento de caja
-  if (sena > 0) {
-    await sb.from('movimientos_caja').insert({
-      vendedora: usuarioActual.nombre,
-      descripcion: 'seña sobre ' + numeroSobre,
-      ingresa_egresa: 'INGRESA',
-      tipo_cliente: tipoCliente,
-      medio_pago: medioPago,
-      monto: sena,
-      cliente_id: clienteId,
-      sobre_id: sobreNuevo.id
-    });
-  }
+  // 3) Registrar siempre el movimiento del día (aunque la seña sea $0,
+  //    para que se vea en "Caja del día" que entró un sobre a cuenta
+  //    corriente, aunque no haya entrado plata en ese momento)
+  await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    descripcion: (sena > 0 ? 'seña sobre ' : 'entrada sobre ') + numeroSobre,
+    ingresa_egresa: 'INGRESA',
+    tipo_cliente: tipoCliente,
+    medio_pago: medioPago,
+    monto: sena,
+    cliente_id: clienteId,
+    sobre_id: sobreNuevo.id
+  });
 
   // 4) Historial
   await sb.from('historial_sobres').insert({
