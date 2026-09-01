@@ -527,7 +527,8 @@ async function pantallaEditarProducto(cod) {
       <input type="number" id="ep-labor" value="${p.labor || 0}">
 
       <label>Cambiar foto (opcional)</label>
-      <input type="file" id="ep-foto" accept="image/*" capture="environment">
+      <input type="file" id="ep-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ep-foto-ok')">
+      <div id="ep-foto-ok"></div>
 
       <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
       <div id="ep-msg"></div>
@@ -566,11 +567,11 @@ function pantallaAgregarProducto() {
       <h1>➕ Agregar producto</h1>
 
       <label>Categoría</label>
-      <select id="ap-cat">
+      <select id="ap-cat" onchange="sugerirCodigoNuevo()">
         ${CATEGORIAS_CATALOGO.map(c => `<option>${c}</option>`).join('')}
       </select>
 
-      <label>Código</label>
+      <label>Código (se sugiere solo, podés cambiarlo)</label>
       <input type="text" id="ap-cod" placeholder="Ej: DP.300">
 
       <label>Descripción</label>
@@ -586,15 +587,45 @@ function pantallaAgregarProducto() {
       <input type="number" id="ap-labor" placeholder="0">
 
       <label>Foto (opcional)</label>
-      <input type="file" id="ap-foto" accept="image/*" capture="environment">
+      <input type="file" id="ap-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ap-foto-ok')">
+      <div id="ap-foto-ok"></div>
 
       <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
       <div id="ap-msg"></div>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
     </div>
   `);
+  sugerirCodigoNuevo();
 }
 window.pantallaAgregarProducto = pantallaAgregarProducto;
+
+async function sugerirCodigoNuevo() {
+  const cat = document.getElementById('ap-cat').value;
+  const codInput = document.getElementById('ap-cod');
+  codInput.value = 'Calculando...';
+
+  const { data } = await sb.schema('public')
+    .from('products')
+    .select('cod, orden_num')
+    .eq('cat', cat)
+    .order('orden_num', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0 && data[0].cod) {
+    const codActual = data[0].cod;
+    const match = codActual.match(/^(.*?)(\d+)(\D*)$/);
+    if (match) {
+      const prefijo = match[1];
+      const digitos = match[2];
+      const sufijo = match[3];
+      const siguienteNum = (parseInt(digitos, 10) + 1).toString().padStart(digitos.length, '0');
+      codInput.value = prefijo + siguienteNum + sufijo;
+      return;
+    }
+  }
+  codInput.value = '';
+}
+window.sugerirCodigoNuevo = sugerirCodigoNuevo;
 
 async function guardarProductoNuevo() {
   const msgBox = document.getElementById('ap-msg');
@@ -806,6 +837,16 @@ function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
 }
 window.elegirProductoCatalogo = elegirProductoCatalogo;
 
+function mostrarFotoElegida(input, idDestino) {
+  const box = document.getElementById(idDestino);
+  if (input.files && input.files[0]) {
+    box.innerHTML = `<div class="msg msg-ok">✅ Foto lista: ${input.files[0].name}</div>`;
+  } else {
+    box.innerHTML = '';
+  }
+}
+window.mostrarFotoElegida = mostrarFotoElegida;
+
 function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
     const lector = new FileReader();
@@ -1010,11 +1051,68 @@ function pantallaTaller() {
       </select>
       <button class="btn btn-verde" onclick="bajarATallerLote()">Bajar al taller</button>
       <div id="bt-resultado"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>🔍 Buscar sobre pendiente (por número o cliente)</label>
+      <input type="text" id="bt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('bt-buscar', 'bt-buscar-resultado', 'bt-sobres', false)">
+      <div id="bt-buscar-resultado" style="margin-top:8px;"></div>
     </div>
   `);
   document.getElementById('bt-sobres').focus();
 }
 window.pantallaTaller = pantallaTaller;
+
+let _timeoutBuscarSobresEtapa = null;
+
+async function buscarSobresPendientesEtapa(idInput, idResultado, idDestino, esRegreso) {
+  clearTimeout(_timeoutBuscarSobresEtapa);
+  const termino = document.getElementById(idInput).value.trim();
+  const resBox = document.getElementById(idResultado);
+  if (termino.length < 2) { resBox.innerHTML = ''; return; }
+
+  _timeoutBuscarSobresEtapa = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+    let consulta = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null).limit(8);
+    consulta = esRegreso ? consulta.not('baja_taller', 'is', null).is('listo', null) : consulta.is('baja_taller', null);
+
+    const { data: porNumero } = await consulta.ilike('numero', '%' + termino + '%');
+
+    let porCliente = [];
+    if (isNaN(termino)) {
+      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      if (clientesMatch && clientesMatch.length > 0) {
+        const ids = clientesMatch.map(c => c.id);
+        let consulta2 = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null).in('cliente_id', ids).limit(8);
+        consulta2 = esRegreso ? consulta2.not('baja_taller', 'is', null).is('listo', null) : consulta2.is('baja_taller', null);
+        const { data } = await consulta2;
+        porCliente = data || [];
+      }
+    }
+
+    const combinados = [...(porNumero || []), ...porCliente];
+    const vistos = new Set();
+    const unicos = combinados.filter(s => vistos.has(s.numero) ? false : (vistos.add(s.numero), true));
+
+    if (unicos.length === 0) { resBox.innerHTML = `<div class="vacio">Sin resultados</div>`; return; }
+
+    resBox.innerHTML = unicos.map(s => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick="agregarNumeroASobres('${idDestino}', '${s.numero}')">
+        <div class="nro" style="font-size:14px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+        <div class="cli" style="font-size:12px;">${s.descripcion || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarSobresPendientesEtapa = buscarSobresPendientesEtapa;
+
+function agregarNumeroASobres(idDestino, numero) {
+  const input = document.getElementById(idDestino);
+  const actuales = input.value.trim();
+  if (actuales.split(/[\s,]+/).includes(numero)) return;
+  input.value = actuales ? actuales + ', ' + numero : numero;
+}
+window.agregarNumeroASobres = agregarNumeroASobres;
 
 async function bajarATallerLote() {
   const resBox = document.getElementById('bt-resultado');
@@ -1072,6 +1170,11 @@ function pantallaListoLista() {
       <input type="text" id="rg-sobres" placeholder="Ej: 4801 4802 4803">
       <button class="btn btn-verde" onclick="marcarListoLote()">Marcar listo</button>
       <div id="rg-resultado"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>🔍 Buscar sobre en taller (por número o cliente)</label>
+      <input type="text" id="rg-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('rg-buscar', 'rg-buscar-resultado', 'rg-sobres', true)">
+      <div id="rg-buscar-resultado" style="margin-top:8px;"></div>
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
       <div class="sub">¿Uno solo, con precio a cargar o varios ítems distintos? Usalo por separado acá abajo:</div>
