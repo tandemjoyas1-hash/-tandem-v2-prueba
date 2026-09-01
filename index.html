@@ -1117,6 +1117,10 @@ function pantallaTaller() {
       <label>🔍 Buscar sobre pendiente (por número o cliente)</label>
       <input type="text" id="bt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('bt-buscar', 'bt-buscar-resultado', 'bt-sobres', false)">
       <div id="bt-buscar-resultado" style="margin-top:8px;"></div>
+
+      <div style="text-align:center; margin-top:12px;">
+        <a href="#" onclick="cargarTodosPendientesEtapa('bt-buscar-resultado', 'bt-sobres', false); return false;" style="font-size:13px; color:#8a8378;">Ver todos los pendientes de bajar</a>
+      </div>
     </div>
   `);
   document.getElementById('bt-sobres').focus();
@@ -1166,6 +1170,26 @@ async function buscarSobresPendientesEtapa(idInput, idResultado, idDestino, esRe
   }, 250);
 }
 window.buscarSobresPendientesEtapa = buscarSobresPendientesEtapa;
+
+async function cargarTodosPendientesEtapa(idResultado, idDestino, esRegreso) {
+  const resBox = document.getElementById(idResultado);
+  resBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  let consulta = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null);
+  consulta = esRegreso ? consulta.not('baja_taller', 'is', null).is('listo', null) : consulta.is('baja_taller', null);
+  const { data, error } = await consulta.order('created_at');
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!data || data.length === 0) { resBox.innerHTML = `<div class="vacio">No hay ninguno pendiente 🎉</div>`; return; }
+
+  resBox.innerHTML = data.map(s => `
+    <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick="agregarNumeroASobres('${idDestino}', '${s.numero}')">
+      <div class="nro" style="font-size:14px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+      <div class="cli" style="font-size:12px;">${s.descripcion || ''}</div>
+    </div>
+  `).join('');
+}
+window.cargarTodosPendientesEtapa = cargarTodosPendientesEtapa;
 
 function agregarNumeroASobres(idDestino, numero) {
   const input = document.getElementById(idDestino);
@@ -1236,6 +1260,10 @@ function pantallaListoLista() {
       <label>🔍 Buscar sobre en taller (por número o cliente)</label>
       <input type="text" id="rg-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('rg-buscar', 'rg-buscar-resultado', 'rg-sobres', true)">
       <div id="rg-buscar-resultado" style="margin-top:8px;"></div>
+
+      <div style="text-align:center; margin-top:12px;">
+        <a href="#" onclick="cargarTodosPendientesEtapa('rg-buscar-resultado', 'rg-sobres', true); return false;" style="font-size:13px; color:#8a8378;">Ver todos los que están en taller</a>
+      </div>
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
       <div class="sub">¿Uno solo, con precio a cargar o varios ítems distintos? Usalo por separado acá abajo:</div>
@@ -1397,8 +1425,101 @@ window.marcarListo = marcarListo;
 // ============================================================
 // PANTALLA 5: Retiro — sobres listos, esperando que el cliente pase a pagar y llevárselo
 // ============================================================
-async function pantallaRetiro() {
-  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+function pantallaRetiro() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>💰 Retiro</h1>
+      <div class="sub">Buscá por número de sobre o nombre del cliente</div>
+      <input type="text" id="rt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresListosParaRetiro()" autocomplete="off">
+      <div id="rt-resultado"></div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="#" onclick="mostrarTodosLosListos(); return false;" style="font-size:13px; color:#8a8378;">Ver todos los sobres listos</a>
+      </div>
+      <div id="rt-todos"></div>
+    </div>
+  `);
+  document.getElementById('rt-buscar').focus();
+}
+window.pantallaRetiro = pantallaRetiro;
+
+function filaRetiro(s, pagadoPorSobre) {
+  const total = Number(s.precio_total) || 0;
+  const pagado = pagadoPorSobre[s.id] || 0;
+  const saldo = Math.max(0, total - pagado);
+  return `
+    <div class="lista-sobre" id="fila-${s.id}">
+      <div class="nro">#${s.numero}</div>
+      <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
+      <div class="desc">${s.descripcion || ''}</div>
+      <div style="font-weight:700; margin-bottom:8px;">Saldo: $${saldo.toLocaleString('es-AR')}</div>
+      <select id="medio-${s.id}">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+        <option>CUENTA CORRIENTE</option>
+      </select>
+      <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
+      <div id="msg-${s.id}"></div>
+    </div>
+  `;
+}
+
+async function pagadoPorSobres(ids) {
+  if (!ids || ids.length === 0) return {};
+  const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', ids).eq('ingresa_egresa', 'INGRESA');
+  const mapa = {};
+  (pagos || []).forEach(p => { mapa[p.sobre_id] = (mapa[p.sobre_id] || 0) + Number(p.monto); });
+  return mapa;
+}
+
+let _timeoutBuscarRetiro = null;
+
+function buscarSobresListosParaRetiro() {
+  clearTimeout(_timeoutBuscarRetiro);
+  const termino = document.getElementById('rt-buscar').value.trim();
+  const resBox = document.getElementById('rt-resultado');
+  document.getElementById('rt-todos').innerHTML = '';
+  if (termino.length < 2) { resBox.innerHTML = ''; return; }
+
+  _timeoutBuscarRetiro = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+    let consulta = sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
+      .not('listo', 'is', null).is('fecha_salida', null).limit(8);
+    const { data: porNumero } = await consulta.ilike('numero', '%' + termino + '%');
+
+    let porCliente = [];
+    if (isNaN(termino)) {
+      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      if (clientesMatch && clientesMatch.length > 0) {
+        const ids = clientesMatch.map(c => c.id);
+        const { data } = await sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
+          .not('listo', 'is', null).is('fecha_salida', null).in('cliente_id', ids).limit(8);
+        porCliente = data || [];
+      }
+    }
+
+    const combinados = [...(porNumero || []), ...porCliente];
+    const vistos = new Set();
+    const sobres = combinados.filter(s => vistos.has(s.id) ? false : (vistos.add(s.id), true));
+
+    if (sobres.length === 0) { resBox.innerHTML = `<div class="vacio">Sin resultados</div>`; return; }
+
+    const pagadoPorSobre = await pagadoPorSobres(sobres.map(s => s.id));
+    resBox.innerHTML = sobres.map(s => filaRetiro(s, pagadoPorSobre)).join('');
+  }, 250);
+}
+window.buscarSobresListosParaRetiro = buscarSobresListosParaRetiro;
+
+async function mostrarTodosLosListos() {
+  const box = document.getElementById('rt-todos');
+  box.innerHTML = `<div class="msg">Cargando...</div>`;
 
   const { data: sobres, error } = await sb
     .from('sobres')
@@ -1407,64 +1528,13 @@ async function pantallaRetiro() {
     .is('fecha_salida', null)
     .order('listo');
 
-  if (error) {
-    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">${error.message}</p></div>`);
-    return;
-  }
+  if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (sobres.length === 0) { box.innerHTML = `<div class="vacio">No hay sobres listos esperando retiro 🎉</div>`; return; }
 
-  if (sobres.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>💰 Retiro</h1><div class="vacio">No hay sobres listos esperando retiro 🎉</div></div>`);
-    return;
-  }
-
-  const ids = sobres.map(s => s.id);
-  const { data: pagos } = await sb
-    .from('movimientos_caja')
-    .select('sobre_id, monto')
-    .in('sobre_id', ids)
-    .eq('ingresa_egresa', 'INGRESA');
-
-  const pagadoPorSobre = {};
-  (pagos || []).forEach(p => {
-    pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto);
-  });
-
-  const filas = sobres.map(s => {
-    const total = Number(s.precio_total) || 0;
-    const pagado = pagadoPorSobre[s.id] || 0;
-    const saldo = Math.max(0, total - pagado);
-    return `
-      <div class="lista-sobre" id="fila-${s.id}">
-        <div class="nro">#${s.numero}</div>
-        <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
-        <div class="desc">${s.descripcion || ''}</div>
-        <div style="font-weight:700; margin-bottom:8px;">Saldo: $${saldo.toLocaleString('es-AR')}</div>
-        <select id="medio-${s.id}">
-          <option>EFECTIVO</option>
-          <option>TARJETA FISER</option>
-          <option>TRANSFERENCIA SANTANDER</option>
-          <option>MERCADO PAGO FISER</option>
-          <option>MERCADO PAGO LAUREANO</option>
-          <option>UALA CARLA</option>
-          <option>LEMON LAUREANO</option>
-          <option>CUENTA CORRIENTE</option>
-        </select>
-        <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
-        <div id="msg-${s.id}"></div>
-      </div>
-    `;
-  }).join('');
-
-  render(`
-    ${pintarUsuarioActual()}
-    <div class="card">
-      <h1>💰 Retiro</h1>
-      <div class="sub">Sobres listos para entregar</div>
-      ${filas}
-    </div>
-  `);
+  const pagadoPorSobre = await pagadoPorSobres(sobres.map(s => s.id));
+  box.innerHTML = sobres.map(s => filaRetiro(s, pagadoPorSobre)).join('');
 }
-window.pantallaRetiro = pantallaRetiro;
+window.mostrarTodosLosListos = mostrarTodosLosListos;
 
 async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreCliente, telefonoCliente) {
   const msgBox = document.getElementById('msg-' + sobreId);
@@ -1709,14 +1779,13 @@ function pantallaBuscarSobre() {
       <input type="text" id="bs-numero" placeholder="Ej: 4801">
       <button class="btn btn-verde" onclick="buscarSobreDetalle()">Buscar</button>
       <div id="bs-resultado"></div>
-    </div>
-    <div class="card">
-      <h1>📋 Todos los sobres activos</h1>
-      <div class="sub">Sin retirar todavía, sea cual sea la etapa</div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="#" onclick="cargarTodosLosSobres(); return false;" style="font-size:13px; color:#8a8378;">📋 Ver todos los sobres activos</a>
+      </div>
       <div id="bs-todos-lista"></div>
     </div>
   `);
-  cargarTodosLosSobres();
 }
 window.pantallaBuscarSobre = pantallaBuscarSobre;
 
