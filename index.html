@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tándem — Sistema nuevo (prueba)</title>
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a1a">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -12,7 +16,7 @@
     background: #f4efe4;
     margin: 0;
     padding: 16px;
-    padding-bottom: 106px; /* deja lugar para el menú fijo de abajo */
+    padding-bottom: 92px; /* deja lugar para el menú fijo de abajo */
     color: #2c2c2a;
   }
   .card {
@@ -75,23 +79,23 @@
     gap: 2px;
   }
   .nav button {
-    flex: 1 0 82px;
+    flex: 1 0 76px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 5px;
-    padding: 14px 4px;
+    gap: 4px;
+    padding: 12px 4px;
     border: none;
     background: none;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: #6b6459;
     border-radius: 10px;
     cursor: pointer;
     white-space: nowrap;
-    min-height: 72px;
+    min-height: 62px;
   }
   .nav button:active { background: #f4efe4; }
-  .nav-icon { font-size: 28px; line-height: 1; }
-  .nav-label { font-size: 11.5px; letter-spacing: 0.2px; }
+  .nav-icon { font-size: 24px; line-height: 1; }
+  .nav-label { font-size: 10.5px; letter-spacing: 0.2px; }
 
   .lista-sobre {
     border: 1px solid #ece5d4; border-radius: 12px; padding: 13px; margin-bottom: 10px;
@@ -102,6 +106,8 @@
   .lista-sobre .desc { color: #8a8378; font-size: 13px; margin-bottom: 8px; }
   .lista-sobre select, .lista-sobre input { margin-bottom: 8px; }
   .vacio { text-align: center; color: #a39c8d; padding: 24px 10px; font-size: 14px; }
+  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat-grid .lista-sobre { margin-bottom: 0; padding: 10px; }
 
   /* ===== Tabla estilo Excel para Caja del Día en pantallas grandes ===== */
   .tabla-caja { display: none; }
@@ -145,9 +151,42 @@ let usuarioActual = null; // { id, nombre, rol }
 
 const app = document.getElementById('app');
 
+// ============================================================
+// NUEVO: cada vez que se cambia de pantalla, se guarda una "foto"
+// de lo que había antes en el historial del navegador. Así, si
+// alguien toca el botón "atrás" del celu/navegador, vuelve a la
+// pantalla anterior DENTRO de la app, en vez de salir de golpe.
+// ============================================================
+let _historialHTML = [];
+let _restaurandoHistorial = false;
+
+// ============================================================
+// Limpia un N° de sobre: saca cualquier símbolo (#, N°, espacios, etc.)
+// y los ceros a la izquierda, para que quede solo el número puro
+// (ej: "#0801" -> "801"). Igual que hacía el sistema viejo, para que
+// no queden dos sobres "distintos" por un cero o un símbolo de más.
+// ============================================================
+function normalizarSobre(v) {
+  const soloDigitos = String(v || '').replace(/\D/g, '');
+  if (!soloDigitos) return String(v || '').trim();
+  return String(parseInt(soloDigitos, 10));
+}
+
 function render(html) {
+  if (!_restaurandoHistorial) {
+    _historialHTML.push(app.innerHTML);
+    history.pushState({ idx: _historialHTML.length }, '');
+  }
   app.innerHTML = html;
 }
+
+window.addEventListener('popstate', () => {
+  if (_historialHTML.length > 0) {
+    _restaurandoHistorial = true;
+    app.innerHTML = _historialHTML.pop();
+    _restaurandoHistorial = false;
+  }
+});
 
 function pintarUsuarioActual() {
   if (!usuarioActual) return '';
@@ -166,8 +205,6 @@ function pintarUsuarioActual() {
       <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
-      <button onclick="pantallaPagoParcial()"><span class="nav-icon">💵</span><span class="nav-label">PARCIAL</span></button>
-      <button onclick="pantallaEgreso()"><span class="nav-icon">➖</span><span class="nav-label">EGRESO</span></button>
       <button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>
     </div>`;
 }
@@ -292,7 +329,8 @@ function pantallaNuevaEntrada() {
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
 
       <label>Cliente</label>
-      <input type="text" id="ne-cliente" placeholder="Nombre del cliente">
+      <input type="text" id="ne-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnEntrada()" autocomplete="off">
+      <div id="ne-cliente-sugerencias"></div>
 
       <label>Teléfono (para WhatsApp, opcional)</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
@@ -361,36 +399,348 @@ function abrirCatalogoParaConsulta() {
 }
 window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
+const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
+
 function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
-  const categorias = ['Dijes','Anillos Fundición','Anillos Iniciales','Pulseras','Alianzas','Anillos Sellos Hombre','Pines-Prendedores','Alianzas Plata y Oro','Pulseras Esclavas','Dijes Fundición'];
-  const botonesCategoria = categorias.map(c => `
-    <button type="button" onclick='buscarPorCategoria(${JSON.stringify(c)})'
-      style="flex:0 0 auto; padding:9px 14px; border-radius:20px; border:1.5px solid #e6ddc9; background:#fdfcf9; color:#4a453d; font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer;">
-      ${c}
-    </button>
-  `).join('');
-
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
-      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()">
-      <div style="display:flex; gap:6px; overflow-x:auto; padding:10px 0 4px 0; -webkit-overflow-scrolling:touch;">${botonesCategoria}</div>
-      <div id="cat-resultado" style="margin-top:6px;"></div>
+
+      <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
+        <div>
+          <div style="font-size:10px; color:#8a8378;">Precio del gramo</div>
+          <div id="cat-precio-gramo-texto" style="font-size:14px; font-weight:700;">Cargando...</div>
+        </div>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;" onclick="togglePrecioGramo()">Cambiar</button>
+      </div>
+      <div id="cat-precio-gramo-form" style="display:none; margin-top:8px;">
+        <input type="number" id="cat-precio-gramo-nuevo" placeholder="Nuevo precio del gramo">
+        <button class="btn btn-verde" onclick="guardarPrecioGramo()">Guardar precio nuevo</button>
+        <div id="cat-precio-gramo-msg"></div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="toggleAjusteGeneral()">📈 Ajuste M.Obra</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
+      </div>
+
+      <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label>Aumentar la mano de obra de TODOS los productos en (%)</label>
+        <input type="number" id="cat-ajuste-porcentaje" placeholder="Ej: 10">
+        <button class="btn btn-verde" onclick="aplicarAjusteGeneralManoObra()">Aplicar a los 693 productos</button>
+        <div id="cat-ajuste-msg"></div>
+      </div>
+
+      <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
+      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
+        ${CATEGORIAS_CATALOGO.map(c => `
+          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:700;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
+        `).join('')}
+      </div>
+      <div id="cat-resultado" style="margin-top:10px;"></div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
   document.getElementById('cat-buscar').focus();
+  cargarPrecioGramoActual();
 }
 window.pantallaCatalogo = pantallaCatalogo;
 
-function buscarPorCategoria(categoria) {
-  document.getElementById('cat-buscar').value = categoria;
-  buscarEnCatalogo(categoria);
+async function cargarPrecioGramoActual() {
+  const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
+  _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  const el = document.getElementById('cat-precio-gramo-texto');
+  if (el) el.textContent = '$' + _precioGramoActual.toLocaleString('es-AR');
 }
-window.buscarPorCategoria = buscarPorCategoria;
+window.cargarPrecioGramoActual = cargarPrecioGramoActual;
+
+function togglePrecioGramo() {
+  const form = document.getElementById('cat-precio-gramo-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('cat-precio-gramo-nuevo').value = _precioGramoActual || '';
+}
+window.togglePrecioGramo = togglePrecioGramo;
+
+async function guardarPrecioGramo() {
+  const msgBox = document.getElementById('cat-precio-gramo-msg');
+  const nuevo = parseFloat(document.getElementById('cat-precio-gramo-nuevo').value);
+  if (!nuevo || nuevo <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un precio válido.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  const { error } = await sb.schema('public').from('settings').update({ precio_gramo: nuevo }).eq('id', 'main');
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  _precioGramoActual = nuevo;
+  document.getElementById('cat-precio-gramo-texto').textContent = '$' + nuevo.toLocaleString('es-AR');
+  document.getElementById('cat-precio-gramo-form').style.display = 'none';
+  msgBox.innerHTML = '';
+
+  // Si había resultados en pantalla, los volvemos a calcular con el precio nuevo
+  const termino = document.getElementById('cat-buscar').value.trim();
+  if (termino) buscarEnCatalogo();
+}
+window.guardarPrecioGramo = guardarPrecioGramo;
+
+function toggleAjusteGeneral() {
+  const form = document.getElementById('cat-ajuste-general-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleAjusteGeneral = toggleAjusteGeneral;
+
+async function aplicarAjusteGeneralManoObra() {
+  const msgBox = document.getElementById('cat-ajuste-msg');
+  const porcentaje = parseFloat(document.getElementById('cat-ajuste-porcentaje').value);
+  if (!porcentaje) { msgBox.innerHTML = `<div class="msg msg-error">Poné un porcentaje.</div>`; return; }
+
+  if (!confirm('¿Seguro que querés aumentar la mano de obra de TODOS los productos (693) en ' + porcentaje + '%? No se puede deshacer con un botón.')) return;
+
+  msgBox.innerHTML = `<div class="msg">Aplicando a todos los productos, un momento...</div>`;
+
+  const { data: productos, error: errLeer } = await sb.schema('public').from('products').select('cod, labor');
+  if (errLeer) { msgBox.innerHTML = `<div class="msg msg-error">${errLeer.message}</div>`; return; }
+
+  let actualizados = 0;
+  for (const p of productos) {
+    const laborNueva = Math.round((Number(p.labor) || 0) * (1 + porcentaje / 100));
+    const { error } = await sb.schema('public').from('products').update({ labor: laborNueva }).eq('cod', p.cod);
+    if (!error) actualizados++;
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Mano de obra actualizada en ${actualizados} de ${productos.length} productos.</div>`;
+  document.getElementById('cat-ajuste-porcentaje').value = '';
+}
+window.aplicarAjusteGeneralManoObra = aplicarAjusteGeneralManoObra;
+
+// --- Editar un producto puntual (mano de obra y/o foto) ---
+async function pantallaDetalleProducto(cod) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).maybeSingle();
+  if (error || !p) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el producto.</p></div>`);
+    return;
+  }
+
+  if (_precioGramoActual === null) {
+    const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
+    _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  }
+
+  const metal = (Number(p.peso) || 0) * _precioGramoActual;
+  const zipiur = metal + (Number(p.labor) || 0);
+  const mayor = zipiur * 1.2;
+  const redes = mayor * 1.4;
+  const menor = mayor * 1.67;
+
+  const boton = (etiqueta, precio) => `
+    <button type="button" class="btn btn-outline" style="margin-top:8px; padding:14px;"
+      onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
+      ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
+    </button>
+  `;
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      ${p.foto ? `<img src="${p.foto}" style="width:100%; max-height:320px; object-fit:contain; background:#fff; border-radius:12px;">` : ''}
+      <h1 style="margin-top:14px;">${p.descripcion}</h1>
+      <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
+
+      <div class="lista-sobre" style="background:#f7f7f7;">
+        <div>Peso: <strong>${p.peso || '-'} g</strong></div>
+        <div>Mano de obra: <strong>$${(Number(p.labor) || 0).toLocaleString('es-AR')}</strong></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+        ${boton('Zipiur', zipiur)}
+        ${boton('Mayor', mayor)}
+        ${boton('Redes', redes)}
+        ${boton('Menor', menor)}
+      </div>
+
+      <button class="btn btn-outline" style="margin-top:14px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar este producto</button>
+    </div>
+  `);
+}
+window.pantallaDetalleProducto = pantallaDetalleProducto;
+
+async function pantallaEditarProducto(cod) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).maybeSingle();
+  if (error || !p) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el producto.</p></div>`);
+    return;
+  }
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✏️ Editar producto</h1>
+      <div class="sub">${p.cat} · cód. ${p.cod}</div>
+      ${p.foto ? `<img src="${p.foto}" style="width:100%; max-height:200px; object-fit:contain; background:#fff; border-radius:8px;">` : ''}
+
+      <label>Descripción</label>
+      <input type="text" id="ep-descripcion" value="${(p.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Mano de obra</label>
+      <input type="number" id="ep-labor" value="${p.labor || 0}">
+
+      <label>Cambiar foto (opcional)</label>
+      <input type="file" id="ep-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ep-foto-ok')">
+      <div id="ep-foto-ok"></div>
+
+      <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
+      <div id="ep-msg"></div>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
+    </div>
+  `);
+}
+window.pantallaEditarProducto = pantallaEditarProducto;
+
+async function guardarEdicionProducto(cod) {
+  const msgBox = document.getElementById('ep-msg');
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const cambios = {
+    descripcion: document.getElementById('ep-descripcion').value.trim(),
+    labor: parseFloat(document.getElementById('ep-labor').value) || 0
+  };
+
+  const archivoFoto = document.getElementById('ep-foto').files[0];
+  if (archivoFoto) {
+    cambios.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+  }
+
+  const { error } = await sb.schema('public').from('products').update(cambios).eq('cod', cod);
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Guardado.</div>`;
+}
+window.guardarEdicionProducto = guardarEdicionProducto;
+
+// --- Agregar un producto nuevo ---
+function pantallaAgregarProducto() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>➕ Agregar producto</h1>
+
+      <label>Categoría</label>
+      <select id="ap-cat" onchange="sugerirCodigoNuevo()">
+        ${CATEGORIAS_CATALOGO.map(c => `<option>${c}</option>`).join('')}
+      </select>
+
+      <label>Código (se sugiere solo, podés cambiarlo)</label>
+      <input type="text" id="ap-cod" placeholder="Ej: DP.300">
+
+      <label>Descripción</label>
+      <input type="text" id="ap-descripcion" placeholder="Ej: Dije corazón plata">
+
+      <label>Medidas (opcional)</label>
+      <input type="text" id="ap-medidas" placeholder="Ej: 2cm">
+
+      <label>Peso (gramos)</label>
+      <input type="number" id="ap-peso" placeholder="0">
+
+      <label>Mano de obra</label>
+      <input type="number" id="ap-labor" placeholder="0">
+
+      <label>Foto (opcional)</label>
+      <input type="file" id="ap-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ap-foto-ok')">
+      <div id="ap-foto-ok"></div>
+
+      <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
+      <div id="ap-msg"></div>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
+    </div>
+  `);
+  sugerirCodigoNuevo();
+}
+window.pantallaAgregarProducto = pantallaAgregarProducto;
+
+async function sugerirCodigoNuevo() {
+  const cat = document.getElementById('ap-cat').value;
+  const codInput = document.getElementById('ap-cod');
+  codInput.value = 'Calculando...';
+
+  const { data } = await sb.schema('public')
+    .from('products')
+    .select('cod, orden_num')
+    .eq('cat', cat)
+    .order('orden_num', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0 && data[0].cod) {
+    const codActual = data[0].cod;
+    const match = codActual.match(/^(.*?)(\d+)(\D*)$/);
+    if (match) {
+      const prefijo = match[1];
+      const digitos = match[2];
+      const sufijo = match[3];
+      const siguienteNum = (parseInt(digitos, 10) + 1).toString().padStart(digitos.length, '0');
+      codInput.value = prefijo + siguienteNum + sufijo;
+      return;
+    }
+  }
+  codInput.value = '';
+}
+window.sugerirCodigoNuevo = sugerirCodigoNuevo;
+
+async function guardarProductoNuevo() {
+  const msgBox = document.getElementById('ap-msg');
+  const cod = document.getElementById('ap-cod').value.trim();
+  const descripcion = document.getElementById('ap-descripcion').value.trim();
+  const peso = parseFloat(document.getElementById('ap-peso').value) || 0;
+
+  if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
+  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const nuevo = {
+    cod: cod,
+    cat: document.getElementById('ap-cat').value,
+    descripcion: descripcion,
+    medidas: document.getElementById('ap-medidas').value.trim() || null,
+    peso: peso,
+    labor: parseFloat(document.getElementById('ap-labor').value) || 0
+  };
+
+  const archivoFoto = document.getElementById('ap-foto').files[0];
+  if (archivoFoto) {
+    nuevo.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+  }
+
+  const { error } = await sb.schema('public').from('products').insert(nuevo);
+  if (error) {
+    const mensaje = error.code === '23505' ? 'Ya existe un producto con ese código.' : error.message;
+    msgBox.innerHTML = `<div class="msg msg-error">${mensaje}</div>`;
+    return;
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Producto "${descripcion}" agregado.</div>`;
+}
+window.guardarProductoNuevo = guardarProductoNuevo;
+
+function buscarPorCategoriaCatalogo(cat) {
+  document.getElementById('cat-buscar').value = '';
+  document.querySelectorAll('[id^="cat-btn-"]').forEach(btn => {
+    btn.classList.remove('btn-verde');
+    btn.classList.add('btn-outline');
+  });
+  const activo = document.getElementById('cat-btn-' + cat.replace(/\s+/g, '-'));
+  if (activo) {
+    activo.classList.remove('btn-outline');
+    activo.classList.add('btn-verde');
+  }
+  buscarEnCatalogo(cat);
+}
+window.buscarPorCategoriaCatalogo = buscarPorCategoriaCatalogo;
 
 function volverAEntradaSinElegir() {
   pantallaNuevaEntrada();
@@ -410,10 +760,68 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
 }
 
+let _fotosProductosActuales = {};
+
+function actualizarBarraCompartir() {
+  const seleccionados = document.querySelectorAll('.cat-chk-compartir:checked');
+  const barra = document.getElementById('cat-compartir-barra');
+  const cantidadTxt = document.getElementById('cat-compartir-cantidad');
+  if (seleccionados.length === 0) {
+    barra.style.display = 'none';
+    return;
+  }
+  barra.style.display = 'flex';
+  cantidadTxt.textContent = seleccionados.length + (seleccionados.length === 1 ? ' foto elegida' : ' fotos elegidas');
+}
+window.actualizarBarraCompartir = actualizarBarraCompartir;
+
+async function compartirFotosSeleccionadas() {
+  const seleccionados = [...document.querySelectorAll('.cat-chk-compartir:checked')];
+  if (seleccionados.length === 0) return;
+
+  try {
+    const archivos = await Promise.all(seleccionados.map(async (chk, i) => {
+      const dataUri = _fotosProductosActuales[chk.dataset.cod];
+      const resp = await fetch(dataUri);
+      const blob = await resp.blob();
+      const ext = blob.type.split('/')[1] || 'png';
+      const nombreLimpio = (chk.dataset.desc || 'producto').replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 30).replace(/\s+/g, '-');
+      return new File([blob], nombreLimpio + '.' + ext, { type: blob.type });
+    }));
+
+    // En celu: intenta abrir directo el menú de compartir (WhatsApp, etc.)
+    if (navigator.canShare && navigator.canShare({ files: archivos })) {
+      const descripciones = seleccionados.map(chk => chk.dataset.desc).join(', ');
+      await navigator.share({ files: archivos, text: 'Joyería Tándem: ' + descripciones });
+      return;
+    }
+
+    // En compu (o si el celu no soporta compartir archivos): descarga todas las fotos elegidas
+    // de una sola vez, para adjuntarlas juntas en WhatsApp Web (📎 → Fotos y videos → elegís varias).
+    archivos.forEach((archivo, i) => {
+      setTimeout(() => {
+        const url = URL.createObjectURL(archivo);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = archivo.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, i * 200); // un pequeño espacio entre cada descarga para que el navegador no las bloquee
+    });
+
+    alert('Se descargaron ' + archivos.length + ' foto(s). Ahora abrí WhatsApp Web → 📎 (adjuntar) → Fotos y videos, y elegí esos archivos de tu carpeta de Descargas — se pueden mandar todas juntas en un mismo mensaje.');
+  } catch (err) {
+    if (err.name !== 'AbortError') alert('No se pudo descargar: ' + err.message);
+  }
+}
+window.compartirFotosSeleccionadas = compartirFotosSeleccionadas;
+
 async function buscarEnCatalogo(categoriaExacta) {
   const termino = document.getElementById('cat-buscar').value.trim();
   const resBox = document.getElementById('cat-resultado');
-  if (!termino) { resBox.innerHTML = ''; return; }
+  if (!termino && !categoriaExacta) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   try {
@@ -423,26 +831,30 @@ async function buscarEnCatalogo(categoriaExacta) {
       _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
     }
 
-    let query = sb.schema('public')
+    let consulta = sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, foto');
+      .select('cod, cat, descripcion, medidas, peso, labor, foto')
+      .limit(categoriaExacta ? 40 : 10);
 
-    if (categoriaExacta) {
-      query = query.eq('cat', categoriaExacta).limit(60);
-    } else {
-      query = query.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').limit(10);
-    }
+    consulta = categoriaExacta
+      ? consulta.eq('cat', categoriaExacta).order('cod', { ascending: true })
+      : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').order('foto', { ascending: false, nullsFirst: false });
 
-    const { data: productos, error } = await query;
+    const { data: productos, error } = await consulta;
 
     if (error) throw error;
 
     if (!productos || productos.length === 0) {
-      resBox.innerHTML = `<div class="vacio">Sin resultados para "${termino}"</div>`;
+      resBox.innerHTML = `<div class="vacio">Sin resultados para "${categoriaExacta || termino}"</div>`;
       return;
     }
 
-    resBox.innerHTML = `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">` + productos.map(p => {
+    resBox.innerHTML = `
+      <div id="cat-compartir-barra" style="display:none; position:sticky; top:0; z-index:5; background:#2f6d1f; color:white; padding:10px 14px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span id="cat-compartir-cantidad" style="font-weight:700; font-size:13px;"></span>
+        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
+      </div>
+      <div class="cat-grid">` + productos.map(p => {
       const metal = (Number(p.peso) || 0) * _precioGramoActual;
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
@@ -450,28 +862,38 @@ async function buscarEnCatalogo(categoriaExacta) {
       const menor = mayor * 1.67;
 
       const boton = (etiqueta, precio) => `
-        <button type="button" class="btn btn-outline" style="margin-top:4px; padding:4px 2px; font-size:13.2px; line-height:1.25;"
+        <button type="button" class="btn btn-outline" style="margin-top:5px; padding:7px 4px; font-size:13.2px;"
           onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
           ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
         </button>
       `;
 
-      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; height:100px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:6px;">` : '';
+      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; max-height:130px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:8px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>` : '';
 
       return `
-        <div class="lista-sobre" style="padding:8px;">
+        <div class="lista-sobre">
+          ${p.foto ? `
+            <label style="display:flex; align-items:center; gap:6px; font-weight:400; font-size:12px; margin-bottom:4px;">
+              <input type="checkbox" class="cat-chk-compartir" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onchange="actualizarBarraCompartir()" style="width:auto;">
+              Elegir para enviar
+            </label>
+          ` : ''}
           ${foto}
-          <div class="nro" style="font-size:15.4px; line-height:1.25;">${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. <span style="font-weight:600;">${p.cod}</span></div>
-          <div style="display:flex; flex-direction:column;">
+          <div class="nro" style="font-size:14.3px; line-height:1.25; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. <span style="font-weight:600;">${p.cod}</span><br>M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
             ${boton('Redes', redes)}
             ${boton('Menor', menor)}
           </div>
+          <button type="button" class="btn btn-outline" style="margin-top:6px; padding:6px; font-size:11.5px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar</button>
         </div>
       `;
     }).join('') + `</div>`;
+
+    _fotosProductosActuales = {};
+    productos.forEach(p => { if (p.foto) _fotosProductosActuales[p.cod] = p.foto; });
   } catch (err) {
     resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
@@ -487,6 +909,16 @@ function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
   restaurarBorradorEntrada();
 }
 window.elegirProductoCatalogo = elegirProductoCatalogo;
+
+function mostrarFotoElegida(input, idDestino) {
+  const box = document.getElementById(idDestino);
+  if (input.files && input.files[0]) {
+    box.innerHTML = `<div class="msg msg-ok">✅ Foto lista: ${input.files[0].name}</div>`;
+  } else {
+    box.innerHTML = '';
+  }
+}
+window.mostrarFotoElegida = mostrarFotoElegida;
 
 function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
@@ -533,9 +965,45 @@ async function leerFotoSobre() {
 }
 window.leerFotoSobre = leerFotoSobre;
 
+let _timeoutBusquedaClienteEntrada = null;
+
+function buscarClienteEnEntrada() {
+  clearTimeout(_timeoutBusquedaClienteEntrada);
+  const nombre = document.getElementById('ne-cliente').value.trim();
+  const box = document.getElementById('ne-cliente-sugerencias');
+  if (nombre.length < 2) { box.innerHTML = ''; return; }
+
+  _timeoutBusquedaClienteEntrada = setTimeout(async () => {
+    const { data } = await sb
+      .from('clientes')
+      .select('nombre, tipo_cliente, telefono')
+      .ilike('nombre', '%' + nombre + '%')
+      .order('nombre')
+      .limit(6);
+
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+
+    box.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEnEntrada(${JSON.stringify(c.nombre)}, ${JSON.stringify(c.tipo_cliente)}, ${JSON.stringify(c.telefono || '')})'>
+        <div class="nro" style="font-size:14px;">${c.nombre}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarClienteEnEntrada = buscarClienteEnEntrada;
+
+function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
+  document.getElementById('ne-cliente').value = nombre;
+  if (tipoCliente) document.getElementById('ne-tipo-cliente').value = tipoCliente;
+  if (telefono) document.getElementById('ne-telefono').value = telefono;
+  document.getElementById('ne-cliente-sugerencias').innerHTML = '';
+}
+window.elegirClienteEnEntrada = elegirClienteEnEntrada;
+
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
-  const numeroSobre = document.getElementById('ne-sobre').value.trim();
+  const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
@@ -606,11 +1074,28 @@ async function guardarNuevaEntrada() {
     return;
   }
 
-  // 3) Si hay seña, registrar el movimiento de caja
-  if (sena > 0) {
+  // 3) Registrar el movimiento de caja.
+  //    - Si es CUENTA CORRIENTE: se registra con el precio total como monto (aunque no se haya
+  //      cobrado nada en el momento) — así queda la deuda reflejada en Caja del Día.
+  //    - Para cualquier otro caso (incluso si sena = 0, ej: consumidor final que paga recién al
+  //      retirar): SIEMPRE se registra el movimiento igual, con el monto que corresponda (puede
+  //      ser $0). Así el sobre aparece en Caja del Día desde el momento de la entrada, y no recién
+  //      cuando el cliente viene a pagar y retirar.
+  if (medioPago === 'CUENTA CORRIENTE' && total > 0) {
     await sb.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
-      descripcion: 'seña sobre ' + numeroSobre,
+      descripcion: trabajo || ('sobre ' + numeroSobre),
+      ingresa_egresa: 'INGRESA',
+      tipo_cliente: tipoCliente,
+      medio_pago: 'CUENTA CORRIENTE',
+      monto: total,
+      cliente_id: clienteId,
+      sobre_id: sobreNuevo.id
+    });
+  } else {
+    await sb.from('movimientos_caja').insert({
+      vendedora: usuarioActual.nombre,
+      descripcion: sena > 0 ? ('seña sobre ' + numeroSobre) : ('sobre ' + numeroSobre + ' - sin seña, paga al retirar'),
       ingresa_egresa: 'INGRESA',
       tipo_cliente: tipoCliente,
       medio_pago: medioPago,
@@ -641,102 +1126,246 @@ window.guardarNuevaEntrada = guardarNuevaEntrada;
 // ============================================================
 // PANTALLA 3: Taller — sobres que todavía no bajaron a un orfebre
 // ============================================================
-async function pantallaTaller() {
-  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
-
-  const { data, error } = await sb
-    .from('sobres')
-    .select('id, numero, descripcion, clientes(nombre)')
-    .is('baja_taller', null)
-    .is('fecha_salida', null)
-    .order('created_at');
-
-  if (error) {
-    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">${error.message}</p></div>`);
-    return;
-  }
-
-  if (data.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>🔨 Bajar al taller</h1><div class="vacio">No hay sobres esperando bajar a taller 🎉</div></div>`);
-    return;
-  }
-
-  const filas = data.map(s => `
-    <div class="lista-sobre">
-      <div class="nro">#${s.numero}</div>
-      <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
-      <div class="desc">${s.descripcion || ''}</div>
-      <select id="orfebre-${s.id}">
-        <option>Daniel</option>
-        <option>Pachula</option>
-        <option>GRABADO</option>
-      </select>
-      <button class="btn btn-verde" onclick="bajarATaller('${s.id}', '${s.numero}')">Bajar a taller</button>
-      <div id="msg-${s.id}"></div>
-    </div>
-  `).join('');
-
+function pantallaTaller() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>🔨 Bajar al taller</h1>
-      <div class="sub">Sobres pendientes de asignar a un orfebre</div>
-      ${filas}
+      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio</div>
+      <input type="text" id="bt-sobres" placeholder="Ej: 4801 4802 4803">
+      <label>Orfebre</label>
+      <select id="bt-orfebre">
+        <option>Daniel</option>
+        <option>Pachula</option>
+        <option>GRABADO</option>
+      </select>
+      <button class="btn btn-verde" onclick="bajarATallerLote()">Bajar al taller</button>
+      <div id="bt-resultado"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>🔍 Buscar sobre pendiente (por número o cliente)</label>
+      <input type="text" id="bt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('bt-buscar', 'bt-buscar-resultado', 'bt-sobres', false)">
+      <div id="bt-buscar-resultado" style="margin-top:8px;"></div>
+
+      <div style="text-align:center; margin-top:12px;">
+        <a href="#" onclick="cargarTodosPendientesEtapa('bt-buscar-resultado', 'bt-sobres', false); return false;" style="font-size:13px; color:#8a8378;">Ver todos los pendientes de bajar</a>
+      </div>
     </div>
   `);
+  document.getElementById('bt-sobres').focus();
 }
 window.pantallaTaller = pantallaTaller;
 
-async function bajarATaller(sobreId, numero) {
-  const orfebre = document.getElementById('orfebre-' + sobreId).value;
-  const msgBox = document.getElementById('msg-' + sobreId);
-  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+let _timeoutBuscarSobresEtapa = null;
 
-  const { error } = await sb
-    .from('sobres')
-    .update({ baja_taller: new Date().toISOString(), orfebre: orfebre })
-    .eq('id', sobreId);
+async function buscarSobresPendientesEtapa(idInput, idResultado, idDestino, esRegreso) {
+  clearTimeout(_timeoutBuscarSobresEtapa);
+  const termino = document.getElementById(idInput).value.trim();
+  const resBox = document.getElementById(idResultado);
+  if (termino.length < 2) { resBox.innerHTML = ''; return; }
 
-  if (error) {
-    msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
-    return;
+  _timeoutBuscarSobresEtapa = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+    let consulta = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null).limit(8);
+    consulta = esRegreso ? consulta.not('baja_taller', 'is', null).is('listo', null) : consulta.is('baja_taller', null);
+
+    const { data: porNumero } = await consulta.ilike('numero', '%' + termino + '%');
+
+    let porCliente = [];
+    if (isNaN(termino)) {
+      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      if (clientesMatch && clientesMatch.length > 0) {
+        const ids = clientesMatch.map(c => c.id);
+        let consulta2 = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null).in('cliente_id', ids).limit(8);
+        consulta2 = esRegreso ? consulta2.not('baja_taller', 'is', null).is('listo', null) : consulta2.is('baja_taller', null);
+        const { data } = await consulta2;
+        porCliente = data || [];
+      }
+    }
+
+    const combinados = [...(porNumero || []), ...porCliente];
+    const vistos = new Set();
+    const unicos = combinados.filter(s => vistos.has(s.numero) ? false : (vistos.add(s.numero), true));
+
+    if (unicos.length === 0) { resBox.innerHTML = `<div class="vacio">Sin resultados</div>`; return; }
+
+    resBox.innerHTML = unicos.map(s => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick="agregarNumeroASobres('${idDestino}', '${s.numero}')">
+        <div class="nro" style="font-size:14px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+        <div class="cli" style="font-size:12px;">${s.descripcion || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarSobresPendientesEtapa = buscarSobresPendientesEtapa;
+
+async function cargarTodosPendientesEtapa(idResultado, idDestino, esRegreso) {
+  const resBox = document.getElementById(idResultado);
+  resBox.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  let consulta = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null);
+  consulta = esRegreso ? consulta.not('baja_taller', 'is', null).is('listo', null) : consulta.is('baja_taller', null);
+  const { data, error } = await consulta.order('created_at');
+
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!data || data.length === 0) { resBox.innerHTML = `<div class="vacio">No hay ninguno pendiente 🎉</div>`; return; }
+
+  resBox.innerHTML = data.map(s => `
+    <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick="agregarNumeroASobres('${idDestino}', '${s.numero}')">
+      <div class="nro" style="font-size:14px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
+      <div class="cli" style="font-size:12px;">${s.descripcion || ''}</div>
+    </div>
+  `).join('');
+}
+window.cargarTodosPendientesEtapa = cargarTodosPendientesEtapa;
+
+function agregarNumeroASobres(idDestino, numero) {
+  const input = document.getElementById(idDestino);
+  const actuales = input.value.trim();
+  if (actuales.split(/[\s,]+/).includes(numero)) return;
+  input.value = actuales ? actuales + ', ' + numero : numero;
+}
+window.agregarNumeroASobres = agregarNumeroASobres;
+
+async function bajarATallerLote() {
+  const resBox = document.getElementById('bt-resultado');
+  const numeros = document.getElementById('bt-sobres').value.trim().split(/[\s,]+/).filter(n => n);
+  const orfebre = document.getElementById('bt-orfebre').value;
+
+  if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+
+  resBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  const ok = [], errores = [];
+
+  for (const numero of numeros) {
+    const { data: sobre, error: errBuscar } = await sb
+      .from('sobres')
+      .select('id, baja_taller, fecha_salida')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (errBuscar || !sobre) { errores.push(numero + ' (no existe)'); continue; }
+    if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
+    if (sobre.baja_taller) { errores.push(numero + ' (ya estaba en taller)'); continue; }
+
+    const { error } = await sb
+      .from('sobres')
+      .update({ baja_taller: new Date().toISOString(), orfebre: orfebre })
+      .eq('id', sobre.id);
+
+    if (error) { errores.push(numero + ' (error al guardar)'); continue; }
+
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobre.id,
+      evento: 'BAJA A TALLER',
+      detalle: 'Asignado a ' + orfebre + ' (lo bajó: ' + usuarioActual.nombre + ')'
+    });
+    ok.push(numero);
   }
 
-  await sb.from('historial_sobres').insert({
-    sobre_id: sobreId,
-    evento: 'BAJA A TALLER',
-    detalle: 'Asignado a ' + orfebre + ' (lo bajó: ' + usuarioActual.nombre + ')'
-  });
-
-  pantallaTaller();
+  resBox.innerHTML = `
+    ${ok.length > 0 ? `<div class="msg msg-ok">✅ Bajados a ${orfebre}: ${ok.join(', ')}</div>` : ''}
+    ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron bajar: ${errores.join(', ')}</div>` : ''}
+  `;
+  document.getElementById('bt-sobres').value = '';
 }
-window.bajarATaller = bajarATaller;
+window.bajarATallerLote = bajarATallerLote;
 
 // ============================================================
 // PANTALLA 4: Listo — sobres en taller, esperando control final
 // ============================================================
-async function pantallaListoLista() {
-  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+function pantallaListoLista() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>🔄 Regreso</h1>
+      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio, para marcarlos listos de una</div>
+      <input type="text" id="rg-sobres" placeholder="Ej: 4801 4802 4803">
+      <button class="btn btn-verde" onclick="marcarListoLote()">Marcar listo</button>
+      <div id="rg-resultado"></div>
 
-  const { data, error } = await sb
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>🔍 Buscar sobre en taller (por número o cliente)</label>
+      <input type="text" id="rg-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('rg-buscar', 'rg-buscar-resultado', 'rg-sobres', true)">
+      <div id="rg-buscar-resultado" style="margin-top:8px;"></div>
+
+      <div style="text-align:center; margin-top:12px;">
+        <a href="#" onclick="cargarTodosPendientesEtapa('rg-buscar-resultado', 'rg-sobres', true); return false;" style="font-size:13px; color:#8a8378;">Ver todos los que están en taller</a>
+      </div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <div class="sub">¿Uno solo, con precio a cargar o varios ítems distintos? Usalo por separado acá abajo:</div>
+      <input type="text" id="rg-sobre-individual" placeholder="N° de sobre">
+      <button class="btn btn-outline" onclick="buscarSobreParaListo()">Buscar</button>
+      <div id="rg-individual-resultado"></div>
+    </div>
+  `);
+  document.getElementById('rg-sobres').focus();
+}
+window.pantallaListoLista = pantallaListoLista;
+
+async function marcarListoLote() {
+  const resBox = document.getElementById('rg-resultado');
+  const numeros = document.getElementById('rg-sobres').value.trim().split(/[\s,]+/).filter(n => n);
+  if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+
+  resBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  const ok = [], errores = [];
+
+  for (const numero of numeros) {
+    const { data: sobre } = await sb
+      .from('sobres')
+      .select('id, baja_taller, listo, fecha_salida')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (!sobre) { errores.push(numero + ' (no existe)'); continue; }
+    if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
+    if (!sobre.baja_taller) { errores.push(numero + ' (no bajó a taller todavía)'); continue; }
+    if (sobre.listo) { errores.push(numero + ' (ya estaba listo)'); continue; }
+
+    const { error } = await sb.from('sobres').update({
+      listo: new Date().toISOString(), controlado_por: usuarioActual.nombre
+    }).eq('id', sobre.id);
+
+    if (error) { errores.push(numero + ' (error al guardar)'); continue; }
+
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobre.id,
+      evento: 'LISTO PARA RETIRAR',
+      detalle: 'Controlado por ' + usuarioActual.nombre
+    });
+    ok.push(numero);
+  }
+
+  resBox.innerHTML = `
+    ${ok.length > 0 ? `<div class="msg msg-ok">✅ Listos: ${ok.join(', ')}</div>` : ''}
+    ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron marcar: ${errores.join(', ')}</div>` : ''}
+  `;
+  document.getElementById('rg-sobres').value = '';
+}
+window.marcarListoLote = marcarListoLote;
+
+// --- Caso individual: precio a cargar, varios ítems, o retorno (vuelve a taller) ---
+async function buscarSobreParaListo() {
+  const resBox = document.getElementById('rg-individual-resultado');
+  const numero = document.getElementById('rg-sobre-individual').value.trim();
+  if (!numero) { resBox.innerHTML = ''; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, orfebre, precio_total, clientes(nombre)')
-    .not('baja_taller', 'is', null)
-    .is('listo', null)
-    .is('fecha_salida', null)
-    .order('baja_taller');
+    .select('id, numero, descripcion, orfebre, precio_total, baja_taller, listo, fecha_salida, clientes(nombre)')
+    .eq('numero', normalizarSobre(numero))
+    .maybeSingle();
 
-  if (error) {
-    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">${error.message}</p></div>`);
-    return;
-  }
+  if (error || !s) { resBox.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
+  if (s.fecha_salida) { resBox.innerHTML = `<div class="msg msg-error">Ya fue retirado.</div>`; return; }
+  if (!s.baja_taller) { resBox.innerHTML = `<div class="msg msg-error">Todavía no bajó a taller.</div>`; return; }
+  if (s.listo) { resBox.innerHTML = `<div class="msg msg-error">Ya estaba marcado como listo.</div>`; return; }
 
-  if (data.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>🔄 Regreso</h1><div class="vacio">No hay sobres en el banco de trabajo ahora 🎉</div></div>`);
-    return;
-  }
-
-  const filas = data.map(s => `
+  resBox.innerHTML = `
     <div class="lista-sobre">
       <div class="nro">#${s.numero}</div>
       <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'} — orfebre: ${s.orfebre || '-'}</div>
@@ -757,18 +1386,9 @@ async function pantallaListoLista() {
       <button class="btn btn-verde" onclick="marcarListo('${s.id}', '${s.numero}')">Marcar listo</button>
       <div id="msg-${s.id}"></div>
     </div>
-  `).join('');
-
-  render(`
-    ${pintarUsuarioActual()}
-    <div class="card">
-      <h1>🔄 Regreso</h1>
-      <div class="sub">Control final antes de avisarle al cliente</div>
-      ${filas}
-    </div>
-  `);
+  `;
 }
-window.pantallaListoLista = pantallaListoLista;
+window.buscarSobreParaListo = buscarSobreParaListo;
 
 function toggleItems(sobreId) {
   const box = document.getElementById('items-box-' + sobreId);
@@ -785,18 +1405,15 @@ async function marcarListo(sobreId, numero) {
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   if (retorno) {
-    // Vuelve con el mismo orfebre: no se marca listo, solo queda el registro
     await sb.from('historial_sobres').insert({
       sobre_id: sobreId,
       evento: 'RETORNO',
       detalle: 'Vuelve con el mismo orfebre (controlado por ' + usuarioActual.nombre + ')'
     });
-    pantallaListoLista();
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Registrado, vuelve a taller.</div>`;
     return;
   }
 
-  // Si cargó ítems (uno por línea, con o sin guión: "Descripción - Precio" o "Descripción Precio"),
-  // el precio total sale de sumarlos. Se toma como precio el ÚLTIMO número de la línea.
   let items = [];
   let precio = precioInput ? parseFloat(precioInput.value) || null : null;
   if (itemsInput && itemsInput.value.trim()) {
@@ -830,81 +1447,122 @@ async function marcarListo(sobreId, numero) {
     detalle: 'Controlado por ' + usuarioActual.nombre
   });
 
-  pantallaListoLista();
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} marcado como listo.</div>`;
 }
 window.marcarListo = marcarListo;
 
 // ============================================================
 // PANTALLA 5: Retiro — sobres listos, esperando que el cliente pase a pagar y llevárselo
 // ============================================================
-async function pantallaRetiro() {
-  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
-
-  const { data: sobres, error } = await sb
-    .from('sobres')
-    .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
-    .not('listo', 'is', null)
-    .is('fecha_salida', null)
-    .order('listo');
-
-  if (error) {
-    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">${error.message}</p></div>`);
-    return;
-  }
-
-  if (sobres.length === 0) {
-    render(`${pintarUsuarioActual()}<div class="card"><h1>💰 Retiro</h1><div class="vacio">No hay sobres listos esperando retiro 🎉</div></div>`);
-    return;
-  }
-
-  const ids = sobres.map(s => s.id);
-  const { data: pagos } = await sb
-    .from('movimientos_caja')
-    .select('sobre_id, monto')
-    .in('sobre_id', ids)
-    .eq('ingresa_egresa', 'INGRESA');
-
-  const pagadoPorSobre = {};
-  (pagos || []).forEach(p => {
-    pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto);
-  });
-
-  const filas = sobres.map(s => {
-    const total = Number(s.precio_total) || 0;
-    const pagado = pagadoPorSobre[s.id] || 0;
-    const saldo = Math.max(0, total - pagado);
-    return `
-      <div class="lista-sobre" id="fila-${s.id}">
-        <div class="nro">#${s.numero}</div>
-        <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
-        <div class="desc">${s.descripcion || ''}</div>
-        <div style="font-weight:700; margin-bottom:8px;">Saldo: $${saldo.toLocaleString('es-AR')}</div>
-        <select id="medio-${s.id}">
-          <option>EFECTIVO</option>
-          <option>TARJETA FISER</option>
-          <option>TRANSFERENCIA SANTANDER</option>
-          <option>MERCADO PAGO FISER</option>
-          <option>MERCADO PAGO LAUREANO</option>
-          <option>UALA CARLA</option>
-          <option>LEMON LAUREANO</option>
-          <option>CUENTA CORRIENTE</option>
-        </select>
-        <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
-        <div id="msg-${s.id}"></div>
-      </div>
-    `;
-  }).join('');
-
+function pantallaRetiro() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>💰 Retiro</h1>
-      <div class="sub">Sobres listos para entregar</div>
-      ${filas}
+      <div class="sub">Buscá cualquier sobre activo para entregarlo — no hace falta que haya pasado por Taller/Regreso</div>
+      <input type="text" id="rt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresListosParaRetiro()" autocomplete="off">
+      <div id="rt-resultado"></div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="#" onclick="mostrarTodosLosListos(); return false;" style="font-size:13px; color:#8a8378;">Ver todos los sobres pendientes</a>
+      </div>
+      <div id="rt-todos"></div>
     </div>
   `);
+  document.getElementById('rt-buscar').focus();
 }
 window.pantallaRetiro = pantallaRetiro;
+
+function filaRetiro(s, pagadoPorSobre) {
+  const total = Number(s.precio_total) || 0;
+  const pagado = pagadoPorSobre[s.id] || 0;
+  const saldo = Math.max(0, total - pagado);
+  return `
+    <div class="lista-sobre" id="fila-${s.id}">
+      <div class="nro">#${s.numero}</div>
+      <div class="cli">${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
+      <div class="desc">${s.descripcion || ''}</div>
+      <div style="font-weight:700; margin-bottom:8px;">Saldo: $${saldo.toLocaleString('es-AR')}</div>
+      <select id="medio-${s.id}">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+        <option>CUENTA CORRIENTE</option>
+      </select>
+      <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
+      <div id="msg-${s.id}"></div>
+    </div>
+  `;
+}
+
+async function pagadoPorSobres(ids) {
+  if (!ids || ids.length === 0) return {};
+  const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', ids).eq('ingresa_egresa', 'INGRESA');
+  const mapa = {};
+  (pagos || []).forEach(p => { mapa[p.sobre_id] = (mapa[p.sobre_id] || 0) + Number(p.monto); });
+  return mapa;
+}
+
+let _timeoutBuscarRetiro = null;
+
+function buscarSobresListosParaRetiro() {
+  clearTimeout(_timeoutBuscarRetiro);
+  const termino = document.getElementById('rt-buscar').value.trim();
+  const resBox = document.getElementById('rt-resultado');
+  document.getElementById('rt-todos').innerHTML = '';
+  if (termino.length < 2) { resBox.innerHTML = ''; return; }
+
+  _timeoutBuscarRetiro = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+    let consulta = sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
+      .is('fecha_salida', null).limit(8);
+    const { data: porNumero } = await consulta.ilike('numero', '%' + termino + '%');
+
+    let porCliente = [];
+    if (isNaN(termino)) {
+      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      if (clientesMatch && clientesMatch.length > 0) {
+        const ids = clientesMatch.map(c => c.id);
+        const { data } = await sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
+          .is('fecha_salida', null).in('cliente_id', ids).limit(8);
+        porCliente = data || [];
+      }
+    }
+
+    const combinados = [...(porNumero || []), ...porCliente];
+    const vistos = new Set();
+    const sobres = combinados.filter(s => vistos.has(s.id) ? false : (vistos.add(s.id), true));
+
+    if (sobres.length === 0) { resBox.innerHTML = `<div class="vacio">Sin resultados</div>`; return; }
+
+    const pagadoPorSobre = await pagadoPorSobres(sobres.map(s => s.id));
+    resBox.innerHTML = sobres.map(s => filaRetiro(s, pagadoPorSobre)).join('');
+  }, 250);
+}
+window.buscarSobresListosParaRetiro = buscarSobresListosParaRetiro;
+
+async function mostrarTodosLosListos() {
+  const box = document.getElementById('rt-todos');
+  box.innerHTML = `<div class="msg">Cargando...</div>`;
+
+  const { data: sobres, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
+    .is('fecha_salida', null)
+    .order('created_at');
+
+  if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (sobres.length === 0) { box.innerHTML = `<div class="vacio">No hay sobres pendientes de retirar 🎉</div>`; return; }
+
+  const pagadoPorSobre = await pagadoPorSobres(sobres.map(s => s.id));
+  box.innerHTML = sobres.map(s => filaRetiro(s, pagadoPorSobre)).join('');
+}
+window.mostrarTodosLosListos = mostrarTodosLosListos;
 
 async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreCliente, telefonoCliente) {
   const msgBox = document.getElementById('msg-' + sobreId);
@@ -968,48 +1626,53 @@ function pantallaCuentaCorriente() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Cuenta Corriente</h1>
-      <div class="sub">Buscar un cliente mayorista/taller</div>
+      <div class="sub">Empezá a escribir y elegí de la lista — así nunca cae en la cuenta de otro cliente</div>
       <label>Nombre del cliente</label>
-      <input type="text" id="cc-buscar" placeholder="Ej: Zipiur">
-      <button class="btn btn-verde" onclick="buscarClienteCC()">Buscar</button>
+      <input type="text" id="cc-buscar" placeholder="Ej: Zipiur" oninput="buscarClienteCC()" autocomplete="off">
       <div id="cc-resultado"></div>
     </div>
   `);
+  document.getElementById('cc-buscar').focus();
 }
 window.pantallaCuentaCorriente = pantallaCuentaCorriente;
 
-async function buscarClienteCC() {
+let _timeoutBusquedaCC = null;
+
+function buscarClienteCC() {
+  clearTimeout(_timeoutBusquedaCC);
   const nombre = document.getElementById('cc-buscar').value.trim();
   const resBox = document.getElementById('cc-resultado');
+
   if (!nombre) { resBox.innerHTML = ''; return; }
-  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+  if (nombre.length < 2) { resBox.innerHTML = ''; return; }
 
-  const { data, error } = await sb
-    .from('clientes')
-    .select('id, nombre, tipo_cliente')
-    .ilike('nombre', '%' + nombre + '%')
-    .limit(10);
+  // Pequeña espera para no disparar una búsqueda por cada tecla
+  _timeoutBusquedaCC = setTimeout(async () => {
+    resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
-  if (error) {
-    resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
-    return;
-  }
-  if (data.length === 0) {
-    resBox.innerHTML = `<div class="vacio">No se encontró ningún cliente con ese nombre.</div>`;
-    return;
-  }
-  if (data.length === 1) {
-    verCuentaCliente(data[0].id, data[0].nombre);
-    return;
-  }
+    const { data, error } = await sb
+      .from('clientes')
+      .select('id, nombre, tipo_cliente')
+      .ilike('nombre', '%' + nombre + '%')
+      .order('nombre')
+      .limit(10);
 
-  resBox.innerHTML = data.map(c => `
-    <div class="lista-sobre">
-      <div class="nro">${c.nombre}</div>
-      <div class="cli">${c.tipo_cliente}</div>
-      <button class="btn btn-outline" onclick="verCuentaCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">Ver cuenta</button>
-    </div>
-  `).join('');
+    if (error) {
+      resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`;
+      return;
+    }
+    if (data.length === 0) {
+      resBox.innerHTML = `<div class="vacio">Ningún cliente coincide con "${nombre}"</div>`;
+      return;
+    }
+
+    resBox.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer;" onclick="verCuentaCliente('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">
+        <div class="nro">${c.nombre}</div>
+        <div class="cli">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
 }
 window.buscarClienteCC = buscarClienteCC;
 
@@ -1144,14 +1807,13 @@ function pantallaBuscarSobre() {
       <input type="text" id="bs-numero" placeholder="Ej: 4801">
       <button class="btn btn-verde" onclick="buscarSobreDetalle()">Buscar</button>
       <div id="bs-resultado"></div>
-    </div>
-    <div class="card">
-      <h1>📋 Todos los sobres activos</h1>
-      <div class="sub">Sin retirar todavía, sea cual sea la etapa</div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="#" onclick="cargarTodosLosSobres(); return false;" style="font-size:13px; color:#8a8378;">📋 Ver todos los sobres activos</a>
+      </div>
       <div id="bs-todos-lista"></div>
     </div>
   `);
-  cargarTodosLosSobres();
 }
 window.pantallaBuscarSobre = pantallaBuscarSobre;
 
@@ -1194,7 +1856,7 @@ async function buscarSobreDetalle() {
   const { data: s, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, clientes(nombre, telefono)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) {
@@ -1431,7 +2093,7 @@ async function buscarBoletaDetalle() {
   const { data: boleta, error } = await sb
     .from('boletas')
     .select('id, numero, total, telefono, estado, clientes(id, nombre, telefono)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -1561,23 +2223,8 @@ function fechaCortaAR(fechaISO) {
 }
 window.fechaCortaAR = fechaCortaAR;
 
-function pantallaCajaDelDia() {
-  const hoy = fechaHoyISO();
-  render(`
-    ${pintarUsuarioActual()}
-    <div class="card">
-      <h1>Caja del día</h1>
-      <label>Fecha</label>
-      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
-      <div id="cd-resultado"></div>
-    </div>
-  `);
-  cargarCajaDelDia();
-}
-window.pantallaCajaDelDia = pantallaCajaDelDia;
-
-function renderFilasMovimientos(movimientos) {
-  if (movimientos.length === 0) {
+function renderFilasMovimientosCD(movimientos) {
+  if (!movimientos || movimientos.length === 0) {
     return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
   }
   const filasMovimientos = movimientos.map(m => `
@@ -1602,7 +2249,7 @@ function renderFilasMovimientos(movimientos) {
     </tr>
   `).join('');
 
-  const tablaCaja = `
+  const tabla = `
     <div class="tabla-caja">
       <table>
         <thead>
@@ -1612,12 +2259,12 @@ function renderFilasMovimientos(movimientos) {
       </table>
     </div>
   `;
-
-  return { lista: filasMovimientos, tabla: tablaCaja };
+  return { lista: filasMovimientos, tabla };
 }
 
 function filtrarCajaDelDia() {
-  const q = (document.getElementById('cd-buscar').value || '').trim().toLowerCase();
+  const inputEl = document.getElementById('cd-buscar');
+  const q = (inputEl ? inputEl.value : '').trim().toLowerCase();
   const todos = window._movimientosCajaActual || [];
   const filtrados = q === '' ? todos : todos.filter(m => {
     const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
@@ -1625,12 +2272,80 @@ function filtrarCajaDelDia() {
     const desc = (m.descripcion || '').toLowerCase();
     return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
   });
-  const { lista, tabla } = renderFilasMovimientos(filtrados);
-  document.getElementById('cd-contador').textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
-  document.getElementById('cd-lista-movimientos').innerHTML = lista;
-  document.getElementById('cd-tabla-movimientos').innerHTML = tabla;
+  const { lista, tabla } = renderFilasMovimientosCD(filtrados);
+  const contador = document.getElementById('cd-contador');
+  if (contador) contador.textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
+  const listaBox = document.getElementById('cd-lista-movimientos');
+  if (listaBox) listaBox.innerHTML = lista;
+  const tablaBox = document.getElementById('cd-tabla-movimientos');
+  if (tablaBox) tablaBox.innerHTML = tabla;
 }
 window.filtrarCajaDelDia = filtrarCajaDelDia;
+
+function pantallaCajaDelDia() {
+  const hoy = fechaHoyISO();
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>Caja del día</h1>
+      <label>Fecha</label>
+      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
+
+      <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
+      </div>
+
+      <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
+        <div style="font-weight:700; margin-bottom:8px;">☀️ Apertura del día</div>
+        <label>¿Con cuánto efectivo arranca el día?</label>
+        <input type="number" id="cd-apertura-monto" placeholder="0">
+        <button class="btn btn-oro" style="margin-top:10px;" onclick="guardarAperturaCaja()">Guardar apertura</button>
+        <div id="cd-apertura-msg"></div>
+      </div>
+
+      <div id="cd-resultado"></div>
+    </div>
+  `);
+  cargarCajaDelDia();
+}
+window.pantallaCajaDelDia = pantallaCajaDelDia;
+
+function toggleAperturaCaja() {
+  const box = document.getElementById('cd-apertura-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+// Guarda cuánto efectivo había en el cajón al arrancar el día. Se registra como un movimiento
+// especial (código 100, igual que en el sistema viejo de Sheets) para que se sume solo al
+// "Efectivo en caja" del día, sin mezclarse con las ventas reales del día.
+async function guardarAperturaCaja() {
+  const fecha = document.getElementById('cd-fecha').value;
+  const monto = parseFloat(document.getElementById('cd-apertura-monto').value);
+  const msgBox = document.getElementById('cd-apertura-msg');
+  if (isNaN(monto) || monto < 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto válido.</div>`; return; }
+
+  // Si ya había una apertura cargada ese día, la reemplaza (borra la vieja, guarda la nueva)
+  await sb.from('movimientos_caja').delete().eq('fecha', fecha).eq('codigo', 100);
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    fecha: fecha,
+    vendedora: usuarioActual.nombre,
+    descripcion: 'Apertura de caja',
+    ingresa_egresa: 'INGRESA',
+    medio_pago: 'EFECTIVO',
+    monto: monto,
+    codigo: 100
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Apertura guardada: $${monto.toLocaleString('es-AR')}</div>`;
+  document.getElementById('cd-apertura-box').style.display = 'none';
+  cargarCajaDelDia();
+}
+window.toggleAperturaCaja = toggleAperturaCaja;
+window.guardarAperturaCaja = guardarAperturaCaja;
 
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
@@ -1653,72 +2368,77 @@ async function cargarCajaDelDia() {
     return;
   }
 
-  let totalIngresa = 0, totalEgresa = 0;
+  let totalIngresa = 0, totalEgresa = 0, totalRetiros = 0, apertura = 0;
   const porMedioIngresa = {};
   const porMedioEgresa = {};
   movimientos.forEach(m => {
     const monto = Number(m.monto) || 0;
     const medio = m.medio_pago || '(sin medio)';
+    if (Number(m.codigo) === 100) {
+      apertura += monto;
+      return; // la apertura no cuenta como "venta del día", solo suma al efectivo en caja
+    }
     if (m.ingresa_egresa === 'INGRESA') {
       totalIngresa += monto;
       porMedioIngresa[medio] = (porMedioIngresa[medio] || 0) + monto;
     } else {
       totalEgresa += monto;
       porMedioEgresa[medio] = (porMedioEgresa[medio] || 0) + monto;
+      if (Number(m.codigo) === 550) totalRetiros += monto;
     }
   });
 
-  const efectivoNetoHoy = (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
+  const efectivoNetoHoy = apertura + (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
 
-  const iconosMedio = {
-    EFECTIVO: '💵', TARJETA: '💳', MERCADOPAGO: '📱', TRANSFERENCIA: '🏦',
-    UALA: '🟣', 'CUENTA CORRIENTE': '📒'
-  };
   const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
   const filasMedios = todosLosMedios.length === 0
     ? ''
     : todosLosMedios.map(medio => {
         const neto = (porMedioIngresa[medio] || 0) - (porMedioEgresa[medio] || 0);
         return `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0ead9;">
-          <span>${iconosMedio[medio] || '💰'} ${medio}</span><strong style="color:#2f6d1f;">$${neto.toLocaleString('es-AR')}</strong>
+        <div style="display:flex; justify-content:space-between; padding:4px 0;">
+          <span>${medio}</span><strong>$${neto.toLocaleString('es-AR')}</strong>
         </div>
       `;
       }).join('');
 
   window._movimientosCajaActual = movimientos;
+  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos);
+
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
 
-  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientos(movimientos);
-
   resBox.innerHTML = `
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <div style="flex:1; background:linear-gradient(135deg,#dcefc9,#c8e6ac); border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#3b5c1f; font-weight:600;">💵 EFECTIVO</div>
-        <div style="font-size:12.5px; font-weight:800; color:#1f4a0a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Total de ingresos hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#2f6d1f;">$${totalIngresa.toLocaleString('es-AR')}</div>
       </div>
-      <div style="flex:1; background:#e3f2e1; border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#2f6d1f; font-weight:600;">⬆️ ENTRÓ</div>
-        <div style="font-size:12.5px; font-weight:800; color:#1f4a0a;">$${totalIngresa.toLocaleString('es-AR')}</div>
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Total de egresos hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalEgresa.toLocaleString('es-AR')}</div>
       </div>
-      <div style="flex:1; background:#fbe6df; border-radius:10px; padding:6px; text-align:center;">
-        <div style="font-size:9.5px; color:#c1401f; font-weight:600;">⬇️ SALIÓ</div>
-        <div style="font-size:12.5px; font-weight:800; color:#993c1d;">$${totalEgresa.toLocaleString('es-AR')}</div>
+      <div class="lista-sobre" style="text-align:center; padding:12px;">
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Retiros de efectivo hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalRetiros.toLocaleString('es-AR')}</div>
+      </div>
+      <div style="background:#1a1a1a; border-radius:14px; padding:12px; text-align:center;">
+        <div style="font-size:11px; color:#d4af6a; margin-bottom:4px;">Efectivo en caja hoy</div>
+        <div style="font-size:19px; font-weight:700; color:#d4af6a;">$${efectivoNetoHoy.toLocaleString('es-AR')}</div>
       </div>
     </div>
 
-    <details style="margin-bottom:10px;">
-      <summary style="cursor:pointer; font-size:12.5px; color:#6b6459; font-weight:600; padding:4px 0;">🎨 Ver por medio de pago</summary>
-      <div class="lista-sobre" style="background:linear-gradient(135deg,#fffefb,#fdf8ec); margin-top:6px;">${filasMedios}</div>
-    </details>
-
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-      <span style="font-size:16px;">🔎</span>
-      <input type="text" id="cd-buscar" placeholder="Buscar por nombre de cliente..." oninput="filtrarCajaDelDia()" style="flex:1; padding:9px 12px; font-size:14px;">
+    <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:8px;">
+      ${apertura > 0 ? `Apertura del día: <strong>$${apertura.toLocaleString('es-AR')}</strong> · ` : ''}Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
     </div>
 
-    <label id="cd-contador" style="margin-top:4px;">Movimientos (${movimientos.length})</label>
+    <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
+    <div class="lista-sobre">${filasMedios}</div>
+
+    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
+    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
+
+    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
     <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
     <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
@@ -1850,7 +2570,7 @@ async function buscarSobreParaPagoParcial() {
   const { data: s, error } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_salida, clientes(nombre)')
-    .eq('numero', numero)
+    .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
   if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -2313,7 +3033,7 @@ window.marcarGastoFijoPagado = marcarGastoFijoPagado;
 // a dejar solo: pantallaLogin();
 // ============================================================
 usuarioActual = { id: null, nombre: 'Prueba', rol: 'ADMIN' };
-pantallaNuevaEntrada();
+pantallaCajaDelDia();
 </script>
 </body>
 </html>
