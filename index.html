@@ -1023,6 +1023,11 @@ async function guardarNuevaEntrada() {
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
+  // IMPORTANTE: todo el guardado va envuelto en try/catch. Si se corta la conexión a mitad de
+  // camino (wifi débil, etc.), esto lo agarra y avisa bien claro en vez de dejar la pantalla en
+  // un estado ambiguo donde no se sabe si se guardó o no.
+  try {
+
   // 1) Buscar si el cliente ya existe (por nombre, sin importar mayúsc/minúsc)
   let clienteId;
   const { data: clienteExistente } = await sb
@@ -1074,6 +1079,15 @@ async function guardarNuevaEntrada() {
     return;
   }
 
+  // 2.1) Verificación extra: confirmamos que el sobre quedó de verdad en la base antes de decir
+  // que se guardó. Esto agarra el caso raro de que la conexión se corte justo después de que
+  // Supabase confirme el guardado pero antes de que la respuesta llegue completa al navegador.
+  const { data: chequeo } = await sb.from('sobres').select('id').eq('id', sobreNuevo.id).maybeSingle();
+  if (!chequeo) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ No se pudo confirmar el guardado (puede haberse cortado la conexión). Probá buscar el sobre ${numeroSobre} antes de cargarlo de nuevo.</div>`;
+    return;
+  }
+
   // 3) Registrar el movimiento de caja.
   //    - Si es CUENTA CORRIENTE: se registra con el precio total como monto (aunque no se haya
   //      cobrado nada en el momento) — así queda la deuda reflejada en Caja del Día.
@@ -1120,6 +1134,10 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
   _productoSeleccionado = null;
+
+  } catch (err) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Se cortó la conexión mientras guardaba. Puede que NO se haya guardado — buscá el sobre ${numeroSobre} antes de cargarlo de nuevo, para no duplicarlo. (${err.message || err})</div>`;
+  }
 }
 window.guardarNuevaEntrada = guardarNuevaEntrada;
 
