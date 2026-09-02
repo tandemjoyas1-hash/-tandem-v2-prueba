@@ -2222,9 +2222,18 @@ function pantallaCajaDelDia() {
       <label>Fecha</label>
       <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
 
-      <div style="display:flex; gap:6px; margin-top:10px; justify-content:flex-end;">
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaEgreso()">➖ Egreso</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 10px; font-size:11px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaPagoParcial()">💵 Parcial</button>
+      <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
+      </div>
+
+      <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
+        <div style="font-weight:700; margin-bottom:8px;">☀️ Apertura del día</div>
+        <label>¿Con cuánto efectivo arranca el día?</label>
+        <input type="number" id="cd-apertura-monto" placeholder="0">
+        <button class="btn btn-oro" style="margin-top:10px;" onclick="guardarAperturaCaja()">Guardar apertura</button>
+        <div id="cd-apertura-msg"></div>
       </div>
 
       <div id="cd-resultado"></div>
@@ -2233,6 +2242,41 @@ function pantallaCajaDelDia() {
   cargarCajaDelDia();
 }
 window.pantallaCajaDelDia = pantallaCajaDelDia;
+
+function toggleAperturaCaja() {
+  const box = document.getElementById('cd-apertura-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+// Guarda cuánto efectivo había en el cajón al arrancar el día. Se registra como un movimiento
+// especial (código 100, igual que en el sistema viejo de Sheets) para que se sume solo al
+// "Efectivo en caja" del día, sin mezclarse con las ventas reales del día.
+async function guardarAperturaCaja() {
+  const fecha = document.getElementById('cd-fecha').value;
+  const monto = parseFloat(document.getElementById('cd-apertura-monto').value);
+  const msgBox = document.getElementById('cd-apertura-msg');
+  if (isNaN(monto) || monto < 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto válido.</div>`; return; }
+
+  // Si ya había una apertura cargada ese día, la reemplaza (borra la vieja, guarda la nueva)
+  await sb.from('movimientos_caja').delete().eq('fecha', fecha).eq('codigo', 100);
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    fecha: fecha,
+    vendedora: usuarioActual.nombre,
+    descripcion: 'Apertura de caja',
+    ingresa_egresa: 'INGRESA',
+    medio_pago: 'EFECTIVO',
+    monto: monto,
+    codigo: 100
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Apertura guardada: $${monto.toLocaleString('es-AR')}</div>`;
+  document.getElementById('cd-apertura-box').style.display = 'none';
+  cargarCajaDelDia();
+}
+window.toggleAperturaCaja = toggleAperturaCaja;
+window.guardarAperturaCaja = guardarAperturaCaja;
 
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
@@ -2255,12 +2299,16 @@ async function cargarCajaDelDia() {
     return;
   }
 
-  let totalIngresa = 0, totalEgresa = 0, totalRetiros = 0;
+  let totalIngresa = 0, totalEgresa = 0, totalRetiros = 0, apertura = 0;
   const porMedioIngresa = {};
   const porMedioEgresa = {};
   movimientos.forEach(m => {
     const monto = Number(m.monto) || 0;
     const medio = m.medio_pago || '(sin medio)';
+    if (Number(m.codigo) === 100) {
+      apertura += monto;
+      return; // la apertura no cuenta como "venta del día", solo suma al efectivo en caja
+    }
     if (m.ingresa_egresa === 'INGRESA') {
       totalIngresa += monto;
       porMedioIngresa[medio] = (porMedioIngresa[medio] || 0) + monto;
@@ -2271,7 +2319,7 @@ async function cargarCajaDelDia() {
     }
   });
 
-  const efectivoNetoHoy = (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
+  const efectivoNetoHoy = apertura + (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
 
   const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
   const filasMedios = todosLosMedios.length === 0
@@ -2342,7 +2390,7 @@ async function cargarCajaDelDia() {
     </div>
 
     <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:8px;">
-      Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
+      ${apertura > 0 ? `Apertura del día: <strong>$${apertura.toLocaleString('es-AR')}</strong> · ` : ''}Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
     </div>
 
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
