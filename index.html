@@ -198,7 +198,6 @@ function pintarUsuarioActual() {
     <div class="nav">
       <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
-      <button onclick="pantallaVentaDirecta()"><span class="nav-icon">🏷️</span><span class="nav-label">VENTA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
       <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
@@ -863,7 +862,7 @@ async function buscarEnCatalogo(categoriaExacta) {
       const menor = mayor * 1.67;
 
       const boton = (etiqueta, precio) => `
-        <button type="button" class="btn btn-outline" style="margin-top:5px; padding:7px 4px; font-size:13.2px;"
+        <button type="button" class="btn btn-outline" style="margin-top:5px; padding:7px 4px; font-size:12px;"
           onclick='elegirProductoCatalogo(${JSON.stringify(p.cod)}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>
           ${etiqueta}: $${Math.round(precio).toLocaleString('es-AR')}
         </button>
@@ -880,8 +879,8 @@ async function buscarEnCatalogo(categoriaExacta) {
             </label>
           ` : ''}
           ${foto}
-          <div class="nro" style="font-size:14.3px; line-height:1.25; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. <span style="font-weight:600;">${p.cod}</span><br>M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+          <div class="nro" style="font-size:13px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
+          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}<br>M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
@@ -1382,8 +1381,17 @@ async function buscarSobreParaListo() {
         </div>
       ` : ''}
       <label style="font-weight:400; display:flex; align-items:center; gap:6px;">
-        <input type="checkbox" id="retorno-${s.id}" style="width:auto;"> Necesita volver a taller (no está terminado)
+        <input type="checkbox" id="retorno-${s.id}" style="width:auto;" onchange="document.getElementById('deriva-${s.id}').disabled = this.checked; if(this.checked) document.getElementById('deriva-${s.id}').value='';"> Necesita volver a taller (no está terminado)
       </label>
+      <label>¿Pasa a otro lado? (dejalo en blanco si no)</label>
+      <select id="deriva-${s.id}">
+        <option value="">— No, sigue el camino normal —</option>
+        <option value="DANIEL">↗ Pasa a Daniel</option>
+        <option value="PACHULA">↗ Pasa a Pachula</option>
+        <option value="DISEÑO">🎨 Pasa a Diseño</option>
+        <option value="GRABADO">✏️ Pasa a Grabado</option>
+        <option value="LAUREANO">🧪 Pasa a Laureano</option>
+      </select>
       <button class="btn btn-verde" onclick="marcarListo('${s.id}', '${s.numero}')">Marcar listo</button>
       <div id="msg-${s.id}"></div>
     </div>
@@ -1400,6 +1408,8 @@ window.toggleItems = toggleItems;
 async function marcarListo(sobreId, numero) {
   const msgBox = document.getElementById('msg-' + sobreId);
   const retorno = document.getElementById('retorno-' + sobreId).checked;
+  const derivaInput = document.getElementById('deriva-' + sobreId);
+  const deriva = derivaInput ? derivaInput.value : '';
   const precioInput = document.getElementById('precio-' + sobreId);
   const itemsInput = document.getElementById('items-' + sobreId);
 
@@ -1412,6 +1422,21 @@ async function marcarListo(sobreId, numero) {
       detalle: 'Vuelve con el mismo orfebre (controlado por ' + usuarioActual.nombre + ')'
     });
     msgBox.innerHTML = `<div class="msg msg-ok">✅ Registrado, vuelve a taller.</div>`;
+    return;
+  }
+
+  // Deriva a otro orfebre/etapa (Daniel, Pachula, Diseño, Grabado o Laureano): no queda "listo"
+  // todavía, solo cambia quién lo tiene ahora. Sigue en la cola de "Regreso" hasta que ese
+  // orfebre lo termine y alguien lo controle de nuevo.
+  if (deriva) {
+    const { error } = await sb.from('sobres').update({ orfebre: deriva }).eq('id', sobreId);
+    if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobreId,
+      evento: 'REASIGNADO',
+      detalle: 'Pasó a ' + deriva + ' (controlado por ' + usuarioActual.nombre + ')'
+    });
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} pasó a ${deriva}.</div>`;
     return;
   }
 
@@ -1708,7 +1733,7 @@ async function verCuentaCliente(clienteId, nombreCliente) {
     : sobres.map(s => `
         <div class="lista-sobre">
           <div class="nro">#${s.numero} — $${(Number(s.precio_total) || 0).toLocaleString('es-AR')}</div>
-          <div class="cli">${fechaCortaAR(s.fecha_entrada)}</div>
+          <div class="cli">${s.fecha_entrada ? new Date(s.fecha_entrada).toLocaleDateString('es-AR') : ''}</div>
           <div class="desc">${s.descripcion || ''}</div>
         </div>
       `).join('');
@@ -1718,7 +1743,7 @@ async function verCuentaCliente(clienteId, nombreCliente) {
     : pagos.map(p => `
         <div class="lista-sobre">
           <div class="nro">$${Number(p.monto).toLocaleString('es-AR')}</div>
-          <div class="cli">${fechaCortaAR(p.fecha)}</div>
+          <div class="cli">${new Date(p.fecha).toLocaleDateString('es-AR')}</div>
           <div class="desc">${p.descripcion || ''}</div>
         </div>
       `).join('');
@@ -1904,7 +1929,7 @@ async function buscarSobreDetalle() {
     : movimientos.map(m => `
         <div class="lista-sobre">
           <div class="nro">$${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
-          <div class="cli">${fechaCortaAR(m.fecha)}</div>
+          <div class="cli">${new Date(m.fecha).toLocaleDateString('es-AR')}</div>
           <div class="desc">${m.descripcion || ''}</div>
         </div>
       `).join('');
@@ -2214,75 +2239,6 @@ function fechaHoyISO() {
   return local.toISOString().slice(0, 10);
 }
 
-// Convierte una fecha tipo "2026-09-02" (solo fecha, sin hora) a texto DD/MM/AAAA
-// sin pasar por new Date(), que la interpreta en UTC y puede mostrar el día anterior.
-function fechaCortaAR(fechaISO) {
-  if (!fechaISO) return '';
-  const [anio, mes, dia] = String(fechaISO).slice(0, 10).split('-');
-  if (!anio || !mes || !dia) return '';
-  return `${dia}/${mes}/${anio}`;
-}
-window.fechaCortaAR = fechaCortaAR;
-
-function renderFilasMovimientosCD(movimientos) {
-  if (!movimientos || movimientos.length === 0) {
-    return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
-  }
-  const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}</div>
-    </div>
-  `).join('');
-
-  const filasTabla = movimientos.map(m => `
-    <tr>
-      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
-      <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
-      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
-      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
-        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
-      </td>
-    </tr>
-  `).join('');
-
-  const tabla = `
-    <div class="tabla-caja">
-      <table>
-        <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
-        </thead>
-        <tbody>${filasTabla}</tbody>
-      </table>
-    </div>
-  `;
-  return { lista: filasMovimientos, tabla };
-}
-
-function filtrarCajaDelDia() {
-  const inputEl = document.getElementById('cd-buscar');
-  const q = (inputEl ? inputEl.value : '').trim().toLowerCase();
-  const todos = window._movimientosCajaActual || [];
-  const filtrados = q === '' ? todos : todos.filter(m => {
-    const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
-    const vendedora = (m.vendedora || '').toLowerCase();
-    const desc = (m.descripcion || '').toLowerCase();
-    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
-  });
-  const { lista, tabla } = renderFilasMovimientosCD(filtrados);
-  const contador = document.getElementById('cd-contador');
-  if (contador) contador.textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
-  const listaBox = document.getElementById('cd-lista-movimientos');
-  if (listaBox) listaBox.innerHTML = lista;
-  const tablaBox = document.getElementById('cd-tabla-movimientos');
-  if (tablaBox) tablaBox.innerHTML = tabla;
-}
-window.filtrarCajaDelDia = filtrarCajaDelDia;
-
 function pantallaCajaDelDia() {
   const hoy = fechaHoyISO();
   render(`
@@ -2403,8 +2359,38 @@ async function cargarCajaDelDia() {
       `;
       }).join('');
 
-  window._movimientosCajaActual = movimientos;
-  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos);
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre">
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  const filasTabla = movimientos.map(m => `
+    <tr>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tablaCaja = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
 
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
@@ -2436,12 +2422,9 @@ async function cargarCajaDelDia() {
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
     <div class="lista-sobre">${filasMedios}</div>
 
-    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
-    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
-
-    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
-    <div id="cd-tabla-movimientos">${tablaCaja}</div>
+    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja">${filasMovimientos}</div>
+    ${tablaCaja}
 
     <div style="text-align:center; margin-top:20px;">
       <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
@@ -3024,139 +3007,6 @@ async function marcarGastoFijoPagado(gastoId, nombre) {
   cargarGastosFijos();
 }
 window.marcarGastoFijoPagado = marcarGastoFijoPagado;
-
-// ============================================================
-// PANTALLA: Venta Directa — venta chica sin sobre (ej: pila, cadenita suelta)
-// ============================================================
-function pantallaVentaDirecta() {
-  render(`
-    ${pintarUsuarioActual()}
-    <div class="card">
-      <h1>🏷️ Venta directa</h1>
-      <div class="sub">Para lo que se vende y se lleva en el momento, sin sobre (ej: pila, arreglo chico al toque)</div>
-
-      <label>Cliente (opcional)</label>
-      <input type="text" id="vd-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnVentaDirecta()" autocomplete="off">
-      <div id="vd-cliente-sugerencias"></div>
-
-      <label>Descripción</label>
-      <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
-
-      <label>Tipo de producto (opcional, para los reportes)</label>
-      <select id="vd-tipo-producto">
-        <option value="">— Sin especificar —</option>
-      </select>
-
-      <label>Monto</label>
-      <input type="number" id="vd-monto" placeholder="0">
-
-      <label>Medio de pago</label>
-      <select id="vd-medio-pago">
-        <option>EFECTIVO</option>
-        <option>TARJETA FISER</option>
-        <option>TRANSFERENCIA SANTANDER</option>
-        <option>MERCADO PAGO FISER</option>
-        <option>MERCADO PAGO LAUREANO</option>
-        <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
-      </select>
-
-      <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
-      <div id="vd-msg"></div>
-    </div>
-  `);
-  document.getElementById('vd-descripcion').focus();
-  cargarTiposProductoVentaDirecta();
-}
-window.pantallaVentaDirecta = pantallaVentaDirecta;
-
-let _timeoutBusquedaClienteVD = null;
-let _clienteIdVentaDirecta = null;
-
-function buscarClienteEnVentaDirecta() {
-  clearTimeout(_timeoutBusquedaClienteVD);
-  _clienteIdVentaDirecta = null;
-  const nombre = document.getElementById('vd-cliente').value.trim();
-  const box = document.getElementById('vd-cliente-sugerencias');
-  if (nombre.length < 2) { box.innerHTML = ''; return; }
-
-  _timeoutBusquedaClienteVD = setTimeout(async () => {
-    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(6);
-    if (!data || data.length === 0) { box.innerHTML = ''; return; }
-    box.innerHTML = data.map(c => `
-      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteVentaDirecta(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
-        <div class="nro" style="font-size:14px;">${c.nombre}</div>
-        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
-      </div>
-    `).join('');
-  }, 250);
-}
-window.buscarClienteEnVentaDirecta = buscarClienteEnVentaDirecta;
-
-function elegirClienteVentaDirecta(id, nombre) {
-  _clienteIdVentaDirecta = id;
-  document.getElementById('vd-cliente').value = nombre;
-  document.getElementById('vd-cliente-sugerencias').innerHTML = '';
-}
-window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
-
-async function cargarTiposProductoVentaDirecta() {
-  const select = document.getElementById('vd-tipo-producto');
-  const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
-  if (!data) return;
-  select.innerHTML = '<option value="">— Sin especificar —</option>' +
-    data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
-}
-window.cargarTiposProductoVentaDirecta = cargarTiposProductoVentaDirecta;
-
-async function guardarVentaDirecta() {
-  const msgBox = document.getElementById('vd-msg');
-  const descripcion = document.getElementById('vd-descripcion').value.trim();
-  const monto = parseFloat(document.getElementById('vd-monto').value) || 0;
-  const medioPago = document.getElementById('vd-medio-pago').value;
-  const nombreCliente = document.getElementById('vd-cliente').value.trim();
-
-  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
-  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
-
-  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
-
-  // Si escribió un nombre pero no lo eligió de la lista, se crea como cliente nuevo (igual que en Entrada)
-  let clienteId = _clienteIdVentaDirecta;
-  if (!clienteId && nombreCliente) {
-    const { data: existente } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
-    if (existente) {
-      clienteId = existente.id;
-    } else {
-      const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: 'CONSUMIDOR_FINAL' }).select('id').single();
-      if (errCliente) { msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`; return; }
-      clienteId = nuevo.id;
-    }
-  }
-
-  const tipoProducto = document.getElementById('vd-tipo-producto').value;
-
-  const { error } = await sb.from('movimientos_caja').insert({
-    vendedora: usuarioActual.nombre,
-    descripcion: descripcion,
-    ingresa_egresa: 'INGRESA',
-    tipo_cliente: 'CONSUMIDOR_FINAL',
-    medio_pago: medioPago,
-    monto: monto,
-    canal: 'LOCAL',
-    cliente_id: clienteId,
-    codigo: tipoProducto ? parseInt(tipoProducto) : null
-  });
-
-  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
-
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Venta de $${monto.toLocaleString('es-AR')} registrada.</div>`;
-  document.getElementById('vd-cliente').value = '';
-  document.getElementById('vd-descripcion').value = '';
-  document.getElementById('vd-monto').value = '';
-  _clienteIdVentaDirecta = null;
-}
-window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
