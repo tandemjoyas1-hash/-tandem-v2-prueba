@@ -1075,11 +1075,12 @@ async function guardarNuevaEntrada() {
   }
 
   // 3) Registrar el movimiento de caja.
-  //    - Si es CUENTA CORRIENTE: SIEMPRE se registra, con el precio total como monto (aunque no
-  //      se haya cobrado nada en el momento) — así queda la deuda reflejada en Caja del Día.
-  //      Antes esto se saltaba si la seña era $0, y el sobre quedaba invisible en Caja del Día
-  //      aunque existiera bien en Sobres.
-  //    - Si es cualquier otro medio de pago: se registra solo si hay seña (sena > 0), como antes.
+  //    - Si es CUENTA CORRIENTE: se registra con el precio total como monto (aunque no se haya
+  //      cobrado nada en el momento) — así queda la deuda reflejada en Caja del Día.
+  //    - Para cualquier otro caso (incluso si sena = 0, ej: consumidor final que paga recién al
+  //      retirar): SIEMPRE se registra el movimiento igual, con el monto que corresponda (puede
+  //      ser $0). Así el sobre aparece en Caja del Día desde el momento de la entrada, y no recién
+  //      cuando el cliente viene a pagar y retirar.
   if (medioPago === 'CUENTA CORRIENTE' && total > 0) {
     await sb.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
@@ -1091,10 +1092,10 @@ async function guardarNuevaEntrada() {
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id
     });
-  } else if (sena > 0) {
+  } else {
     await sb.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
-      descripcion: 'seña sobre ' + numeroSobre,
+      descripcion: sena > 0 ? ('seña sobre ' + numeroSobre) : ('sobre ' + numeroSobre + ' - sin seña, paga al retirar'),
       ingresa_egresa: 'INGRESA',
       tipo_cliente: tipoCliente,
       medio_pago: medioPago,
