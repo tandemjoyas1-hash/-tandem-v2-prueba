@@ -198,6 +198,7 @@ function pintarUsuarioActual() {
     <div class="nav">
       <button onclick="pantallaCajaDelDia()"><span class="nav-icon">📅</span><span class="nav-label">CAJA</span></button>
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
+      <button onclick="pantallaVentaDirecta()"><span class="nav-icon">🏷️</span><span class="nav-label">VENTA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
       <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
@@ -3025,6 +3026,139 @@ async function marcarGastoFijoPagado(gastoId, nombre) {
   cargarGastosFijos();
 }
 window.marcarGastoFijoPagado = marcarGastoFijoPagado;
+
+// ============================================================
+// PANTALLA: Venta Directa — venta chica sin sobre (ej: pila, cadenita suelta)
+// ============================================================
+function pantallaVentaDirecta() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>🏷️ Venta directa</h1>
+      <div class="sub">Para lo que se vende y se lleva en el momento, sin sobre (ej: pila, arreglo chico al toque)</div>
+
+      <label>Cliente (opcional)</label>
+      <input type="text" id="vd-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnVentaDirecta()" autocomplete="off">
+      <div id="vd-cliente-sugerencias"></div>
+
+      <label>Descripción</label>
+      <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
+
+      <label>Tipo de producto (opcional, para los reportes)</label>
+      <select id="vd-tipo-producto">
+        <option value="">— Sin especificar —</option>
+      </select>
+
+      <label>Monto</label>
+      <input type="number" id="vd-monto" placeholder="0">
+
+      <label>Medio de pago</label>
+      <select id="vd-medio-pago">
+        <option>EFECTIVO</option>
+        <option>TARJETA FISER</option>
+        <option>TRANSFERENCIA SANTANDER</option>
+        <option>MERCADO PAGO FISER</option>
+        <option>MERCADO PAGO LAUREANO</option>
+        <option>UALA CARLA</option>
+        <option>LEMON LAUREANO</option>
+      </select>
+
+      <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
+      <div id="vd-msg"></div>
+    </div>
+  `);
+  document.getElementById('vd-descripcion').focus();
+  cargarTiposProductoVentaDirecta();
+}
+window.pantallaVentaDirecta = pantallaVentaDirecta;
+
+let _timeoutBusquedaClienteVD = null;
+let _clienteIdVentaDirecta = null;
+
+function buscarClienteEnVentaDirecta() {
+  clearTimeout(_timeoutBusquedaClienteVD);
+  _clienteIdVentaDirecta = null;
+  const nombre = document.getElementById('vd-cliente').value.trim();
+  const box = document.getElementById('vd-cliente-sugerencias');
+  if (nombre.length < 2) { box.innerHTML = ''; return; }
+
+  _timeoutBusquedaClienteVD = setTimeout(async () => {
+    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(6);
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteVentaDirecta(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
+        <div class="nro" style="font-size:14px;">${c.nombre}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarClienteEnVentaDirecta = buscarClienteEnVentaDirecta;
+
+function elegirClienteVentaDirecta(id, nombre) {
+  _clienteIdVentaDirecta = id;
+  document.getElementById('vd-cliente').value = nombre;
+  document.getElementById('vd-cliente-sugerencias').innerHTML = '';
+}
+window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
+
+async function cargarTiposProductoVentaDirecta() {
+  const select = document.getElementById('vd-tipo-producto');
+  const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
+  if (!data) return;
+  select.innerHTML = '<option value="">— Sin especificar —</option>' +
+    data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
+}
+window.cargarTiposProductoVentaDirecta = cargarTiposProductoVentaDirecta;
+
+async function guardarVentaDirecta() {
+  const msgBox = document.getElementById('vd-msg');
+  const descripcion = document.getElementById('vd-descripcion').value.trim();
+  const monto = parseFloat(document.getElementById('vd-monto').value) || 0;
+  const medioPago = document.getElementById('vd-medio-pago').value;
+  const nombreCliente = document.getElementById('vd-cliente').value.trim();
+
+  if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
+  if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  // Si escribió un nombre pero no lo eligió de la lista, se crea como cliente nuevo (igual que en Entrada)
+  let clienteId = _clienteIdVentaDirecta;
+  if (!clienteId && nombreCliente) {
+    const { data: existente } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    if (existente) {
+      clienteId = existente.id;
+    } else {
+      const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: 'CONSUMIDOR_FINAL' }).select('id').single();
+      if (errCliente) { msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`; return; }
+      clienteId = nuevo.id;
+    }
+  }
+
+  const tipoProducto = document.getElementById('vd-tipo-producto').value;
+
+  const { error } = await sb.from('movimientos_caja').insert({
+    vendedora: usuarioActual.nombre,
+    descripcion: descripcion,
+    ingresa_egresa: 'INGRESA',
+    tipo_cliente: 'CONSUMIDOR_FINAL',
+    medio_pago: medioPago,
+    monto: monto,
+    canal: 'LOCAL',
+    cliente_id: clienteId,
+    codigo: tipoProducto ? parseInt(tipoProducto) : null
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Venta de $${monto.toLocaleString('es-AR')} registrada.</div>`;
+  document.getElementById('vd-cliente').value = '';
+  document.getElementById('vd-descripcion').value = '';
+  document.getElementById('vd-monto').value = '';
+  _clienteIdVentaDirecta = null;
+}
+window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
