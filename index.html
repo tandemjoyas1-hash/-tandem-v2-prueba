@@ -3243,6 +3243,22 @@ function pantallaVentaDirecta() {
       <label>Cantidad</label>
       <input type="number" id="vd-cantidad" placeholder="1" value="1" min="1">
 
+      <label>Proveedor (opcional, si el producto se lo compramos a alguien — para saber a quién recomprar)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="vd-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="vd-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="vd-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="vd-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('vd')">Agregar proveedor</button>
+        <div id="vd-nuevo-proveedor-msg"></div>
+      </div>
+
       <label>Monto (total de toda la venta)</label>
       <input type="number" id="vd-monto" placeholder="0">
 
@@ -3263,6 +3279,7 @@ function pantallaVentaDirecta() {
   `);
   document.getElementById('vd-descripcion').focus();
   cargarTiposProducto('vd');
+  cargarProveedores('vd');
 }
 window.pantallaVentaDirecta = pantallaVentaDirecta;
 
@@ -3372,6 +3389,7 @@ async function guardarVentaDirecta() {
   }
 
   const tipoProducto = document.getElementById('vd-tipo-producto').value;
+  const proveedorId = document.getElementById('vd-proveedor').value || null;
 
   const { error } = await sb.from('movimientos_caja').insert({
     vendedora: usuarioActual.nombre,
@@ -3383,7 +3401,8 @@ async function guardarVentaDirecta() {
     cantidad: cantidad,
     canal: 'LOCAL',
     cliente_id: clienteId,
-    codigo: tipoProducto ? parseInt(tipoProducto) : null
+    codigo: tipoProducto ? parseInt(tipoProducto) : null,
+    proveedor_id: proveedorId
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -3394,6 +3413,7 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-monto').value = '';
   document.getElementById('vd-cantidad').value = '1';
   document.getElementById('vd-tipo-producto').value = '';
+  document.getElementById('vd-proveedor').value = '';
   
   _clienteIdVentaDirecta = null;
 }
