@@ -2649,6 +2649,24 @@ function pantallaChequeoDelDia() {
 }
 window.pantallaChequeoDelDia = pantallaChequeoDelDia;
 
+// Herramientas para comparar nombres de clientes y detectar posibles duplicados
+// (ej. "Zipiur" vs "Zipiur Joyas" vs "Zipiun Joyas" — mismo cliente cargado distinto).
+function normalizarNombreCliente(n) {
+  return (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+function distanciaLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
 async function cargarChequeoDelDia(fecha) {
   const box = document.getElementById('chq-resultado');
   const items = [];
@@ -2696,7 +2714,31 @@ async function cargarChequeoDelDia(fecha) {
       : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
   });
 
-  // 5) Totales del día, para que los tengas a mano
+  // 5) Clientes con nombres muy parecidos cargados como si fueran distintos
+  // (typos, mayúsculas/espacios, nombre corto vs largo tipo "Zipiur" / "Zipiur Joyas")
+  const { data: todosClientes } = await sb.from('clientes').select('id, nombre');
+  const listaClientes = (todosClientes || [])
+    .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
+    .filter(c => c.norm.length >= 4);
+  const parecidos = [];
+  for (let i = 0; i < listaClientes.length; i++) {
+    for (let j = i + 1; j < listaClientes.length; j++) {
+      const a = listaClientes[i], b = listaClientes[j];
+      let sospechoso = false;
+      if (a.norm === b.norm) sospechoso = true;
+      else if (a.norm.includes(b.norm) || b.norm.includes(a.norm)) sospechoso = true;
+      else if (Math.min(a.norm.length, b.norm.length) >= 5 && distanciaLevenshtein(a.norm, b.norm) <= 2) sospechoso = true;
+      if (sospechoso) parecidos.push(`"${a.nombre}" ↔ "${b.nombre}"`);
+    }
+  }
+  items.push({
+    ok: parecidos.length === 0,
+    texto: parecidos.length === 0
+      ? 'No hay clientes con nombres parecidos cargados como si fueran distintos.'
+      : `${parecidos.length} par(es) de clientes con nombres parecidos, revisá si son la misma persona: ${parecidos.join(' · ')}`
+  });
+
+  // 6) Totales del día, para que los tengas a mano
   const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
   const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
   const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
