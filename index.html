@@ -2405,6 +2405,7 @@ function pantallaCajaDelDia() {
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia()">✅ Chequeo del día</button>
       </div>
 
       <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
@@ -2626,6 +2627,101 @@ async function confirmarBorrarMovimiento(id) {
   pantallaCajaDelDia();
 }
 window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
+
+// ============================================================
+// PANTALLA: ✅ Chequeo del día — revisión automática antes de cerrar
+// Corre varias verificaciones simples y muestra un semáforo (✅ / ⚠️)
+// para que cualquiera (no hace falta saber de sistemas) vea de un
+// vistazo si algo quedó mal cargado hoy.
+// ============================================================
+function pantallaChequeoDelDia() {
+  const fecha = document.getElementById('cd-fecha') ? document.getElementById('cd-fecha').value : fechaHoyISO();
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✅ Chequeo del día</h1>
+      <div class="sub">${fechaCortaAR(fecha)}</div>
+      <div id="chq-resultado"><p>Revisando...</p></div>
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+    </div>
+  `);
+  cargarChequeoDelDia(fecha);
+}
+window.pantallaChequeoDelDia = pantallaChequeoDelDia;
+
+async function cargarChequeoDelDia(fecha) {
+  const box = document.getElementById('chq-resultado');
+  const items = [];
+
+  // 1) Movimientos sin medio de pago (dato clave para que cuadre la caja)
+  const { data: sinMedio } = await sb.from('movimientos_caja').select('id').eq('fecha', fecha).is('medio_pago', null);
+  items.push({
+    ok: !sinMedio || sinMedio.length === 0,
+    texto: (!sinMedio || sinMedio.length === 0)
+      ? 'Todos los movimientos tienen medio de pago cargado.'
+      : `${sinMedio.length} movimiento(s) sin medio de pago — revisalos, si no la caja no va a cerrar bien.`
+  });
+
+  // 2) Sobres de hoy sin cliente o sin descripción (carga incompleta)
+  const { data: sobresHoy } = await sb.from('sobres').select('numero, cliente_id, descripcion').eq('fecha_entrada', fecha);
+  const incompletos = (sobresHoy || []).filter(s => !s.cliente_id || !s.descripcion || s.descripcion.trim() === '');
+  items.push({
+    ok: incompletos.length === 0,
+    texto: incompletos.length === 0
+      ? `${(sobresHoy || []).length} sobre(s) nuevos hoy, todos con cliente y descripción.`
+      : `${incompletos.length} sobre(s) de hoy sin cliente o sin descripción: ${incompletos.map(s => s.numero).join(', ')}`
+  });
+
+  // 3) Sobres bajados a taller hace más de 5 días que todavía no volvieron (se pueden haber olvidado)
+  const cincoDiasAtras = new Date();
+  cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
+  const { data: estancados } = await sb.from('sobres')
+    .select('numero, orfebre, baja_taller')
+    .not('baja_taller', 'is', null)
+    .is('salio_taller', null)
+    .lt('baja_taller', cincoDiasAtras.toISOString());
+  items.push({
+    ok: !estancados || estancados.length === 0,
+    texto: (!estancados || estancados.length === 0)
+      ? 'No hay sobres estancados en taller hace más de 5 días.'
+      : `${estancados.length} sobre(s) llevan más de 5 días en taller sin volver: ${estancados.map(s => s.numero + ' (' + s.orfebre + ')').join(', ')}`
+  });
+
+  // 4) Movimientos con monto negativo (posible error de tipeo)
+  const { data: negativos } = await sb.from('movimientos_caja').select('id, descripcion, monto').eq('fecha', fecha).lt('monto', 0);
+  items.push({
+    ok: !negativos || negativos.length === 0,
+    texto: (!negativos || negativos.length === 0)
+      ? 'Ningún movimiento con monto negativo.'
+      : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
+  });
+
+  // 5) Totales del día, para que los tengas a mano
+  const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
+  const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+  const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+
+  const okCount = items.filter(i => i.ok).length;
+  const resumen = okCount === items.length
+    ? `<div class="msg msg-ok" style="font-weight:700;">✅ Todo en orden, no hay nada para revisar.</div>`
+    : `<div class="msg msg-error" style="font-weight:700;">⚠️ Hay ${items.length - okCount} punto(s) para revisar antes de cerrar.</div>`;
+
+  box.innerHTML = `
+    ${resumen}
+    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+      <div>Entró hoy: <strong>$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+      <div>Salió hoy: <strong>$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+    </div>
+    <div style="margin-top:14px;">
+      ${items.map(i => `
+        <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
+          <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+window.cargarChequeoDelDia = cargarChequeoDelDia;
 
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
