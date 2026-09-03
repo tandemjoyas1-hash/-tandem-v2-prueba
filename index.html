@@ -346,6 +346,15 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
+      <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
+      <select id="ne-destino">
+        <option value="">No va a taller (queda en el local)</option>
+        <option value="Daniel">🔨 Daniel</option>
+        <option value="Pachula">🔨 Pachula</option>
+        <option value="GRABADO">✏️ Grabado</option>
+        <option value="Laureano">🧪 Laureano</option>
+      </select>
+
       <label>Tipo de producto (opcional, para los reportes)</label>
       <div style="display:flex; gap:8px; align-items:center;">
         <select id="ne-tipo-producto" style="flex:1;">
@@ -1108,6 +1117,7 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
+  const destino = document.getElementById('ne-destino').value;
   const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
   const proveedorId = document.getElementById('ne-proveedor').value || null;
@@ -1236,10 +1246,21 @@ async function guardarNuevaEntrada() {
     detalle: 'Ingresó al local (dio entrada: ' + usuarioActual.nombre + ')'
   });
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.</div>`;
+  // 4.1) Si se eligió destino, baja directo a taller (evita cargar el N° de sobre de nuevo)
+  if (destino) {
+    await sb.from('sobres').update({ baja_taller: new Date().toISOString(), orfebre: destino }).eq('id', sobreNuevo.id);
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobreNuevo.id,
+      evento: 'BAJA A TALLER',
+      detalle: 'Asignado a ' + destino + ' directo desde Entrada (lo bajó: ' + usuarioActual.nombre + ')'
+    });
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>`;
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
+  document.getElementById('ne-destino').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
