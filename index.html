@@ -2336,6 +2336,16 @@ async function guardarAperturaCaja() {
   const msgBox = document.getElementById('cd-apertura-msg');
   if (isNaN(monto) || monto < 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto válido.</div>`; return; }
 
+  // ARREGLADO (03/09/2026): si la app quedó abierta desde el día anterior sin recargar,
+  // el campo de fecha se queda pegado en la fecha vieja. Antes esto guardaba la apertura
+  // en la fecha equivocada sin ningún aviso (pasó el 3/9: se guardó con fecha 2/9).
+  // Ahora, si la fecha elegida no es la de HOY, se pide confirmación explícita antes de guardar.
+  const fechaReal = fechaHoyISO();
+  if (fecha !== fechaReal) {
+    const seguro = confirm(`Ojo: vas a guardar la apertura para el ${fecha.split('-').reverse().join('/')}, pero HOY es ${fechaReal.split('-').reverse().join('/')}.\n\n¿Seguro que querés guardarla en esa fecha? (Si la app quedó abierta desde ayer, tocá Cancelar, recargá la página y volvé a intentar.)`);
+    if (!seguro) { msgBox.innerHTML = `<div class="msg msg-error">Cancelado. Recargá la página (👆 deslizá para actualizar o tocá el botón atrás y volvé a entrar) para que tome la fecha de hoy.</div>`; return; }
+  }
+
   // Si ya había una apertura cargada ese día, la reemplaza (borra la vieja, guarda la nueva)
   await sb.from('movimientos_caja').delete().eq('fecha', fecha).eq('codigo', 100);
 
