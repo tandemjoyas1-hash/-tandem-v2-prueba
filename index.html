@@ -2392,6 +2392,166 @@ async function guardarAperturaCaja() {
 window.toggleAperturaCaja = toggleAperturaCaja;
 window.guardarAperturaCaja = guardarAperturaCaja;
 
+function renderFilasMovimientosCD(movimientos) {
+  if (!movimientos || movimientos.length === 0) {
+    return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
+  }
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  const filasTabla = movimientos.map(m => `
+    <tr style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tabla = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
+  return { lista: filasMovimientos, tabla };
+}
+
+function filtrarCajaDelDia() {
+  const inputEl = document.getElementById('cd-buscar');
+  const q = (inputEl ? inputEl.value : '').trim().toLowerCase();
+  const todos = window._movimientosCajaActual || [];
+  const filtrados = q === '' ? todos : todos.filter(m => {
+    const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
+    const vendedora = (m.vendedora || '').toLowerCase();
+    const desc = (m.descripcion || '').toLowerCase();
+    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
+  });
+  const { lista, tabla } = renderFilasMovimientosCD(filtrados);
+  const contador = document.getElementById('cd-contador');
+  if (contador) contador.textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
+  const listaBox = document.getElementById('cd-lista-movimientos');
+  if (listaBox) listaBox.innerHTML = lista;
+  const tablaBox = document.getElementById('cd-tabla-movimientos');
+  if (tablaBox) tablaBox.innerHTML = tabla;
+}
+window.filtrarCajaDelDia = filtrarCajaDelDia;
+
+// ============================================================
+// PANTALLA: Editar / corregir un movimiento de caja (tocando el ✏️ de un movimiento en Caja del Día)
+// ============================================================
+async function pantallaEditarMovimiento(id) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: m, error } = await sb
+    .from('movimientos_caja')
+    .select('id, fecha, descripcion, monto, cantidad, medio_pago, ingresa_egresa, codigo, proveedor_id, clientes(nombre)')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !m) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el movimiento.</p></div>`);
+    return;
+  }
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✏️ Corregir movimiento</h1>
+      <div class="sub">${m.ingresa_egresa === 'INGRESA' ? 'Entrada' : 'Salida'} del ${fechaCortaAR(m.fecha)}${m.clientes ? ' · ' + m.clientes.nombre : ''}</div>
+
+      <label>Descripción</label>
+      <input type="text" id="em-descripcion" value="${(m.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Monto</label>
+      <input type="number" id="em-monto" value="${m.monto || 0}">
+
+      <label>Cantidad</label>
+      <input type="number" id="em-cantidad" value="${m.cantidad || 1}" min="1">
+
+      <label>Medio de pago</label>
+      <select id="em-medio">
+        ${['EFECTIVO','TARJETA FISER','TRANSFERENCIA SANTANDER','MERCADO PAGO FISER','MERCADO PAGO LAUREANO','UALA CARLA','LEMON LAUREANO','CUENTA CORRIENTE']
+          .map(op => `<option ${op === m.medio_pago ? 'selected' : ''}>${op}</option>`).join('')}
+      </select>
+
+      <label>Tipo de producto</label>
+      <select id="em-tipo-producto">
+        <option value="">— Sin especificar —</option>
+      </select>
+
+      <label>Proveedor</label>
+      <select id="em-proveedor">
+        <option value="">— Sin especificar —</option>
+      </select>
+
+      <button class="btn btn-verde" onclick='guardarCorreccionMovimiento(${JSON.stringify(id)})'>Guardar corrección</button>
+      <button class="btn btn-outline" style="margin-top:10px; color:#9a3a1e; border-color:#e7c9c0;" onclick='confirmarBorrarMovimiento(${JSON.stringify(id)})'>🗑️ Borrar este movimiento (fue un error)</button>
+      <div id="em-msg"></div>
+
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+    </div>
+  `);
+
+  const { data: tipos } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
+  const selTipo = document.getElementById('em-tipo-producto');
+  if (tipos) {
+    selTipo.innerHTML = '<option value="">— Sin especificar —</option>' +
+      tipos.map(c => `<option value="${c.codigo}" ${Number(c.codigo) === Number(m.codigo) ? 'selected' : ''}>${c.codigo} — ${c.descripcion}</option>`).join('');
+  }
+
+  const { data: provs } = await sb.from('proveedores').select('id, nombre').order('nombre');
+  const selProv = document.getElementById('em-proveedor');
+  if (provs) {
+    selProv.innerHTML = '<option value="">— Sin especificar —</option>' +
+      provs.map(p => `<option value="${p.id}" ${p.id === m.proveedor_id ? 'selected' : ''}>${p.nombre}</option>`).join('');
+  }
+}
+window.pantallaEditarMovimiento = pantallaEditarMovimiento;
+
+async function guardarCorreccionMovimiento(id) {
+  const msgBox = document.getElementById('em-msg');
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const tipoProducto = document.getElementById('em-tipo-producto').value;
+  const proveedorId = document.getElementById('em-proveedor').value || null;
+
+  const { error } = await sb.from('movimientos_caja').update({
+    descripcion: document.getElementById('em-descripcion').value.trim(),
+    monto: parseFloat(document.getElementById('em-monto').value) || 0,
+    cantidad: parseInt(document.getElementById('em-cantidad').value) || 1,
+    medio_pago: document.getElementById('em-medio').value,
+    codigo: tipoProducto ? parseInt(tipoProducto) : null,
+    proveedor_id: proveedorId
+  }).eq('id', id);
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Corregido.</div>`;
+}
+window.guardarCorreccionMovimiento = guardarCorreccionMovimiento;
+
+async function confirmarBorrarMovimiento(id) {
+  if (!confirm('¿Seguro que querés borrar este movimiento? No se puede deshacer.')) return;
+  const { error } = await sb.from('movimientos_caja').delete().eq('id', id);
+  if (error) { document.getElementById('em-msg').innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  pantallaCajaDelDia();
+}
+window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
+
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
   const resBox = document.getElementById('cd-resultado');
@@ -2399,7 +2559,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, tipo_cliente, created_at, clientes(nombre)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre)')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -2447,38 +2607,8 @@ async function cargarCajaDelDia() {
       `;
       }).join('');
 
-  const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}</div>
-    </div>
-  `).join('');
-
-  const filasTabla = movimientos.map(m => `
-    <tr>
-      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
-      <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
-      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
-      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
-        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
-      </td>
-    </tr>
-  `).join('');
-
-  const tablaCaja = `
-    <div class="tabla-caja">
-      <table>
-        <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
-        </thead>
-        <tbody>${filasTabla}</tbody>
-      </table>
-    </div>
-  `;
+  window._movimientosCajaActual = movimientos;
+  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos);
 
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
@@ -2510,9 +2640,12 @@ async function cargarCajaDelDia() {
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
     <div class="lista-sobre">${filasMedios}</div>
 
-    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja">${filasMovimientos}</div>
-    ${tablaCaja}
+    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
+    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
+
+    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
+    <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
     <div style="text-align:center; margin-top:20px;">
       <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
