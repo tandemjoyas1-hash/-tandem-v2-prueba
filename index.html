@@ -3045,9 +3045,18 @@ function pantallaVentaDirecta() {
       <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
 
       <label>Tipo de producto (opcional, para los reportes)</label>
-      <select id="vd-tipo-producto">
-        <option value="">— Sin especificar —</option>
-      </select>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="vd-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevaCategoriaVD()" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="vd-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre de la categoría nueva</label>
+        <input type="text" id="vd-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevaCategoriaVD()">Agregar categoría</button>
+        <div id="vd-nueva-categoria-msg"></div>
+      </div>
 
       <label>Monto</label>
       <input type="number" id="vd-monto" placeholder="0">
@@ -3110,6 +3119,43 @@ async function cargarTiposProductoVentaDirecta() {
     data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
 }
 window.cargarTiposProductoVentaDirecta = cargarTiposProductoVentaDirecta;
+
+function toggleNuevaCategoriaVD() {
+  const box = document.getElementById('vd-nueva-categoria-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') document.getElementById('vd-nueva-categoria-nombre').focus();
+}
+window.toggleNuevaCategoriaVD = toggleNuevaCategoriaVD;
+
+// Agrega una categoría nueva a codigos_producto (para Venta Directa y sus reportes).
+// El código se asigna solo: sigue la numeración de las categorías "chicas" (9000+),
+// igual que como estaban cargadas COMPOSTURA, PILAS, ACERO, etc.
+async function guardarNuevaCategoriaVD() {
+  const nombre = document.getElementById('vd-nueva-categoria-nombre').value.trim();
+  const msgBox = document.getElementById('vd-nueva-categoria-msg');
+  if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Escribí un nombre.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: existente } = await sb.from('codigos_producto').select('codigo').ilike('descripcion', nombre).limit(1).maybeSingle();
+  if (existente) {
+    msgBox.innerHTML = `<div class="msg msg-error">Ya existe una categoría con ese nombre.</div>`;
+    return;
+  }
+
+  const { data: maxRow } = await sb.from('codigos_producto').select('codigo').gte('codigo', 9000).lt('codigo', 10000).order('codigo', { ascending: false }).limit(1).maybeSingle();
+  const nuevoCodigo = maxRow ? Number(maxRow.codigo) + 1 : 9000;
+
+  const { error } = await sb.from('codigos_producto').insert({ codigo: nuevoCodigo, descripcion: nombre.toUpperCase() });
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Categoría "${nombre}" agregada.</div>`;
+  document.getElementById('vd-nueva-categoria-nombre').value = '';
+  await cargarTiposProductoVentaDirecta();
+  document.getElementById('vd-tipo-producto').value = String(nuevoCodigo);
+  document.getElementById('vd-nueva-categoria-box').style.display = 'none';
+}
+window.guardarNuevaCategoriaVD = guardarNuevaCategoriaVD;
 
 async function guardarVentaDirecta() {
   const msgBox = document.getElementById('vd-msg');
