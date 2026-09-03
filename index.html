@@ -348,10 +348,11 @@ function pantallaNuevaEntrada() {
 
       <label>Tipo de producto (opcional, para los reportes)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <input type="text" id="ne-tipo-producto" placeholder="Escribí el código o el nombre..." oninput="buscarTipoProducto('ne')" autocomplete="off" style="flex:1;">
+        <select id="ne-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
         <button type="button" onclick="toggleNuevaCategoria('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
-      <div id="ne-tipo-producto-sugerencias"></div>
       <div id="ne-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="ne-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -402,8 +403,7 @@ function irAlCatalogoDesdeEntrada() {
     telefono: document.getElementById('ne-telefono').value,
     tipoCliente: document.getElementById('ne-tipo-cliente').value,
     trabajo: document.getElementById('ne-trabajo').value,
-    tipoProductoTexto: document.getElementById('ne-tipo-producto').value,
-    tipoProductoCodigo: _tipoProductoSeleccionado['ne'] || null,
+    tipoProducto: document.getElementById('ne-tipo-producto').value,
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
@@ -780,9 +780,12 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
-  if (_borradorEntrada.tipoProductoTexto) {
-    document.getElementById('ne-tipo-producto').value = _borradorEntrada.tipoProductoTexto;
-    _tipoProductoSeleccionado['ne'] = _borradorEntrada.tipoProductoCodigo || null;
+  if (_borradorEntrada.tipoProducto) {
+    // El select recién se termina de llenar (cargarTiposProducto es async), por eso esperamos un toque.
+    setTimeout(() => {
+      const sel = document.getElementById('ne-tipo-producto');
+      if (sel) sel.value = _borradorEntrada.tipoProducto;
+    }, 400);
   }
 }
 
@@ -1033,7 +1036,7 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
-  const tipoProducto = _tipoProductoSeleccionado['ne'] || null;
+  const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
   const telefono = document.getElementById('ne-telefono').value.trim();
   const total = parseFloat(document.getElementById('ne-total').value) || null;
@@ -1134,7 +1137,7 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto || null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null
     });
   } else {
     await sb.from('movimientos_caja').insert({
@@ -1147,7 +1150,7 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto || null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null
     });
   }
 
@@ -1167,7 +1170,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-telefono').value = '';
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-cantidad').value = '1';
-  _tipoProductoSeleccionado['ne'] = null;
+  
   _productoSeleccionado = null;
 
   } catch (err) {
@@ -2722,6 +2725,22 @@ function pantallaEgreso() {
       <label>Descripción</label>
       <input type="text" id="eg-descripcion" placeholder="Ej: compra de bolsitas, alquiler, etc.">
 
+      <label>Proveedor (opcional)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="eg-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor()" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="eg-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="eg-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="eg-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor()">Agregar proveedor</button>
+        <div id="eg-nuevo-proveedor-msg"></div>
+      </div>
+
       <label>Monto</label>
       <input type="number" id="eg-monto" placeholder="0">
 
@@ -2739,13 +2758,58 @@ function pantallaEgreso() {
       <div id="eg-msg"></div>
     </div>
   `);
+  cargarProveedores();
 }
 window.pantallaEgreso = pantallaEgreso;
+
+async function cargarProveedores() {
+  const select = document.getElementById('eg-proveedor');
+  if (!select) return;
+  const { data } = await sb.from('proveedores').select('id, nombre').order('nombre');
+  if (!data) return;
+  select.innerHTML = '<option value="">— Sin especificar —</option>' +
+    data.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+}
+window.cargarProveedores = cargarProveedores;
+
+function toggleNuevoProveedor() {
+  const box = document.getElementById('eg-nuevo-proveedor-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') document.getElementById('eg-nuevo-proveedor-nombre').focus();
+}
+window.toggleNuevoProveedor = toggleNuevoProveedor;
+
+async function guardarNuevoProveedor() {
+  const nombre = document.getElementById('eg-nuevo-proveedor-nombre').value.trim();
+  const telefono = document.getElementById('eg-nuevo-proveedor-telefono').value.trim();
+  const msgBox = document.getElementById('eg-nuevo-proveedor-msg');
+  if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Escribí un nombre.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: existente } = await sb.from('proveedores').select('id').ilike('nombre', nombre).limit(1).maybeSingle();
+  if (existente) {
+    msgBox.innerHTML = `<div class="msg msg-error">Ya existe un proveedor con ese nombre.</div>`;
+    return;
+  }
+
+  const { data: nuevo, error } = await sb.from('proveedores').insert({ nombre: nombre, telefono: telefono || null }).select('id').single();
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Proveedor "${nombre}" agregado.</div>`;
+  document.getElementById('eg-nuevo-proveedor-nombre').value = '';
+  document.getElementById('eg-nuevo-proveedor-telefono').value = '';
+  await cargarProveedores();
+  document.getElementById('eg-proveedor').value = nuevo.id;
+  document.getElementById('eg-nuevo-proveedor-box').style.display = 'none';
+}
+window.guardarNuevoProveedor = guardarNuevoProveedor;
 
 async function guardarEgreso() {
   const msgBox = document.getElementById('eg-msg');
   const codigo = parseInt(document.getElementById('eg-tipo').value) || null;
   const descripcion = document.getElementById('eg-descripcion').value.trim();
+  const proveedorId = document.getElementById('eg-proveedor').value || null;
   const monto = parseFloat(document.getElementById('eg-monto').value) || 0;
   const medioPago = document.getElementById('eg-medio').value;
 
@@ -2761,7 +2825,8 @@ async function guardarEgreso() {
     ingresa_egresa: 'EGRESA',
     medio_pago: medioPago,
     monto: monto,
-    canal: 'LOCAL'
+    canal: 'LOCAL',
+    proveedor_id: proveedorId
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -2769,6 +2834,7 @@ async function guardarEgreso() {
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Egreso de $${monto.toLocaleString('es-AR')} registrado.</div>`;
   document.getElementById('eg-descripcion').value = '';
   document.getElementById('eg-monto').value = '';
+  document.getElementById('eg-proveedor').value = '';
 }
 window.guardarEgreso = guardarEgreso;
 
@@ -3140,10 +3206,11 @@ function pantallaVentaDirecta() {
 
       <label>Tipo de producto (opcional, para los reportes)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <input type="text" id="vd-tipo-producto" placeholder="Escribí el código o el nombre..." oninput="buscarTipoProducto('vd')" autocomplete="off" style="flex:1;">
+        <select id="vd-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
         <button type="button" onclick="toggleNuevaCategoria('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
-      <div id="vd-tipo-producto-sugerencias"></div>
       <div id="vd-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="vd-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -3207,44 +3274,16 @@ function elegirClienteVentaDirecta(id, nombre) {
 }
 window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
 
-// --- Tipo de producto: campo de texto con autocompletado (código o nombre), usado en
-//     Entrada y Venta Directa. Se guarda una vez la lista de categorías y se filtra en el
-//     momento sin volver a pedirle nada al servidor por cada letra que escriben.
-let _codigosProductoCache = null;
-let _tipoProductoSeleccionado = {}; // { ne: 9002, vd: 1000, ... }
-
+// --- Tipo de producto: desplegable simple, usado en Entrada y Venta Directa.
 async function cargarTiposProducto(prefix) {
-  if (!_codigosProductoCache) {
-    const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
-    _codigosProductoCache = data || [];
-  }
+  const select = document.getElementById(prefix + '-tipo-producto');
+  if (!select) return;
+  const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
+  if (!data) return;
+  select.innerHTML = '<option value="">— Sin especificar —</option>' +
+    data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
 }
 window.cargarTiposProducto = cargarTiposProducto;
-
-function buscarTipoProducto(prefix) {
-  const input = document.getElementById(prefix + '-tipo-producto');
-  const box = document.getElementById(prefix + '-tipo-producto-sugerencias');
-  if (!input || !box) return;
-  _tipoProductoSeleccionado[prefix] = null; // hasta que no elija de la lista, no cuenta como elegido
-  const q = input.value.trim().toLowerCase();
-  if (!q) { box.innerHTML = ''; return; }
-  const lista = _codigosProductoCache || [];
-  const filtrados = lista.filter(c => String(c.codigo).includes(q) || c.descripcion.toLowerCase().includes(q)).slice(0, 8);
-  if (filtrados.length === 0) { box.innerHTML = `<div class="vacio" style="font-size:12px; padding:6px 0;">Sin resultados — tocá el ✏️ para agregarla</div>`; return; }
-  box.innerHTML = filtrados.map(c => `
-    <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirTipoProducto(${JSON.stringify(prefix)}, ${c.codigo}, ${JSON.stringify(c.descripcion)})'>
-      <div class="nro" style="font-size:14px;">${c.codigo} — ${c.descripcion}</div>
-    </div>
-  `).join('');
-}
-window.buscarTipoProducto = buscarTipoProducto;
-
-function elegirTipoProducto(prefix, codigo, descripcion) {
-  _tipoProductoSeleccionado[prefix] = codigo;
-  document.getElementById(prefix + '-tipo-producto').value = codigo + ' — ' + descripcion;
-  document.getElementById(prefix + '-tipo-producto-sugerencias').innerHTML = '';
-}
-window.elegirTipoProducto = elegirTipoProducto;
 
 function toggleNuevaCategoria(prefix) {
   const box = document.getElementById(prefix + '-nueva-categoria-box');
@@ -3278,9 +3317,8 @@ async function guardarNuevaCategoria(prefix) {
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Categoría "${nombre}" agregada.</div>`;
   document.getElementById(prefix + '-nueva-categoria-nombre').value = '';
-  _codigosProductoCache = null; // fuerza a traer la lista de nuevo con la categoría recién creada
   await cargarTiposProducto(prefix);
-  elegirTipoProducto(prefix, nuevoCodigo, nombre.toUpperCase());
+  document.getElementById(prefix + '-tipo-producto').value = String(nuevoCodigo);
   document.getElementById(prefix + '-nueva-categoria-box').style.display = 'none';
 }
 window.guardarNuevaCategoria = guardarNuevaCategoria;
@@ -3311,7 +3349,7 @@ async function guardarVentaDirecta() {
     }
   }
 
-  const tipoProducto = _tipoProductoSeleccionado['vd'] || null;
+  const tipoProducto = document.getElementById('vd-tipo-producto').value;
 
   const { error } = await sb.from('movimientos_caja').insert({
     vendedora: usuarioActual.nombre,
@@ -3323,7 +3361,7 @@ async function guardarVentaDirecta() {
     cantidad: cantidad,
     canal: 'LOCAL',
     cliente_id: clienteId,
-    codigo: tipoProducto || null
+    codigo: tipoProducto ? parseInt(tipoProducto) : null
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -3334,7 +3372,7 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-monto').value = '';
   document.getElementById('vd-cantidad').value = '1';
   document.getElementById('vd-tipo-producto').value = '';
-  _tipoProductoSeleccionado['vd'] = null;
+  
   _clienteIdVentaDirecta = null;
 }
 window.guardarVentaDirecta = guardarVentaDirecta;
