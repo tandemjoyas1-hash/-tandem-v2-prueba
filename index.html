@@ -711,7 +711,8 @@ async function sugerirCodigoNuevo() {
     .from('products')
     .select('cod, orden_num')
     .eq('cat', cat)
-    .order('orden_num', { ascending: false })
+    .not('cod', 'is', null)
+    .order('orden_num', { ascending: false, nullsFirst: false })
     .limit(1);
 
   if (data && data.length > 0 && data[0].cod) {
