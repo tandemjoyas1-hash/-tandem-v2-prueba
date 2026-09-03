@@ -363,7 +363,24 @@ function pantallaNuevaEntrada() {
       <label>Cantidad (si son varios iguales en el mismo sobre)</label>
       <input type="number" id="ne-cantidad" placeholder="1" value="1" min="1">
 
-      <button class="btn btn-outline" style="margin-top:8px;" onclick="irAlCatalogoDesdeEntrada()">🔎 Buscar en el catálogo (precio automático)</button>
+      <label>Proveedor (opcional, si el producto se lo compramos a alguien — para saber a quién recomprar)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="ne-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="ne-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="ne-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="ne-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('ne')">Agregar proveedor</button>
+        <div id="ne-nuevo-proveedor-msg"></div>
+      </div>
+
+      <!-- Botón "Buscar en el catálogo" oculto por pedido de Mauricio hasta terminar de armar bien el catálogo -->
+
 
       <label>Precio total (si ya lo sabés)</label>
       <input type="number" id="ne-total" placeholder="0">
@@ -388,6 +405,7 @@ function pantallaNuevaEntrada() {
     </div>
   `);
   cargarTiposProducto('ne');
+  cargarProveedores('ne');
 }
 
 const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functions/v1';
@@ -1038,6 +1056,7 @@ async function guardarNuevaEntrada() {
   const trabajo = document.getElementById('ne-trabajo').value.trim();
   const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
+  const proveedorId = document.getElementById('ne-proveedor').value || null;
   const telefono = document.getElementById('ne-telefono').value.trim();
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
@@ -1137,7 +1156,8 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto ? parseInt(tipoProducto) : null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null,
+      proveedor_id: proveedorId
     });
   } else {
     await sb.from('movimientos_caja').insert({
@@ -1150,7 +1170,8 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto ? parseInt(tipoProducto) : null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null,
+      proveedor_id: proveedorId
     });
   }
 
@@ -1170,6 +1191,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-telefono').value = '';
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-cantidad').value = '1';
+  document.getElementById('ne-proveedor').value = '';
   
   _productoSeleccionado = null;
 
@@ -2730,14 +2752,14 @@ function pantallaEgreso() {
         <select id="eg-proveedor" style="flex:1;">
           <option value="">— Sin especificar —</option>
         </select>
-        <button type="button" onclick="toggleNuevoProveedor()" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+        <button type="button" onclick="toggleNuevoProveedor('eg')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
       <div id="eg-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre del proveedor nuevo</label>
         <input type="text" id="eg-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
         <label>Teléfono (opcional)</label>
         <input type="text" id="eg-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
-        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor()">Agregar proveedor</button>
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('eg')">Agregar proveedor</button>
         <div id="eg-nuevo-proveedor-msg"></div>
       </div>
 
@@ -2758,12 +2780,12 @@ function pantallaEgreso() {
       <div id="eg-msg"></div>
     </div>
   `);
-  cargarProveedores();
+  cargarProveedores('eg');
 }
 window.pantallaEgreso = pantallaEgreso;
 
-async function cargarProveedores() {
-  const select = document.getElementById('eg-proveedor');
+async function cargarProveedores(prefix) {
+  const select = document.getElementById(prefix + '-proveedor');
   if (!select) return;
   const { data } = await sb.from('proveedores').select('id, nombre').order('nombre');
   if (!data) return;
@@ -2772,17 +2794,17 @@ async function cargarProveedores() {
 }
 window.cargarProveedores = cargarProveedores;
 
-function toggleNuevoProveedor() {
-  const box = document.getElementById('eg-nuevo-proveedor-box');
+function toggleNuevoProveedor(prefix) {
+  const box = document.getElementById(prefix + '-nuevo-proveedor-box');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
-  if (box.style.display === 'block') document.getElementById('eg-nuevo-proveedor-nombre').focus();
+  if (box.style.display === 'block') document.getElementById(prefix + '-nuevo-proveedor-nombre').focus();
 }
 window.toggleNuevoProveedor = toggleNuevoProveedor;
 
-async function guardarNuevoProveedor() {
-  const nombre = document.getElementById('eg-nuevo-proveedor-nombre').value.trim();
-  const telefono = document.getElementById('eg-nuevo-proveedor-telefono').value.trim();
-  const msgBox = document.getElementById('eg-nuevo-proveedor-msg');
+async function guardarNuevoProveedor(prefix) {
+  const nombre = document.getElementById(prefix + '-nuevo-proveedor-nombre').value.trim();
+  const telefono = document.getElementById(prefix + '-nuevo-proveedor-telefono').value.trim();
+  const msgBox = document.getElementById(prefix + '-nuevo-proveedor-msg');
   if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Escribí un nombre.</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
@@ -2797,11 +2819,11 @@ async function guardarNuevoProveedor() {
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Proveedor "${nombre}" agregado.</div>`;
-  document.getElementById('eg-nuevo-proveedor-nombre').value = '';
-  document.getElementById('eg-nuevo-proveedor-telefono').value = '';
-  await cargarProveedores();
-  document.getElementById('eg-proveedor').value = nuevo.id;
-  document.getElementById('eg-nuevo-proveedor-box').style.display = 'none';
+  document.getElementById(prefix + '-nuevo-proveedor-nombre').value = '';
+  document.getElementById(prefix + '-nuevo-proveedor-telefono').value = '';
+  await cargarProveedores(prefix);
+  document.getElementById(prefix + '-proveedor').value = nuevo.id;
+  document.getElementById(prefix + '-nuevo-proveedor-box').style.display = 'none';
 }
 window.guardarNuevoProveedor = guardarNuevoProveedor;
 
