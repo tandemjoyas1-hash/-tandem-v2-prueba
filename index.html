@@ -412,6 +412,23 @@ const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functio
 
 let _productoSeleccionado = null; // { cat, cod } del último producto elegido del catálogo
 let _precioGramoActual = null;
+let _preciosMaterialesActual = null; // { PLATA: 3000, LATON: 100, ... }
+
+async function cargarPreciosMateriales() {
+  if (_preciosMaterialesActual) return _preciosMaterialesActual;
+  const { data } = await sb.schema('public').from('materiales').select('id, nombre, precio_gramo').order('nombre');
+  const mapa = {};
+  (data || []).forEach(m => { mapa[m.id] = { nombre: m.nombre, precio_gramo: Number(m.precio_gramo) || 0 }; });
+  _preciosMaterialesActual = mapa;
+  _precioGramoActual = mapa.PLATA ? mapa.PLATA.precio_gramo : 0;
+  return mapa;
+}
+
+function precioGramoDeMaterial(materialId) {
+  const mapa = _preciosMaterialesActual || {};
+  const m = mapa[materialId || 'PLATA'];
+  return m ? m.precio_gramo : (_precioGramoActual || 0);
+}
 let _borradorEntrada = null; // guarda lo ya escrito en Entrada antes de ir al catálogo
 
 function irAlCatalogoDesdeEntrada() {
@@ -450,14 +467,21 @@ function pantallaCatalogo() {
 
       <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
         <div>
-          <div style="font-size:10px; color:#8a8378;">Precio del gramo</div>
-          <div id="cat-precio-gramo-texto" style="font-size:14px; font-weight:700;">Cargando...</div>
+          <div style="font-size:10px; color:#8a8378;">Precio del gramo por material</div>
+          <div id="cat-precio-gramo-texto" style="font-size:13px; font-weight:700;">Cargando...</div>
         </div>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;" onclick="togglePrecioGramo()">Cambiar</button>
       </div>
       <div id="cat-precio-gramo-form" style="display:none; margin-top:8px;">
-        <input type="number" id="cat-precio-gramo-nuevo" placeholder="Nuevo precio del gramo">
-        <button class="btn btn-verde" onclick="guardarPrecioGramo()">Guardar precio nuevo</button>
+        <label style="font-size:12px; margin-top:6px;">Plata</label>
+        <input type="number" data-material="PLATA" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Latón</label>
+        <input type="number" data-material="LATON" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Bronce</label>
+        <input type="number" data-material="BRONCE" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Alpaca</label>
+        <input type="number" data-material="ALPACA" placeholder="Precio del gramo">
+        <button class="btn btn-verde" style="margin-top:10px;" onclick="guardarPrecioGramo()">Guardar precios</button>
         <div id="cat-precio-gramo-msg"></div>
       </div>
 
@@ -490,33 +514,45 @@ function pantallaCatalogo() {
 window.pantallaCatalogo = pantallaCatalogo;
 
 async function cargarPrecioGramoActual() {
-  const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-  _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  const mapa = await cargarPreciosMateriales();
   const el = document.getElementById('cat-precio-gramo-texto');
-  if (el) el.textContent = '$' + _precioGramoActual.toLocaleString('es-AR');
+  if (el) {
+    el.innerHTML = Object.keys(mapa).map(id => `${mapa[id].nombre}: $${mapa[id].precio_gramo.toLocaleString('es-AR')}`).join(' · ');
+  }
 }
 window.cargarPrecioGramoActual = cargarPrecioGramoActual;
 
 function togglePrecioGramo() {
   const form = document.getElementById('cat-precio-gramo-form');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  document.getElementById('cat-precio-gramo-nuevo').value = _precioGramoActual || '';
+  const abrir = form.style.display === 'none';
+  form.style.display = abrir ? 'block' : 'none';
+  if (abrir) {
+    const mapa = _preciosMaterialesActual || {};
+    form.querySelectorAll('input[data-material]').forEach(inp => {
+      const id = inp.getAttribute('data-material');
+      inp.value = mapa[id] ? mapa[id].precio_gramo : '';
+    });
+  }
 }
 window.togglePrecioGramo = togglePrecioGramo;
 
 async function guardarPrecioGramo() {
   const msgBox = document.getElementById('cat-precio-gramo-msg');
-  const nuevo = parseFloat(document.getElementById('cat-precio-gramo-nuevo').value);
-  if (!nuevo || nuevo <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un precio válido.</div>`; return; }
-
+  const inputs = document.querySelectorAll('#cat-precio-gramo-form input[data-material]');
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
-  const { error } = await sb.schema('public').from('settings').update({ precio_gramo: nuevo }).eq('id', 'main');
-  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
 
-  _precioGramoActual = nuevo;
-  document.getElementById('cat-precio-gramo-texto').textContent = '$' + nuevo.toLocaleString('es-AR');
+  for (const inp of inputs) {
+    const id = inp.getAttribute('data-material');
+    const nuevo = parseFloat(inp.value);
+    if (!nuevo || nuevo <= 0) continue;
+    const { error } = await sb.schema('public').from('materiales').update({ precio_gramo: nuevo }).eq('id', id);
+    if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  }
+
+  _preciosMaterialesActual = null;
+  await cargarPrecioGramoActual();
   document.getElementById('cat-precio-gramo-form').style.display = 'none';
-  msgBox.innerHTML = '';
+  msgBox.innerHTML = '<div class="msg msg-ok">✅ Precios guardados.</div>';
 
   // Si había resultados en pantalla, los volvemos a calcular con el precio nuevo
   const termino = document.getElementById('cat-buscar').value.trim();
@@ -564,12 +600,9 @@ async function pantallaDetalleProducto(cod) {
     return;
   }
 
-  if (_precioGramoActual === null) {
-    const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-    _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
-  }
+  await cargarPreciosMateriales();
 
-  const metal = (Number(p.peso) || 0) * _precioGramoActual;
+  const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
   const zipiur = metal + (Number(p.labor) || 0);
   const mayor = zipiur * 1.2;
   const redes = mayor * 1.4;
@@ -590,6 +623,7 @@ async function pantallaDetalleProducto(cod) {
       <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
 
       <div class="lista-sobre" style="background:#f7f7f7;">
+        <div>Material: <strong>${(_preciosMaterialesActual[p.material] && _preciosMaterialesActual[p.material].nombre) || p.material || 'Plata'}</strong></div>
         <div>Peso: <strong>${p.peso || '-'} g</strong></div>
         <div>Mano de obra: <strong>$${(Number(p.labor) || 0).toLocaleString('es-AR')}</strong></div>
       </div>
@@ -616,6 +650,9 @@ async function pantallaEditarProducto(cod) {
     return;
   }
 
+  const mapa = await cargarPreciosMateriales();
+  const materialActual = p.material || 'PLATA';
+
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -625,6 +662,14 @@ async function pantallaEditarProducto(cod) {
 
       <label>Descripción</label>
       <input type="text" id="ep-descripcion" value="${(p.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Material</label>
+      <select id="ep-material">
+        ${Object.keys(mapa).map(id => `<option value="${id}" ${id === materialActual ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('')}
+      </select>
+
+      <label>Peso (gramos)</label>
+      <input type="number" id="ep-peso" value="${p.peso || 0}">
 
       <label>Mano de obra</label>
       <input type="number" id="ep-labor" value="${p.labor || 0}">
@@ -647,6 +692,8 @@ async function guardarEdicionProducto(cod) {
 
   const cambios = {
     descripcion: document.getElementById('ep-descripcion').value.trim(),
+    material: document.getElementById('ep-material').value,
+    peso: parseFloat(document.getElementById('ep-peso').value) || 0,
     labor: parseFloat(document.getElementById('ep-labor').value) || 0
   };
 
@@ -680,6 +727,11 @@ function pantallaAgregarProducto() {
       <label>Descripción</label>
       <input type="text" id="ap-descripcion" placeholder="Ej: Dije corazón plata">
 
+      <label>Material</label>
+      <select id="ap-material">
+        <option value="PLATA">Plata</option>
+      </select>
+
       <label>Medidas (opcional)</label>
       <input type="text" id="ap-medidas" placeholder="Ej: 2cm">
 
@@ -699,6 +751,10 @@ function pantallaAgregarProducto() {
     </div>
   `);
   sugerirCodigoNuevo();
+  cargarPreciosMateriales().then(mapa => {
+    const sel = document.getElementById('ap-material');
+    if (sel) sel.innerHTML = Object.keys(mapa).map(id => `<option value="${id}" ${id === 'PLATA' ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('');
+  });
 }
 window.pantallaAgregarProducto = pantallaAgregarProducto;
 
@@ -746,6 +802,7 @@ async function guardarProductoNuevo() {
     cod: cod,
     cat: document.getElementById('ap-cat').value,
     descripcion: descripcion,
+    material: document.getElementById('ap-material').value || 'PLATA',
     medidas: document.getElementById('ap-medidas').value.trim() || null,
     peso: peso,
     labor: parseFloat(document.getElementById('ap-labor').value) || 0
@@ -873,15 +930,11 @@ async function buscarEnCatalogo(categoriaExacta) {
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   try {
-    if (_precioGramoActual === null) {
-      const { data: config, error: errConfig } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-      if (errConfig) throw errConfig;
-      _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
-    }
+    await cargarPreciosMateriales();
 
     let consulta = sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, foto')
+      .select('cod, cat, descripcion, medidas, peso, labor, material, foto')
       .limit(categoriaExacta ? 40 : 10);
 
     consulta = categoriaExacta
@@ -903,7 +956,7 @@ async function buscarEnCatalogo(categoriaExacta) {
         <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
       </div>
       <div class="cat-grid">` + productos.map(p => {
-      const metal = (Number(p.peso) || 0) * _precioGramoActual;
+      const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
       const redes = mayor * 1.4;
