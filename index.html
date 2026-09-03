@@ -346,6 +346,20 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
+      <label>Tipo de producto (opcional, para los reportes)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="ne-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevaCategoria('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="ne-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre de la categoría nueva</label>
+        <input type="text" id="ne-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevaCategoria('ne')">Agregar categoría</button>
+        <div id="ne-nueva-categoria-msg"></div>
+      </div>
+
       <button class="btn btn-outline" style="margin-top:8px;" onclick="irAlCatalogoDesdeEntrada()">🔎 Buscar en el catálogo (precio automático)</button>
 
       <label>Precio total (si ya lo sabés)</label>
@@ -370,6 +384,7 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
+  cargarTiposProducto('ne');
 }
 
 const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functions/v1';
@@ -385,6 +400,7 @@ function irAlCatalogoDesdeEntrada() {
     telefono: document.getElementById('ne-telefono').value,
     tipoCliente: document.getElementById('ne-tipo-cliente').value,
     trabajo: document.getElementById('ne-trabajo').value,
+    tipoProducto: document.getElementById('ne-tipo-producto').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
     medioPago: document.getElementById('ne-medio-pago').value
@@ -759,6 +775,13 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
+  if (_borradorEntrada.tipoProducto) {
+    // El select recién se termina de llenar (cargarTiposProducto es async), por eso esperamos un toque.
+    setTimeout(() => {
+      const sel = document.getElementById('ne-tipo-producto');
+      if (sel) sel.value = _borradorEntrada.tipoProducto;
+    }, 400);
+  }
 }
 
 let _fotosProductosActuales = {};
@@ -1008,6 +1031,7 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
+  const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const telefono = document.getElementById('ne-telefono').value.trim();
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
@@ -1105,7 +1129,8 @@ async function guardarNuevaEntrada() {
       medio_pago: 'CUENTA CORRIENTE',
       monto: total,
       cliente_id: clienteId,
-      sobre_id: sobreNuevo.id
+      sobre_id: sobreNuevo.id,
+      codigo: tipoProducto ? parseInt(tipoProducto) : null
     });
   } else {
     await sb.from('movimientos_caja').insert({
@@ -1116,7 +1141,8 @@ async function guardarNuevaEntrada() {
       medio_pago: medioPago,
       monto: sena,
       cliente_id: clienteId,
-      sobre_id: sobreNuevo.id
+      sobre_id: sobreNuevo.id,
+      codigo: tipoProducto ? parseInt(tipoProducto) : null
     });
   }
 
@@ -1134,6 +1160,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
+  document.getElementById('ne-tipo-producto').value = '';
   _productoSeleccionado = null;
 
   } catch (err) {
@@ -3049,12 +3076,12 @@ function pantallaVentaDirecta() {
         <select id="vd-tipo-producto" style="flex:1;">
           <option value="">— Sin especificar —</option>
         </select>
-        <button type="button" onclick="toggleNuevaCategoriaVD()" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+        <button type="button" onclick="toggleNuevaCategoria('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
       <div id="vd-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="vd-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
-        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevaCategoriaVD()">Agregar categoría</button>
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevaCategoria('vd')">Agregar categoría</button>
         <div id="vd-nueva-categoria-msg"></div>
       </div>
 
@@ -3077,7 +3104,7 @@ function pantallaVentaDirecta() {
     </div>
   `);
   document.getElementById('vd-descripcion').focus();
-  cargarTiposProductoVentaDirecta();
+  cargarTiposProducto('vd');
 }
 window.pantallaVentaDirecta = pantallaVentaDirecta;
 
@@ -3111,28 +3138,30 @@ function elegirClienteVentaDirecta(id, nombre) {
 }
 window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
 
-async function cargarTiposProductoVentaDirecta() {
-  const select = document.getElementById('vd-tipo-producto');
+async function cargarTiposProducto(prefix) {
+  const select = document.getElementById(prefix + '-tipo-producto');
+  if (!select) return;
   const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
   if (!data) return;
   select.innerHTML = '<option value="">— Sin especificar —</option>' +
     data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
 }
-window.cargarTiposProductoVentaDirecta = cargarTiposProductoVentaDirecta;
+window.cargarTiposProducto = cargarTiposProducto;
 
-function toggleNuevaCategoriaVD() {
-  const box = document.getElementById('vd-nueva-categoria-box');
+function toggleNuevaCategoria(prefix) {
+  const box = document.getElementById(prefix + '-nueva-categoria-box');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
-  if (box.style.display === 'block') document.getElementById('vd-nueva-categoria-nombre').focus();
+  if (box.style.display === 'block') document.getElementById(prefix + '-nueva-categoria-nombre').focus();
 }
-window.toggleNuevaCategoriaVD = toggleNuevaCategoriaVD;
+window.toggleNuevaCategoria = toggleNuevaCategoria;
 
-// Agrega una categoría nueva a codigos_producto (para Venta Directa y sus reportes).
+// Agrega una categoría nueva a codigos_producto (usado desde Entrada y Venta Directa, para que
+// las categorías queden disponibles en cualquier lugar donde se registre una venta).
 // El código se asigna solo: sigue la numeración de las categorías "chicas" (9000+),
 // igual que como estaban cargadas COMPOSTURA, PILAS, ACERO, etc.
-async function guardarNuevaCategoriaVD() {
-  const nombre = document.getElementById('vd-nueva-categoria-nombre').value.trim();
-  const msgBox = document.getElementById('vd-nueva-categoria-msg');
+async function guardarNuevaCategoria(prefix) {
+  const nombre = document.getElementById(prefix + '-nueva-categoria-nombre').value.trim();
+  const msgBox = document.getElementById(prefix + '-nueva-categoria-msg');
   if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Escribí un nombre.</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
@@ -3150,12 +3179,12 @@ async function guardarNuevaCategoriaVD() {
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Categoría "${nombre}" agregada.</div>`;
-  document.getElementById('vd-nueva-categoria-nombre').value = '';
-  await cargarTiposProductoVentaDirecta();
-  document.getElementById('vd-tipo-producto').value = String(nuevoCodigo);
-  document.getElementById('vd-nueva-categoria-box').style.display = 'none';
+  document.getElementById(prefix + '-nueva-categoria-nombre').value = '';
+  await cargarTiposProducto(prefix);
+  document.getElementById(prefix + '-tipo-producto').value = String(nuevoCodigo);
+  document.getElementById(prefix + '-nueva-categoria-box').style.display = 'none';
 }
-window.guardarNuevaCategoriaVD = guardarNuevaCategoriaVD;
+window.guardarNuevaCategoria = guardarNuevaCategoria;
 
 async function guardarVentaDirecta() {
   const msgBox = document.getElementById('vd-msg');
