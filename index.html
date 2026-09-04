@@ -1276,7 +1276,7 @@ async function guardarNuevaEntrada() {
   // (la misma función que ya usamos para detectar clientes duplicados).
   const necesitaFoto = mencionaMuestraOWhatsapp(trabajo);
   if (necesitaFoto && !_fotoReferenciaDataURL) {
-    alert('⚠️ FALTA LA FOTO\n\nEl trabajo menciona "muestra" o "WhatsApp".\nAdjuntá la foto que mandó el cliente antes de guardar el sobre.');
+    alert('⚠️ FALTA ADJUNTAR LA FOTO\n\nEl trabajo menciona "foto" o "muestra".\nSumá la foto al sistema antes de guardar el sobre.');
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta adjuntar la foto de referencia.</div>`;
     return;
   }
@@ -2875,14 +2875,18 @@ function distanciaLevenshtein(a, b) {
   return dp[m][n];
 }
 
-// Detecta si un texto menciona "muestra" o "whatsapp", tolerando errores de
-// tipeo (ej: "mustra", "wasap", "watsap"), usando la misma distancia de
-// escritura que ya usamos para detectar clientes duplicados.
+// Detecta si un texto menciona "foto" o "muestra" (tolerando errores de tipeo
+// tipo "mustra" o "ftoo"), usando la misma distancia de escritura que ya
+// usamos para detectar clientes duplicados. Ya no depende de "whatsapp"
+// porque la foto ahora se adjunta directo al sistema, no se manda más por ahí
+// (se deja también whatsapp/wasap por las dudas, para pedidos viejos).
 function mencionaMuestraOWhatsapp(texto) {
   if (!texto) return false;
   const normalizado = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const palabras = normalizado.split(/[^a-z0-9]+/).filter(Boolean);
   for (const palabra of palabras) {
+    if (palabra.length >= 4 && distanciaLevenshtein(palabra, 'foto') <= 1) return true;
+    if (palabra.length >= 5 && palabra.startsWith('foto')) return true; // ej: "fotos"
     if (palabra.length >= 5 && distanciaLevenshtein(palabra, 'muestra') <= 2) return true;
     if (palabra.length >= 4) {
       for (const variante of ['whatsapp', 'wasap', 'wsp', 'watsap']) {
