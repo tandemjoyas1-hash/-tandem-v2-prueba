@@ -420,7 +420,7 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
-      <label>¿Para qué día tiene que estar listo? (se calcula solo: 5 días hábiles desde hoy — se puede cambiar)</label>
+      <label>¿Para qué día tiene que estar listo? (se calcula solo: 3 días hábiles desde hoy — se puede cambiar)</label>
       <input type="date" id="ne-para-el-dia">
 
       <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
@@ -490,7 +490,7 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
-  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
   cargarTiposProducto('ne');
   cargarProveedores('ne');
 }
