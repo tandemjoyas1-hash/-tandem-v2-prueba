@@ -1269,13 +1269,15 @@ async function guardarNuevaEntrada() {
     return;
   }
 
-  // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes), es
-  // obligatorio adjuntar la foto de referencia, para no perder tiempo después
-  // buscándola en el grupo de WhatsApp.
-  const trabajoNormalizado = trabajo.toLowerCase();
-  const necesitaFoto = trabajoNormalizado.includes('muestra') || trabajoNormalizado.includes('whatsapp');
+  // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes,
+  // incluso con errores de tipeo tipo "mustra" o "wasap"), es obligatorio
+  // adjuntar la foto de referencia, para no perder tiempo después buscándola
+  // en el grupo de WhatsApp. Se tolera errores de tipeo con distanciaLevenshtein
+  // (la misma función que ya usamos para detectar clientes duplicados).
+  const necesitaFoto = mencionaMuestraOWhatsapp(trabajo);
   if (necesitaFoto && !_fotoReferenciaDataURL) {
-    msgBox.innerHTML = `<div class="msg msg-error">⚠️ El trabajo dice "muestra" o "WhatsApp" — hay que adjuntar la foto de referencia antes de guardar.</div>`;
+    alert('⚠️ FALTA LA FOTO\n\nEl trabajo menciona "muestra" o "WhatsApp".\nAdjuntá la foto que mandó el cliente antes de guardar el sobre.');
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta adjuntar la foto de referencia.</div>`;
     return;
   }
 
@@ -2871,6 +2873,24 @@ function distanciaLevenshtein(a, b) {
     }
   }
   return dp[m][n];
+}
+
+// Detecta si un texto menciona "muestra" o "whatsapp", tolerando errores de
+// tipeo (ej: "mustra", "wasap", "watsap"), usando la misma distancia de
+// escritura que ya usamos para detectar clientes duplicados.
+function mencionaMuestraOWhatsapp(texto) {
+  if (!texto) return false;
+  const normalizado = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const palabras = normalizado.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const palabra of palabras) {
+    if (palabra.length >= 5 && distanciaLevenshtein(palabra, 'muestra') <= 2) return true;
+    if (palabra.length >= 4) {
+      for (const variante of ['whatsapp', 'wasap', 'wsp', 'watsap']) {
+        if (distanciaLevenshtein(palabra, variante) <= 2) return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function cargarChequeoDelDia(fecha, modo) {
