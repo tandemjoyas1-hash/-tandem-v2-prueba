@@ -200,6 +200,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
       <button onclick="pantallaVentaDirecta()"><span class="nav-icon">🏷️</span><span class="nav-label" style="white-space:normal; line-height:1.15; text-align:center;">VENTA<br>DIRECTA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
+      <button onclick="pantallaVerFoto()"><span class="nav-icon">📷</span><span class="nav-label">FOTO</span></button>
       <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
       <button onclick="pantallaCuentaCorriente()"><span class="nav-icon">🧾</span><span class="nav-label">CTA CTE</span></button>
@@ -308,9 +309,76 @@ async function intentarLogin() {
   }
 
   usuarioActual = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
-  pantallaNuevaEntrada();
+  if (usuario.rol === 'ORFEBRE') {
+    pantallaVerFoto();
+  } else {
+    pantallaNuevaEntrada();
+  }
 }
 window.intentarLogin = intentarLogin;
+
+// ============================================================
+// PANTALLA SUPER SIMPLE: solo para los orfebres (Pachula, Daniel).
+// Escriben el número de sobre y aparece la foto, grande, sin nada
+// más para aprender. Es la pantalla de entrada para el rol ORFEBRE.
+// ============================================================
+function pantallaVerFoto() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>📷 Ver foto</h1>
+      <div class="sub">Escribí el número de sobre</div>
+      <input type="tel" inputmode="numeric" id="vf-numero" placeholder="Ej: 4801"
+        style="font-size:28px; text-align:center; padding:18px; margin-top:10px;"
+        oninput="buscarFotoSobre()" autofocus>
+      <div id="vf-resultado" style="margin-top:18px;"></div>
+    </div>
+  `);
+  document.getElementById('vf-numero').focus();
+}
+window.pantallaVerFoto = pantallaVerFoto;
+
+let _timeoutVerFoto = null;
+function buscarFotoSobre() {
+  clearTimeout(_timeoutVerFoto);
+  const numero = document.getElementById('vf-numero').value.trim();
+  const box = document.getElementById('vf-resultado');
+  if (!numero) { box.innerHTML = ''; return; }
+
+  _timeoutVerFoto = setTimeout(async () => {
+    box.innerHTML = `<div class="msg">Buscando...</div>`;
+    const { data: s, error } = await sb
+      .from('sobres')
+      .select('numero, descripcion, foto_referencia, para_el_dia')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+    if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
+
+    const fechaEntregaHtml = s.para_el_dia
+      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
+      : '';
+
+    if (!s.foto_referencia) {
+      box.innerHTML = `
+        <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
+        <div class="vacio" style="text-align:center; margin-top:10px;">Este sobre no tiene foto cargada.</div>
+        <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+        ${fechaEntregaHtml}
+      `;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
+      <img src="${s.foto_referencia}" style="width:100%; max-height:60vh; object-fit:contain; border-radius:10px; border:1px solid #e6ddc9; margin-top:10px;">
+      <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+      ${fechaEntregaHtml}
+    `;
+  }, 250);
+}
+window.buscarFotoSobre = buscarFotoSobre;
 
 // ============================================================
 // PANTALLA 2: Nueva Entrada (cargar un sobre)
