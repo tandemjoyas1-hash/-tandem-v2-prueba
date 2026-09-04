@@ -206,7 +206,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
-      <button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
     </div>`;
 }
 
@@ -260,7 +260,7 @@ async function pantallaLogin() {
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
       <label>Tu PIN (2 números)</label>
-      <input type="tel" inputmode="numeric" maxlength="2" id="pin-input" placeholder="••">
+      <input type="tel" inputmode="numeric" maxlength="6" id="pin-input" placeholder="••">
       <button class="btn btn-verde" onclick="intentarLogin()">Entrar</button>
       <div id="login-msg"></div>
       <small>Si es tu primera vez, escribí el PIN que quieras usar de ahora en más.</small>
@@ -273,8 +273,8 @@ async function intentarLogin() {
   const pin = document.getElementById('pin-input').value.trim();
   const msgBox = document.getElementById('login-msg');
 
-  if (!/^\d{2}$/.test(pin)) {
-    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 números.</div>`;
+  if (!/^\d{2,6}$/.test(pin)) {
+    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 a 6 números.</div>`;
     return;
   }
 
@@ -2405,12 +2405,14 @@ function fechaCortaAR(fechaISO) {
 
 function pantallaCajaDelDia() {
   const hoy = fechaHoyISO();
+  const esAdmin = usuarioActual && usuarioActual.rol === 'ADMIN';
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Caja del día</h1>
       <label>Fecha</label>
-      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
+      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()" ${esAdmin ? '' : 'disabled'}>
+      ${esAdmin ? '' : '<small>Solo se puede ver el día de hoy con este usuario.</small>'}
 
       <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
@@ -3300,6 +3302,17 @@ function mesActualISO() {
 }
 
 function pantallaReportes() {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') {
+    render(`
+      ${pintarUsuarioActual()}
+      <div class="card">
+        <h1>Reportes</h1>
+        <p class="msg msg-error">Esta sección es solo para administradores.</p>
+        <button class="btn btn-outline" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+      </div>
+    `);
+    return;
+  }
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -3850,14 +3863,7 @@ window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
-// TEMPORAL (mientras seguimos probando): se saltea el login y
-// entra directo como usuario "Prueba". El botón "Cambiar" arriba
-// sigue funcionando para volver a la pantalla de login normal
-// cuando haga falta. Para reactivar el login de entrada, volver
-// a dejar solo: pantallaLogin();
-// ============================================================
-usuarioActual = { id: null, nombre: 'Prueba', rol: 'ADMIN' };
-pantallaCajaDelDia();
+pantallaLogin();
 </script>
 </body>
 </html>
