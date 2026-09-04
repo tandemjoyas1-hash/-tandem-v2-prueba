@@ -2416,7 +2416,8 @@ function pantallaCajaDelDia() {
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia()">✅ Chequeo del día</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia('hoy')">✅ Chequeo del día</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia('cc')">🧾 Chequeo Cuenta Corriente</button>
       </div>
 
       <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
@@ -2645,18 +2646,20 @@ window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
 // para que cualquiera (no hace falta saber de sistemas) vea de un
 // vistazo si algo quedó mal cargado hoy.
 // ============================================================
-function pantallaChequeoDelDia() {
+function pantallaChequeoDelDia(modo) {
+  modo = modo || 'hoy'; // 'hoy' = movimientos/sobres/taller de hoy · 'cc' = cuenta corriente general
   const fecha = document.getElementById('cd-fecha') ? document.getElementById('cd-fecha').value : fechaHoyISO();
+  const titulo = modo === 'cc' ? '🧾 Chequeo Cuenta Corriente' : '✅ Chequeo del día';
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
-      <h1>✅ Chequeo del día</h1>
-      <div class="sub">${fechaCortaAR(fecha)}</div>
+      <h1>${titulo}</h1>
+      <div class="sub">${modo === 'cc' ? 'Revisión general, no solo de hoy' : fechaCortaAR(fecha)}</div>
       <div id="chq-resultado"><p>Revisando...</p></div>
       <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
     </div>
   `);
-  cargarChequeoDelDia(fecha);
+  cargarChequeoDelDia(fecha, modo);
 }
 window.pantallaChequeoDelDia = pantallaChequeoDelDia;
 
@@ -2678,166 +2681,153 @@ function distanciaLevenshtein(a, b) {
   return dp[m][n];
 }
 
-async function cargarChequeoDelDia(fecha) {
+async function cargarChequeoDelDia(fecha, modo) {
+  modo = modo || 'hoy';
   const box = document.getElementById('chq-resultado');
-  const items = [];
+  const itemsHoy = [];
+  const itemsCC = [];
 
-  // 1) Movimientos sin medio de pago (dato clave para que cuadre la caja)
-  const { data: sinMedio } = await sb.from('movimientos_caja').select('id').eq('fecha', fecha).is('medio_pago', null);
-  items.push({
-    ok: !sinMedio || sinMedio.length === 0,
-    texto: (!sinMedio || sinMedio.length === 0)
-      ? 'Todos los movimientos tienen medio de pago cargado.'
-      : `${sinMedio.length} movimiento(s) sin medio de pago — revisalos, si no la caja no va a cerrar bien.`
-  });
+  if (modo === 'hoy') {
+    const { data: sinMedio } = await sb.from('movimientos_caja').select('id').eq('fecha', fecha).is('medio_pago', null);
+    itemsHoy.push({
+      ok: !sinMedio || sinMedio.length === 0,
+      texto: (!sinMedio || sinMedio.length === 0)
+        ? 'Todos los movimientos tienen medio de pago cargado.'
+        : `${sinMedio.length} movimiento(s) sin medio de pago — revisalos, si no la caja no va a cerrar bien.`
+    });
 
-  // 2) Sobres de hoy sin cliente o sin descripción (carga incompleta)
-  const { data: sobresHoy } = await sb.from('sobres').select('numero, cliente_id, descripcion').eq('fecha_entrada', fecha);
-  const incompletos = (sobresHoy || []).filter(s => !s.cliente_id || !s.descripcion || s.descripcion.trim() === '');
-  items.push({
-    ok: incompletos.length === 0,
-    texto: incompletos.length === 0
-      ? `${(sobresHoy || []).length} sobre(s) nuevos hoy, todos con cliente y descripción.`
-      : `${incompletos.length} sobre(s) de hoy sin cliente o sin descripción: ${incompletos.map(s => s.numero).join(', ')}`
-  });
+    const { data: sobresHoy } = await sb.from('sobres').select('numero, cliente_id, descripcion').eq('fecha_entrada', fecha);
+    const incompletos = (sobresHoy || []).filter(s => !s.cliente_id || !s.descripcion || s.descripcion.trim() === '');
+    itemsHoy.push({
+      ok: incompletos.length === 0,
+      texto: incompletos.length === 0
+        ? `${(sobresHoy || []).length} sobre(s) nuevos hoy, todos con cliente y descripción.`
+        : `${incompletos.length} sobre(s) de hoy sin cliente o sin descripción: ${incompletos.map(s => s.numero).join(', ')}`
+    });
 
-  // 3) Sobres bajados a taller hace más de 5 días que todavía no volvieron (se pueden haber olvidado)
-  const cincoDiasAtras = new Date();
-  cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
-  const { data: estancados } = await sb.from('sobres')
-    .select('numero, orfebre, baja_taller')
-    .not('baja_taller', 'is', null)
-    .is('salio_taller', null)
-    .lt('baja_taller', cincoDiasAtras.toISOString());
-  items.push({
-    ok: !estancados || estancados.length === 0,
-    texto: (!estancados || estancados.length === 0)
-      ? 'No hay sobres estancados en taller hace más de 5 días.'
-      : `${estancados.length} sobre(s) llevan más de 5 días en taller sin volver: ${estancados.map(s => s.numero + ' (' + s.orfebre + ')').join(', ')}`
-  });
+    const cincoDiasAtras = new Date();
+    cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
+    const { data: estancados } = await sb.from('sobres')
+      .select('numero, orfebre, baja_taller')
+      .not('baja_taller', 'is', null)
+      .is('salio_taller', null)
+      .lt('baja_taller', cincoDiasAtras.toISOString());
+    itemsHoy.push({
+      ok: !estancados || estancados.length === 0,
+      texto: (!estancados || estancados.length === 0)
+        ? 'No hay sobres estancados en taller hace más de 5 días.'
+        : `${estancados.length} sobre(s) llevan más de 5 días en taller sin volver: ${estancados.map(s => s.numero + ' (' + s.orfebre + ')').join(', ')}`
+    });
 
-  // 4) Movimientos con monto negativo (posible error de tipeo)
-  const { data: negativos } = await sb.from('movimientos_caja').select('id, descripcion, monto').eq('fecha', fecha).lt('monto', 0);
-  items.push({
-    ok: !negativos || negativos.length === 0,
-    texto: (!negativos || negativos.length === 0)
-      ? 'Ningún movimiento con monto negativo.'
-      : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
-  });
+    const { data: negativos } = await sb.from('movimientos_caja').select('id, descripcion, monto').eq('fecha', fecha).lt('monto', 0);
+    itemsHoy.push({
+      ok: !negativos || negativos.length === 0,
+      texto: (!negativos || negativos.length === 0)
+        ? 'Ningún movimiento con monto negativo.'
+        : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
+    });
 
-  // 5) Clientes con nombres muy parecidos cargados como si fueran distintos
-  // (typos, mayúsculas/espacios, nombre corto vs largo tipo "Zipiur" / "Zipiur Joyas")
-  const { data: todosClientes } = await sb.from('clientes').select('id, nombre');
-  const listaClientes = (todosClientes || [])
-    .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
-    .filter(c => c.norm.length >= 4);
-  const parecidos = [];
-  for (let i = 0; i < listaClientes.length; i++) {
-    for (let j = i + 1; j < listaClientes.length; j++) {
-      const a = listaClientes[i], b = listaClientes[j];
-      let sospechoso = false;
-      if (a.norm === b.norm) sospechoso = true;
-      else if (a.norm.includes(b.norm) || b.norm.includes(a.norm)) sospechoso = true;
-      else if (Math.min(a.norm.length, b.norm.length) >= 5 && distanciaLevenshtein(a.norm, b.norm) <= 2) sospechoso = true;
-      if (sospechoso) parecidos.push(`"${a.nombre}" ↔ "${b.nombre}"`);
+    const { data: todosClientes } = await sb.from('clientes').select('id, nombre');
+    const listaClientes = (todosClientes || [])
+      .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
+      .filter(c => c.norm.length >= 4);
+    const parecidos = [];
+    for (let i = 0; i < listaClientes.length; i++) {
+      for (let j = i + 1; j < listaClientes.length; j++) {
+        const a = listaClientes[i], b = listaClientes[j];
+        let sospechoso = false;
+        if (a.norm === b.norm) sospechoso = true;
+        else if (a.norm.includes(b.norm) || b.norm.includes(a.norm)) sospechoso = true;
+        else if (Math.min(a.norm.length, b.norm.length) >= 5 && distanciaLevenshtein(a.norm, b.norm) <= 2) sospechoso = true;
+        if (sospechoso) parecidos.push(`"${a.nombre}" ↔ "${b.nombre}"`);
+      }
     }
+    itemsHoy.push({
+      ok: parecidos.length === 0,
+      texto: parecidos.length === 0
+        ? 'No hay clientes con nombres parecidos cargados como si fueran distintos.'
+        : `${parecidos.length} par(es) de clientes con nombres parecidos, revisá si son la misma persona: ${parecidos.join(' · ')}`
+    });
   }
-  items.push({
-    ok: parecidos.length === 0,
-    texto: parecidos.length === 0
-      ? 'No hay clientes con nombres parecidos cargados como si fueran distintos.'
-      : `${parecidos.length} par(es) de clientes con nombres parecidos, revisá si son la misma persona: ${parecidos.join(' · ')}`
-  });
 
-  // ---- A partir de acá, chequeos de CUENTA CORRIENTE (mira todo, no solo hoy) ----
+  if (modo === 'cc') {
+    const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+    const idsCC = (clientesCC || []).map(c => c.id);
+    let sobresCC = [], pagosCC = [];
+    if (idsCC.length) {
+      const r1 = await sb.from('sobres').select('cliente_id, precio_total, fecha_entrada').in('cliente_id', idsCC);
+      sobresCC = r1.data || [];
+      const r2 = await sb.from('movimientos_caja').select('cliente_id, monto, fecha').in('cliente_id', idsCC).eq('codigo', 502).eq('ingresa_egresa', 'INGRESA');
+      pagosCC = r2.data || [];
+    }
+    const cuentaPorCliente = {};
+    (clientesCC || []).forEach(c => { cuentaPorCliente[c.id] = { nombre: c.nombre, debe: 0, haber: 0, ultimaFecha: null }; });
+    sobresCC.forEach(s => {
+      const c = cuentaPorCliente[s.cliente_id];
+      if (!c) return;
+      c.debe += Number(s.precio_total) || 0;
+      if (s.fecha_entrada && (!c.ultimaFecha || s.fecha_entrada > c.ultimaFecha)) c.ultimaFecha = s.fecha_entrada;
+    });
+    pagosCC.forEach(p => {
+      const c = cuentaPorCliente[p.cliente_id];
+      if (!c) return;
+      c.haber += Number(p.monto) || 0;
+      if (p.fecha && (!c.ultimaFecha || p.fecha > c.ultimaFecha)) c.ultimaFecha = p.fecha;
+    });
+    const cuentas = Object.values(cuentaPorCliente).map(c => ({ ...c, saldo: c.debe - c.haber }));
 
-  // Traemos los clientes mayoristas/taller y armamos su saldo (debe - haber),
-  // igual que hace la pantalla de Cuenta Corriente.
-  const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').in('tipo_cliente', ['MAYORISTA', 'TALLER']);
-  const idsCC = (clientesCC || []).map(c => c.id);
-  let sobresCC = [], pagosCC = [];
-  if (idsCC.length) {
-    const r1 = await sb.from('sobres').select('cliente_id, precio_total, fecha_entrada').in('cliente_id', idsCC);
-    sobresCC = r1.data || [];
-    const r2 = await sb.from('movimientos_caja').select('cliente_id, monto, fecha').in('cliente_id', idsCC).eq('codigo', 502).eq('ingresa_egresa', 'INGRESA');
-    pagosCC = r2.data || [];
+    const saldosNegativos = cuentas.filter(c => c.saldo < 0);
+    itemsCC.push({
+      ok: saldosNegativos.length === 0,
+      texto: saldosNegativos.length === 0
+        ? 'Ningún cliente de cuenta corriente con saldo negativo.'
+        : `${saldosNegativos.length} cliente(s) con saldo negativo (pagaron de más): ${saldosNegativos.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+    });
+
+    const pagoSinDeuda = cuentas.filter(c => c.haber > 0 && c.debe === 0);
+    itemsCC.push({
+      ok: pagoSinDeuda.length === 0,
+      texto: pagoSinDeuda.length === 0
+        ? 'Todos los pagos de cuenta corriente corresponden a compras registradas.'
+        : `${pagoSinDeuda.length} cliente(s) con pagos cargados pero sin ninguna compra registrada — revisá si el pago quedó bien asignado: ${pagoSinDeuda.map(c => c.nombre).join(', ')}`
+    });
+
+    const sesentaDiasAtras = new Date();
+    sesentaDiasAtras.setDate(sesentaDiasAtras.getDate() - 60);
+    const isoSesenta = sesentaDiasAtras.toISOString().slice(0, 10);
+    const trabadas = cuentas.filter(c => c.saldo > 0 && c.ultimaFecha && c.ultimaFecha < isoSesenta);
+    itemsCC.push({
+      ok: trabadas.length === 0,
+      texto: trabadas.length === 0
+        ? 'No hay deudas de cuenta corriente trabadas (sin movimiento hace más de 60 días).'
+        : `${trabadas.length} cuenta(s) con saldo pendiente y sin movimiento hace más de 60 días: ${trabadas.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+    });
   }
-  const cuentaPorCliente = {};
-  (clientesCC || []).forEach(c => { cuentaPorCliente[c.id] = { nombre: c.nombre, debe: 0, haber: 0, ultimaFecha: null }; });
-  sobresCC.forEach(s => {
-    const c = cuentaPorCliente[s.cliente_id];
-    if (!c) return;
-    c.debe += Number(s.precio_total) || 0;
-    if (s.fecha_entrada && (!c.ultimaFecha || s.fecha_entrada > c.ultimaFecha)) c.ultimaFecha = s.fecha_entrada;
-  });
-  pagosCC.forEach(p => {
-    const c = cuentaPorCliente[p.cliente_id];
-    if (!c) return;
-    c.haber += Number(p.monto) || 0;
-    if (p.fecha && (!c.ultimaFecha || p.fecha > c.ultimaFecha)) c.ultimaFecha = p.fecha;
-  });
-  const cuentas = Object.values(cuentaPorCliente).map(c => ({ ...c, saldo: c.debe - c.haber }));
 
-  // 6) Saldos negativos: el cliente pagó de más (posible error de carga o pago mal asignado)
-  const saldosNegativos = cuentas.filter(c => c.saldo < 0);
-  items.push({
-    ok: saldosNegativos.length === 0,
-    texto: saldosNegativos.length === 0
-      ? 'Ningún cliente de cuenta corriente con saldo negativo.'
-      : `${saldosNegativos.length} cliente(s) con saldo negativo (pagaron de más): ${saldosNegativos.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
-  });
-
-  // 7) Pago cargado sin ninguna compra registrada — puede estar mal asignado a ese cliente
-  const pagoSinDeuda = cuentas.filter(c => c.haber > 0 && c.debe === 0);
-  items.push({
-    ok: pagoSinDeuda.length === 0,
-    texto: pagoSinDeuda.length === 0
-      ? 'Todos los pagos de cuenta corriente corresponden a compras registradas.'
-      : `${pagoSinDeuda.length} cliente(s) con pagos cargados pero sin ninguna compra registrada — revisá si el pago quedó bien asignado: ${pagoSinDeuda.map(c => c.nombre).join(', ')}`
-  });
-
-  // 8) Deudas "trabadas": saldo pendiente hace más de 60 días sin ningún movimiento nuevo
-  const sesentaDiasAtras = new Date();
-  sesentaDiasAtras.setDate(sesentaDiasAtras.getDate() - 60);
-  const isoSesenta = sesentaDiasAtras.toISOString().slice(0, 10);
-  const trabadas = cuentas.filter(c => c.saldo > 0 && c.ultimaFecha && c.ultimaFecha < isoSesenta);
-  items.push({
-    ok: trabadas.length === 0,
-    texto: trabadas.length === 0
-      ? 'No hay deudas de cuenta corriente trabadas (sin movimiento hace más de 60 días).'
-      : `${trabadas.length} cuenta(s) con saldo pendiente y sin movimiento hace más de 60 días: ${trabadas.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
-  });
-
-  // 9) Totales del día, para que los tengas a mano
-  const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
-  const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
-  const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
-
-  const itemsHoy = items.slice(0, 5);
-  const itemsCC = items.slice(5);
-
+  const items = modo === 'cc' ? itemsCC : itemsHoy;
   const okCount = items.filter(i => i.ok).length;
   const resumen = okCount === items.length
     ? `<div class="msg msg-ok" style="font-weight:700;">✅ Todo en orden, no hay nada para revisar.</div>`
     : `<div class="msg msg-error" style="font-weight:700;">⚠️ Hay ${items.length - okCount} punto(s) para revisar.</div>`;
 
+  let totalesHtml = '';
+  if (modo === 'hoy') {
+    const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
+    const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+    const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+    totalesHtml = `
+      <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+        <div>Entró hoy: <strong>$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+        <div>Salió hoy: <strong>$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      </div>
+    `;
+  }
+
   box.innerHTML = `
     ${resumen}
-    <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
-      <div>Entró hoy: <strong>$${totalIngresa.toLocaleString('es-AR')}</strong></div>
-      <div>Salió hoy: <strong>$${totalEgresa.toLocaleString('es-AR')}</strong></div>
-    </div>
-    <div style="margin-top:16px; font-weight:700;">📅 De hoy</div>
-    <div style="margin-top:6px;">
-      ${itemsHoy.map(i => `
-        <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
-          <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
-        </div>
-      `).join('')}
-    </div>
-    <div style="margin-top:16px; font-weight:700;">🧾 Cuenta corriente (general)</div>
-    <div style="margin-top:6px;">
-      ${itemsCC.map(i => `
+    ${totalesHtml}
+    <div style="margin-top:16px;">
+      ${items.map(i => `
         <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
           <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
         </div>
