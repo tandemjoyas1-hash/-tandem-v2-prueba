@@ -326,6 +326,12 @@ function pantallaNuevaEntrada() {
       <button class="btn btn-outline" onclick="document.getElementById('ne-foto').click()">📷 Leer sobre por foto</button>
       <div id="ne-foto-msg"></div>
 
+      <label>Foto de referencia del cliente (opcional — ej: "igual a la muestra")</label>
+      <input type="file" id="ne-foto-ref" accept="image/*" style="display:none;" onchange="adjuntarFotoReferencia()">
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('ne-foto-ref').click()">📎 Adjuntar foto que mandó el cliente</button>
+      <small>En la compu también podés copiar la foto de WhatsApp y pegarla acá con Ctrl+V.</small>
+      <div id="ne-foto-ref-preview"></div>
+
       <label>N° de sobre</label>
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
 
@@ -1039,6 +1045,61 @@ function archivoABase64(archivo) {
   });
 }
 
+// ============================================================
+// Foto de referencia que manda el cliente por WhatsApp (ej: "quiero
+// el anillo igual a esta muestra"). Se guarda pegada al sobre para
+// que el orfebre la vea directo desde el sistema, sin tener que
+// buscarla en el grupo de WhatsApp.
+// ============================================================
+let _fotoReferenciaDataURL = null;
+
+function archivoADataURL(archivo) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(lector.result); // incluye el prefijo data:image/...;base64,
+    lector.onerror = reject;
+    lector.readAsDataURL(archivo);
+  });
+}
+
+async function adjuntarFotoReferencia() {
+  const input = document.getElementById('ne-foto-ref');
+  const archivo = input.files[0];
+  if (!archivo) return;
+  _fotoReferenciaDataURL = await archivoADataURL(archivo);
+  pintarPreviewFotoReferencia();
+}
+window.adjuntarFotoReferencia = adjuntarFotoReferencia;
+
+function pintarPreviewFotoReferencia() {
+  const box = document.getElementById('ne-foto-ref-preview');
+  if (!box) return;
+  if (!_fotoReferenciaDataURL) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div style="margin-top:8px;">
+      <img src="${_fotoReferenciaDataURL}" style="max-width:100%; max-height:220px; border-radius:8px; border:1px solid #e6ddc9;">
+      <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="_fotoReferenciaDataURL=null; pintarPreviewFotoReferencia();">✖ Sacar foto</button>
+    </div>
+  `;
+}
+
+// Permite pegar una imagen copiada (Ctrl+V) desde WhatsApp Web u otro lado,
+// mientras la pantalla de Nueva Entrada esté abierta.
+document.addEventListener('paste', async (evento) => {
+  const preview = document.getElementById('ne-foto-ref-preview');
+  if (!preview) return; // no estamos en la pantalla de Nueva Entrada
+  const items = evento.clipboardData ? evento.clipboardData.items : null;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const archivo = item.getAsFile();
+      _fotoReferenciaDataURL = await archivoADataURL(archivo);
+      pintarPreviewFotoReferencia();
+      break;
+    }
+  }
+});
+
 async function leerFotoSobre() {
   const input = document.getElementById('ne-foto');
   const msgBox = document.getElementById('ne-foto-msg');
@@ -1180,7 +1241,8 @@ async function guardarNuevaEntrada() {
       precio_total: total,
       tipo_cliente: tipoCliente,
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
-      cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null
+      cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
+      foto_referencia: _fotoReferenciaDataURL
     })
     .select('id')
     .single();
@@ -1267,6 +1329,8 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-cantidad').value = '1';
   document.getElementById('ne-proveedor').value = '';
+  _fotoReferenciaDataURL = null;
+  pintarPreviewFotoReferencia();
   
   _productoSeleccionado = null;
 
@@ -2038,7 +2102,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -2094,6 +2158,12 @@ async function buscarSobreDetalle() {
 
   resBox.innerHTML = `
     <div style="margin-top:16px; padding-top:16px; border-top:1px solid #eee;">
+      ${s.foto_referencia ? `
+        <div style="text-align:center; margin-bottom:14px;">
+          <img src="${s.foto_referencia}" style="max-width:100%; max-height:320px; border-radius:10px; border:1px solid #e6ddc9;">
+          <div style="font-size:12px; color:#8a8378; margin-top:4px;">📎 Foto que mandó el cliente</div>
+        </div>
+      ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
       <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
