@@ -420,7 +420,7 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
-      <label>¿Para qué día lo necesita el cliente? (opcional)</label>
+      <label>¿Para qué día tiene que estar listo? (se calcula solo: 5 días hábiles desde hoy — se puede cambiar)</label>
       <input type="date" id="ne-para-el-dia">
 
       <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
@@ -490,6 +490,7 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
   cargarTiposProducto('ne');
   cargarProveedores('ne');
 }
@@ -2550,6 +2551,24 @@ function fechaHoyISO() {
   const offset = hoy.getTimezoneOffset();
   const local = new Date(hoy.getTime() - offset * 60000);
   return local.toISOString().slice(0, 10);
+}
+
+// Suma "dias" días hábiles (de lunes a viernes, sin contar sábados ni domingos)
+// a partir de una fecha ISO ("2026-09-04"). Se usa para calcular sola la fecha
+// que se le pide al taller que tenga listo el sobre (5 días hábiles de margen).
+function sumarDiasHabiles(fechaISO, dias) {
+  const partes = fechaISO.split('-').map(Number);
+  const fecha = new Date(partes[0], partes[1] - 1, partes[2]);
+  let sumados = 0;
+  while (sumados < dias) {
+    fecha.setDate(fecha.getDate() + 1);
+    const diaSemana = fecha.getDay(); // 0 = domingo, 6 = sábado
+    if (diaSemana !== 0 && diaSemana !== 6) sumados++;
+  }
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
 }
 
 // Convierte una fecha-only ISO ("2026-09-03") a DD/MM/AAAA sin pasar por
