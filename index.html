@@ -2392,6 +2392,17 @@ function fechaHoyISO() {
   return local.toISOString().slice(0, 10);
 }
 
+// Convierte una fecha-only ISO ("2026-09-03") a DD/MM/AAAA sin pasar por
+// new Date(), que interpreta ese string como UTC y en Argentina puede
+// mostrar el día anterior. Usar siempre esta función para fechas sin hora.
+function fechaCortaAR(fechaISO) {
+  if (!fechaISO) return '';
+  const partes = String(fechaISO).slice(0, 10).split('-');
+  if (partes.length !== 3) return fechaISO;
+  const [y, m, d] = partes;
+  return `${d}/${m}/${y}`;
+}
+
 function pantallaCajaDelDia() {
   const hoy = fechaHoyISO();
   render(`
