@@ -200,13 +200,14 @@ function pintarUsuarioActual() {
       <button onclick="pantallaNuevaEntrada()"><span class="nav-icon">📥</span><span class="nav-label">ENTRADA</span></button>
       <button onclick="pantallaVentaDirecta()"><span class="nav-icon">🏷️</span><span class="nav-label" style="white-space:normal; line-height:1.15; text-align:center;">VENTA<br>DIRECTA</span></button>
       <button onclick="pantallaBuscarSobre()"><span class="nav-icon">🔍</span><span class="nav-label">SOBRE</span></button>
+      <button onclick="pantallaVerFoto()"><span class="nav-icon">📷</span><span class="nav-label">FOTO</span></button>
       <button onclick="abrirCatalogoParaConsulta()"><span class="nav-icon">💍</span><span class="nav-label">CATÁLOGO</span></button>
       <button onclick="pantallaRetiro()"><span class="nav-icon">💰</span><span class="nav-label">RETIRO</span></button>
       <button onclick="pantallaCuentaCorriente()"><span class="nav-icon">🧾</span><span class="nav-label">CTA CTE</span></button>
       <button onclick="pantallaTaller()"><span class="nav-icon">🔨</span><span class="nav-label">TALLER</span></button>
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
-      <button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
     </div>`;
 }
 
@@ -260,7 +261,7 @@ async function pantallaLogin() {
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
       <label>Tu PIN (2 números)</label>
-      <input type="tel" inputmode="numeric" maxlength="2" id="pin-input" placeholder="••">
+      <input type="tel" inputmode="numeric" maxlength="6" id="pin-input" placeholder="••">
       <button class="btn btn-verde" onclick="intentarLogin()">Entrar</button>
       <div id="login-msg"></div>
       <small>Si es tu primera vez, escribí el PIN que quieras usar de ahora en más.</small>
@@ -273,8 +274,8 @@ async function intentarLogin() {
   const pin = document.getElementById('pin-input').value.trim();
   const msgBox = document.getElementById('login-msg');
 
-  if (!/^\d{2}$/.test(pin)) {
-    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 números.</div>`;
+  if (!/^\d{2,6}$/.test(pin)) {
+    msgBox.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 a 6 números.</div>`;
     return;
   }
 
@@ -308,9 +309,76 @@ async function intentarLogin() {
   }
 
   usuarioActual = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
-  pantallaNuevaEntrada();
+  if (usuario.rol === 'ORFEBRE') {
+    pantallaVerFoto();
+  } else {
+    pantallaNuevaEntrada();
+  }
 }
 window.intentarLogin = intentarLogin;
+
+// ============================================================
+// PANTALLA SUPER SIMPLE: solo para los orfebres (Pachula, Daniel).
+// Escriben el número de sobre y aparece la foto, grande, sin nada
+// más para aprender. Es la pantalla de entrada para el rol ORFEBRE.
+// ============================================================
+function pantallaVerFoto() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>📷 Ver foto</h1>
+      <div class="sub">Escribí el número de sobre</div>
+      <input type="tel" inputmode="numeric" id="vf-numero" placeholder="Ej: 4801"
+        style="font-size:28px; text-align:center; padding:18px; margin-top:10px;"
+        oninput="buscarFotoSobre()" autofocus>
+      <div id="vf-resultado" style="margin-top:18px;"></div>
+    </div>
+  `);
+  document.getElementById('vf-numero').focus();
+}
+window.pantallaVerFoto = pantallaVerFoto;
+
+let _timeoutVerFoto = null;
+function buscarFotoSobre() {
+  clearTimeout(_timeoutVerFoto);
+  const numero = document.getElementById('vf-numero').value.trim();
+  const box = document.getElementById('vf-resultado');
+  if (!numero) { box.innerHTML = ''; return; }
+
+  _timeoutVerFoto = setTimeout(async () => {
+    box.innerHTML = `<div class="msg">Buscando...</div>`;
+    const { data: s, error } = await sb
+      .from('sobres')
+      .select('numero, descripcion, foto_referencia, para_el_dia')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+    if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
+
+    const fechaEntregaHtml = s.para_el_dia
+      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
+      : '';
+
+    if (!s.foto_referencia) {
+      box.innerHTML = `
+        <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
+        <div class="vacio" style="text-align:center; margin-top:10px;">Este sobre no tiene foto cargada.</div>
+        <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+        ${fechaEntregaHtml}
+      `;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
+      <img src="${s.foto_referencia}" style="width:100%; max-height:60vh; object-fit:contain; border-radius:10px; border:1px solid #e6ddc9; margin-top:10px;">
+      <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+      ${fechaEntregaHtml}
+    `;
+  }, 250);
+}
+window.buscarFotoSobre = buscarFotoSobre;
 
 // ============================================================
 // PANTALLA 2: Nueva Entrada (cargar un sobre)
@@ -325,6 +393,12 @@ function pantallaNuevaEntrada() {
       <input type="file" id="ne-foto" accept="image/*" capture="environment" style="display:none;" onchange="leerFotoSobre()">
       <button class="btn btn-outline" onclick="document.getElementById('ne-foto').click()">📷 Leer sobre por foto</button>
       <div id="ne-foto-msg"></div>
+
+      <label>Foto de referencia del cliente (opcional — ej: "igual a la muestra")</label>
+      <input type="file" id="ne-foto-ref" accept="image/*" style="display:none;" onchange="adjuntarFotoReferencia()">
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('ne-foto-ref').click()">📎 Adjuntar foto que mandó el cliente</button>
+      <small>En la compu también podés copiar la foto de WhatsApp y pegarla acá con Ctrl+V.</small>
+      <div id="ne-foto-ref-preview"></div>
 
       <label>N° de sobre</label>
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
@@ -346,12 +420,25 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
+      <label>¿Para qué día tiene que estar listo? (se calcula solo: 3 días hábiles desde hoy — se puede cambiar)</label>
+      <input type="date" id="ne-para-el-dia">
+
+      <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
+      <select id="ne-destino">
+        <option value="">No va a taller (queda en el local)</option>
+        <option value="Daniel">🔨 Daniel</option>
+        <option value="Pachula">🔨 Pachula</option>
+        <option value="GRABADO">✏️ Grabado</option>
+        <option value="Laureano">🧪 Laureano</option>
+      </select>
+
       <label>Tipo de producto (opcional, para los reportes)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <input type="text" id="ne-tipo-producto" placeholder="Escribí el código o el nombre..." oninput="buscarTipoProducto('ne')" autocomplete="off" style="flex:1;">
+        <select id="ne-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
         <button type="button" onclick="toggleNuevaCategoria('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
-      <div id="ne-tipo-producto-sugerencias"></div>
       <div id="ne-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="ne-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -362,7 +449,24 @@ function pantallaNuevaEntrada() {
       <label>Cantidad (si son varios iguales en el mismo sobre)</label>
       <input type="number" id="ne-cantidad" placeholder="1" value="1" min="1">
 
-      <button class="btn btn-outline" style="margin-top:8px;" onclick="irAlCatalogoDesdeEntrada()">🔎 Buscar en el catálogo (precio automático)</button>
+      <label>Proveedor (opcional, si el producto se lo compramos a alguien — para saber a quién recomprar)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="ne-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="ne-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="ne-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="ne-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('ne')">Agregar proveedor</button>
+        <div id="ne-nuevo-proveedor-msg"></div>
+      </div>
+
+      <!-- Botón "Buscar en el catálogo" oculto por pedido de Mauricio hasta terminar de armar bien el catálogo -->
+
 
       <label>Precio total (si ya lo sabés)</label>
       <input type="number" id="ne-total" placeholder="0">
@@ -386,13 +490,32 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
   cargarTiposProducto('ne');
+  cargarProveedores('ne');
 }
 
 const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functions/v1';
 
 let _productoSeleccionado = null; // { cat, cod } del último producto elegido del catálogo
 let _precioGramoActual = null;
+let _preciosMaterialesActual = null; // { PLATA: 3000, LATON: 100, ... }
+
+async function cargarPreciosMateriales() {
+  if (_preciosMaterialesActual) return _preciosMaterialesActual;
+  const { data } = await sb.schema('public').from('materiales').select('id, nombre, precio_gramo').order('nombre');
+  const mapa = {};
+  (data || []).forEach(m => { mapa[m.id] = { nombre: m.nombre, precio_gramo: Number(m.precio_gramo) || 0 }; });
+  _preciosMaterialesActual = mapa;
+  _precioGramoActual = mapa.PLATA ? mapa.PLATA.precio_gramo : 0;
+  return mapa;
+}
+
+function precioGramoDeMaterial(materialId) {
+  const mapa = _preciosMaterialesActual || {};
+  const m = mapa[materialId || 'PLATA'];
+  return m ? m.precio_gramo : (_precioGramoActual || 0);
+}
 let _borradorEntrada = null; // guarda lo ya escrito en Entrada antes de ir al catálogo
 
 function irAlCatalogoDesdeEntrada() {
@@ -402,8 +525,7 @@ function irAlCatalogoDesdeEntrada() {
     telefono: document.getElementById('ne-telefono').value,
     tipoCliente: document.getElementById('ne-tipo-cliente').value,
     trabajo: document.getElementById('ne-trabajo').value,
-    tipoProductoTexto: document.getElementById('ne-tipo-producto').value,
-    tipoProductoCodigo: _tipoProductoSeleccionado['ne'] || null,
+    tipoProducto: document.getElementById('ne-tipo-producto').value,
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
@@ -432,14 +554,21 @@ function pantallaCatalogo() {
 
       <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
         <div>
-          <div style="font-size:10px; color:#8a8378;">Precio del gramo</div>
-          <div id="cat-precio-gramo-texto" style="font-size:14px; font-weight:700;">Cargando...</div>
+          <div style="font-size:10px; color:#8a8378;">Precio del gramo por material</div>
+          <div id="cat-precio-gramo-texto" style="font-size:13px; font-weight:700;">Cargando...</div>
         </div>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;" onclick="togglePrecioGramo()">Cambiar</button>
       </div>
       <div id="cat-precio-gramo-form" style="display:none; margin-top:8px;">
-        <input type="number" id="cat-precio-gramo-nuevo" placeholder="Nuevo precio del gramo">
-        <button class="btn btn-verde" onclick="guardarPrecioGramo()">Guardar precio nuevo</button>
+        <label style="font-size:12px; margin-top:6px;">Plata</label>
+        <input type="number" data-material="PLATA" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Latón</label>
+        <input type="number" data-material="LATON" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Bronce</label>
+        <input type="number" data-material="BRONCE" placeholder="Precio del gramo">
+        <label style="font-size:12px; margin-top:6px;">Alpaca</label>
+        <input type="number" data-material="ALPACA" placeholder="Precio del gramo">
+        <button class="btn btn-verde" style="margin-top:10px;" onclick="guardarPrecioGramo()">Guardar precios</button>
         <div id="cat-precio-gramo-msg"></div>
       </div>
 
@@ -472,33 +601,45 @@ function pantallaCatalogo() {
 window.pantallaCatalogo = pantallaCatalogo;
 
 async function cargarPrecioGramoActual() {
-  const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-  _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
+  const mapa = await cargarPreciosMateriales();
   const el = document.getElementById('cat-precio-gramo-texto');
-  if (el) el.textContent = '$' + _precioGramoActual.toLocaleString('es-AR');
+  if (el) {
+    el.innerHTML = Object.keys(mapa).map(id => `${mapa[id].nombre}: $${mapa[id].precio_gramo.toLocaleString('es-AR')}`).join(' · ');
+  }
 }
 window.cargarPrecioGramoActual = cargarPrecioGramoActual;
 
 function togglePrecioGramo() {
   const form = document.getElementById('cat-precio-gramo-form');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  document.getElementById('cat-precio-gramo-nuevo').value = _precioGramoActual || '';
+  const abrir = form.style.display === 'none';
+  form.style.display = abrir ? 'block' : 'none';
+  if (abrir) {
+    const mapa = _preciosMaterialesActual || {};
+    form.querySelectorAll('input[data-material]').forEach(inp => {
+      const id = inp.getAttribute('data-material');
+      inp.value = mapa[id] ? mapa[id].precio_gramo : '';
+    });
+  }
 }
 window.togglePrecioGramo = togglePrecioGramo;
 
 async function guardarPrecioGramo() {
   const msgBox = document.getElementById('cat-precio-gramo-msg');
-  const nuevo = parseFloat(document.getElementById('cat-precio-gramo-nuevo').value);
-  if (!nuevo || nuevo <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un precio válido.</div>`; return; }
-
+  const inputs = document.querySelectorAll('#cat-precio-gramo-form input[data-material]');
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
-  const { error } = await sb.schema('public').from('settings').update({ precio_gramo: nuevo }).eq('id', 'main');
-  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
 
-  _precioGramoActual = nuevo;
-  document.getElementById('cat-precio-gramo-texto').textContent = '$' + nuevo.toLocaleString('es-AR');
+  for (const inp of inputs) {
+    const id = inp.getAttribute('data-material');
+    const nuevo = parseFloat(inp.value);
+    if (!nuevo || nuevo <= 0) continue;
+    const { error } = await sb.schema('public').from('materiales').update({ precio_gramo: nuevo }).eq('id', id);
+    if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  }
+
+  _preciosMaterialesActual = null;
+  await cargarPrecioGramoActual();
   document.getElementById('cat-precio-gramo-form').style.display = 'none';
-  msgBox.innerHTML = '';
+  msgBox.innerHTML = '<div class="msg msg-ok">✅ Precios guardados.</div>';
 
   // Si había resultados en pantalla, los volvemos a calcular con el precio nuevo
   const termino = document.getElementById('cat-buscar').value.trim();
@@ -546,12 +687,9 @@ async function pantallaDetalleProducto(cod) {
     return;
   }
 
-  if (_precioGramoActual === null) {
-    const { data: config } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-    _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
-  }
+  await cargarPreciosMateriales();
 
-  const metal = (Number(p.peso) || 0) * _precioGramoActual;
+  const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
   const zipiur = metal + (Number(p.labor) || 0);
   const mayor = zipiur * 1.2;
   const redes = mayor * 1.4;
@@ -572,6 +710,7 @@ async function pantallaDetalleProducto(cod) {
       <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
 
       <div class="lista-sobre" style="background:#f7f7f7;">
+        <div>Material: <strong>${(_preciosMaterialesActual[p.material] && _preciosMaterialesActual[p.material].nombre) || p.material || 'Plata'}</strong></div>
         <div>Peso: <strong>${p.peso || '-'} g</strong></div>
         <div>Mano de obra: <strong>$${(Number(p.labor) || 0).toLocaleString('es-AR')}</strong></div>
       </div>
@@ -598,6 +737,9 @@ async function pantallaEditarProducto(cod) {
     return;
   }
 
+  const mapa = await cargarPreciosMateriales();
+  const materialActual = p.material || 'PLATA';
+
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -607,6 +749,14 @@ async function pantallaEditarProducto(cod) {
 
       <label>Descripción</label>
       <input type="text" id="ep-descripcion" value="${(p.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Material</label>
+      <select id="ep-material">
+        ${Object.keys(mapa).map(id => `<option value="${id}" ${id === materialActual ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('')}
+      </select>
+
+      <label>Peso (gramos)</label>
+      <input type="number" id="ep-peso" value="${p.peso || 0}">
 
       <label>Mano de obra</label>
       <input type="number" id="ep-labor" value="${p.labor || 0}">
@@ -629,6 +779,8 @@ async function guardarEdicionProducto(cod) {
 
   const cambios = {
     descripcion: document.getElementById('ep-descripcion').value.trim(),
+    material: document.getElementById('ep-material').value,
+    peso: parseFloat(document.getElementById('ep-peso').value) || 0,
     labor: parseFloat(document.getElementById('ep-labor').value) || 0
   };
 
@@ -662,6 +814,11 @@ function pantallaAgregarProducto() {
       <label>Descripción</label>
       <input type="text" id="ap-descripcion" placeholder="Ej: Dije corazón plata">
 
+      <label>Material</label>
+      <select id="ap-material">
+        <option value="PLATA">Plata</option>
+      </select>
+
       <label>Medidas (opcional)</label>
       <input type="text" id="ap-medidas" placeholder="Ej: 2cm">
 
@@ -681,6 +838,10 @@ function pantallaAgregarProducto() {
     </div>
   `);
   sugerirCodigoNuevo();
+  cargarPreciosMateriales().then(mapa => {
+    const sel = document.getElementById('ap-material');
+    if (sel) sel.innerHTML = Object.keys(mapa).map(id => `<option value="${id}" ${id === 'PLATA' ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('');
+  });
 }
 window.pantallaAgregarProducto = pantallaAgregarProducto;
 
@@ -693,7 +854,8 @@ async function sugerirCodigoNuevo() {
     .from('products')
     .select('cod, orden_num')
     .eq('cat', cat)
-    .order('orden_num', { ascending: false })
+    .not('cod', 'is', null)
+    .order('orden_num', { ascending: false, nullsFirst: false })
     .limit(1);
 
   if (data && data.length > 0 && data[0].cod) {
@@ -727,6 +889,7 @@ async function guardarProductoNuevo() {
     cod: cod,
     cat: document.getElementById('ap-cat').value,
     descripcion: descripcion,
+    material: document.getElementById('ap-material').value || 'PLATA',
     medidas: document.getElementById('ap-medidas').value.trim() || null,
     peso: peso,
     labor: parseFloat(document.getElementById('ap-labor').value) || 0
@@ -780,9 +943,12 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
-  if (_borradorEntrada.tipoProductoTexto) {
-    document.getElementById('ne-tipo-producto').value = _borradorEntrada.tipoProductoTexto;
-    _tipoProductoSeleccionado['ne'] = _borradorEntrada.tipoProductoCodigo || null;
+  if (_borradorEntrada.tipoProducto) {
+    // El select recién se termina de llenar (cargarTiposProducto es async), por eso esperamos un toque.
+    setTimeout(() => {
+      const sel = document.getElementById('ne-tipo-producto');
+      if (sel) sel.value = _borradorEntrada.tipoProducto;
+    }, 400);
   }
 }
 
@@ -851,15 +1017,11 @@ async function buscarEnCatalogo(categoriaExacta) {
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   try {
-    if (_precioGramoActual === null) {
-      const { data: config, error: errConfig } = await sb.schema('public').from('settings').select('precio_gramo').limit(1).maybeSingle();
-      if (errConfig) throw errConfig;
-      _precioGramoActual = config ? Number(config.precio_gramo) || 0 : 0;
-    }
+    await cargarPreciosMateriales();
 
     let consulta = sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, foto')
+      .select('cod, cat, descripcion, medidas, peso, labor, material, foto')
       .limit(categoriaExacta ? 40 : 10);
 
     consulta = categoriaExacta
@@ -881,7 +1043,7 @@ async function buscarEnCatalogo(categoriaExacta) {
         <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
       </div>
       <div class="cat-grid">` + productos.map(p => {
-      const metal = (Number(p.peso) || 0) * _precioGramoActual;
+      const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
       const redes = mayor * 1.4;
@@ -954,6 +1116,61 @@ function archivoABase64(archivo) {
     lector.readAsDataURL(archivo);
   });
 }
+
+// ============================================================
+// Foto de referencia que manda el cliente por WhatsApp (ej: "quiero
+// el anillo igual a esta muestra"). Se guarda pegada al sobre para
+// que el orfebre la vea directo desde el sistema, sin tener que
+// buscarla en el grupo de WhatsApp.
+// ============================================================
+let _fotoReferenciaDataURL = null;
+
+function archivoADataURL(archivo) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(lector.result); // incluye el prefijo data:image/...;base64,
+    lector.onerror = reject;
+    lector.readAsDataURL(archivo);
+  });
+}
+
+async function adjuntarFotoReferencia() {
+  const input = document.getElementById('ne-foto-ref');
+  const archivo = input.files[0];
+  if (!archivo) return;
+  _fotoReferenciaDataURL = await archivoADataURL(archivo);
+  pintarPreviewFotoReferencia();
+}
+window.adjuntarFotoReferencia = adjuntarFotoReferencia;
+
+function pintarPreviewFotoReferencia() {
+  const box = document.getElementById('ne-foto-ref-preview');
+  if (!box) return;
+  if (!_fotoReferenciaDataURL) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div style="margin-top:8px;">
+      <img src="${_fotoReferenciaDataURL}" style="max-width:100%; max-height:220px; border-radius:8px; border:1px solid #e6ddc9;">
+      <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="_fotoReferenciaDataURL=null; pintarPreviewFotoReferencia();">✖ Sacar foto</button>
+    </div>
+  `;
+}
+
+// Permite pegar una imagen copiada (Ctrl+V) desde WhatsApp Web u otro lado,
+// mientras la pantalla de Nueva Entrada esté abierta.
+document.addEventListener('paste', async (evento) => {
+  const preview = document.getElementById('ne-foto-ref-preview');
+  if (!preview) return; // no estamos en la pantalla de Nueva Entrada
+  const items = evento.clipboardData ? evento.clipboardData.items : null;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const archivo = item.getAsFile();
+      _fotoReferenciaDataURL = await archivoADataURL(archivo);
+      pintarPreviewFotoReferencia();
+      break;
+    }
+  }
+});
 
 async function leerFotoSobre() {
   const input = document.getElementById('ne-foto');
@@ -1033,8 +1250,11 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
-  const tipoProducto = _tipoProductoSeleccionado['ne'] || null;
+  const paraElDia = document.getElementById('ne-para-el-dia').value || null;
+  const destino = document.getElementById('ne-destino').value;
+  const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
+  const proveedorId = document.getElementById('ne-proveedor').value || null;
   const telefono = document.getElementById('ne-telefono').value.trim();
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
@@ -1046,6 +1266,16 @@ async function guardarNuevaEntrada() {
   }
   if (!nombreCliente) {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre del cliente.</div>`;
+    return;
+  }
+
+  // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes), es
+  // obligatorio adjuntar la foto de referencia, para no perder tiempo después
+  // buscándola en el grupo de WhatsApp.
+  const trabajoNormalizado = trabajo.toLowerCase();
+  const necesitaFoto = trabajoNormalizado.includes('muestra') || trabajoNormalizado.includes('whatsapp');
+  if (necesitaFoto && !_fotoReferenciaDataURL) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ El trabajo dice "muestra" o "WhatsApp" — hay que adjuntar la foto de referencia antes de guardar.</div>`;
     return;
   }
 
@@ -1094,7 +1324,9 @@ async function guardarNuevaEntrada() {
       precio_total: total,
       tipo_cliente: tipoCliente,
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
-      cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null
+      cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
+      foto_referencia: _fotoReferenciaDataURL,
+      para_el_dia: paraElDia
     })
     .select('id')
     .single();
@@ -1134,7 +1366,8 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto || null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null,
+      proveedor_id: proveedorId
     });
   } else {
     await sb.from('movimientos_caja').insert({
@@ -1147,7 +1380,8 @@ async function guardarNuevaEntrada() {
       cantidad: cantidad,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
-      codigo: tipoProducto || null
+      codigo: tipoProducto ? parseInt(tipoProducto) : null,
+      proveedor_id: proveedorId
     });
   }
 
@@ -1158,16 +1392,31 @@ async function guardarNuevaEntrada() {
     detalle: 'Ingresó al local (dio entrada: ' + usuarioActual.nombre + ')'
   });
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.</div>`;
+  // 4.1) Si se eligió destino, baja directo a taller (evita cargar el N° de sobre de nuevo)
+  if (destino) {
+    await sb.from('sobres').update({ baja_taller: new Date().toISOString(), orfebre: destino }).eq('id', sobreNuevo.id);
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobreNuevo.id,
+      evento: 'BAJA A TALLER',
+      detalle: 'Asignado a ' + destino + ' directo desde Entrada (lo bajó: ' + usuarioActual.nombre + ')'
+    });
+  }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>`;
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
+  document.getElementById('ne-destino').value = '';
+  document.getElementById('ne-para-el-dia').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-cantidad').value = '1';
-  _tipoProductoSeleccionado['ne'] = null;
+  document.getElementById('ne-proveedor').value = '';
+  _fotoReferenciaDataURL = null;
+  pintarPreviewFotoReferencia();
+  
   _productoSeleccionado = null;
 
   } catch (err) {
@@ -1580,10 +1829,10 @@ function filaRetiro(s, pagadoPorSobre) {
 
 async function pagadoPorSobres(ids) {
   if (!ids || ids.length === 0) return {};
-  // ARREGLADO (03/09/2026): antes sumaba TODOS los movimientos INGRESA del sobre como "pagado",
-  // incluyendo los cargados a CUENTA CORRIENTE (que son deuda, no un pago real). Eso hacía que
-  // un sobre cargado 100% a cuenta corriente apareciera con saldo $0 / "abonado" sin haber
-  // cobrado nada (caso sobre 33830). Ahora se excluyen los movimientos en CUENTA CORRIENTE.
+  // OJO: excluimos medio_pago = 'CUENTA CORRIENTE' porque ese registro es la venta a
+  // crédito en sí (se crea en Nueva Entrada para que quede contabilizado el monto),
+  // no un cobro real. Si lo contáramos, el saldo de Retiro daría $0 en sobres que
+  // en realidad el cliente todavía debe.
   const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', ids).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
   const mapa = {};
   (pagos || []).forEach(p => { mapa[p.sobre_id] = (mapa[p.sobre_id] || 0) + Number(p.monto); });
@@ -1938,7 +2187,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -1961,16 +2210,15 @@ async function buscarSobreDetalle() {
     .from('movimientos_caja')
     .select('fecha, monto, medio_pago, descripcion')
     .eq('sobre_id', s.id)
-    .eq('ingresa_egresa', 'INGRESA');
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
 
   const { data: items } = await sb
     .from('items_sobre')
     .select('descripcion, precio')
     .eq('sobre_id', s.id);
 
-  // ARREGLADO (03/09/2026): "Pagado" no debe incluir lo cargado a CUENTA CORRIENTE (es deuda,
-  // no un pago). Se sigue mostrando en el historial de movimientos de abajo, pero no resta del saldo.
-  const pagado = (movimientos || []).filter(m => m.medio_pago !== 'CUENTA CORRIENTE').reduce((acc, m) => acc + Number(m.monto), 0);
+  const pagado = (movimientos || []).reduce((acc, m) => acc + Number(m.monto), 0);
   const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
 
   const filasHistorial = (historial || []).length === 0
@@ -1995,6 +2243,12 @@ async function buscarSobreDetalle() {
 
   resBox.innerHTML = `
     <div style="margin-top:16px; padding-top:16px; border-top:1px solid #eee;">
+      ${s.foto_referencia ? `
+        <div style="text-align:center; margin-bottom:14px;">
+          <img src="${s.foto_referencia}" style="max-width:100%; max-height:320px; border-radius:10px; border:1px solid #e6ddc9;">
+          <div style="font-size:12px; color:#8a8378; margin-top:4px;">📎 Foto que mandó el cliente</div>
+        </div>
+      ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
       <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
@@ -2094,7 +2348,6 @@ async function mostrarSobresParaBoleta(clienteId, nombreCliente, telefono) {
     return;
   }
 
-  // ARREGLADO (03/09/2026): excluir CUENTA CORRIENTE del cálculo de "pagado" (ver pagadoPorSobres).
   const { data: pagos } = await sb
     .from('movimientos_caja')
     .select('sobre_id, monto')
@@ -2245,7 +2498,6 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
 
     await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', s.id);
 
-    // ARREGLADO (03/09/2026): excluir CUENTA CORRIENTE del cálculo de "pagado" (ver pagadoPorSobres).
     const { data: pagos } = await sb.from('movimientos_caja').select('monto').eq('sobre_id', s.id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
     const pagado = (pagos || []).reduce((acc, m) => acc + Number(m.monto), 0);
     const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
@@ -2301,19 +2553,51 @@ function fechaHoyISO() {
   return local.toISOString().slice(0, 10);
 }
 
+// Suma "dias" días hábiles (de lunes a viernes, sin contar sábados ni domingos)
+// a partir de una fecha ISO ("2026-09-04"). Se usa para calcular sola la fecha
+// que se le pide al taller que tenga listo el sobre (5 días hábiles de margen).
+function sumarDiasHabiles(fechaISO, dias) {
+  const partes = fechaISO.split('-').map(Number);
+  const fecha = new Date(partes[0], partes[1] - 1, partes[2]);
+  let sumados = 0;
+  while (sumados < dias) {
+    fecha.setDate(fecha.getDate() + 1);
+    const diaSemana = fecha.getDay(); // 0 = domingo, 6 = sábado
+    if (diaSemana !== 0 && diaSemana !== 6) sumados++;
+  }
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+// Convierte una fecha-only ISO ("2026-09-03") a DD/MM/AAAA sin pasar por
+// new Date(), que interpreta ese string como UTC y en Argentina puede
+// mostrar el día anterior. Usar siempre esta función para fechas sin hora.
+function fechaCortaAR(fechaISO) {
+  if (!fechaISO) return '';
+  const partes = String(fechaISO).slice(0, 10).split('-');
+  if (partes.length !== 3) return fechaISO;
+  const [y, m, d] = partes;
+  return `${d}/${m}/${y}`;
+}
+
 function pantallaCajaDelDia() {
   const hoy = fechaHoyISO();
+  const esAdmin = usuarioActual && usuarioActual.rol === 'ADMIN';
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Caja del día</h1>
       <label>Fecha</label>
-      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()">
+      <input type="date" id="cd-fecha" value="${hoy}" onchange="cargarCajaDelDia()" ${esAdmin ? '' : 'disabled'}>
+      ${esAdmin ? '' : '<small>Solo se puede ver el día de hoy con este usuario.</small>'}
 
       <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap;">
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia()">✅ Chequeo del día</button>
       </div>
 
       <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
@@ -2376,6 +2660,375 @@ async function guardarAperturaCaja() {
 window.toggleAperturaCaja = toggleAperturaCaja;
 window.guardarAperturaCaja = guardarAperturaCaja;
 
+function renderFilasMovimientosCD(movimientos) {
+  if (!movimientos || movimientos.length === 0) {
+    return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
+  }
+  const filasMovimientos = movimientos.map(m => `
+    <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
+      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      <div class="desc">${m.descripcion || ''}</div>
+    </div>
+  `).join('');
+
+  const filasTabla = movimientos.map(m => `
+    <tr style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
+      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
+      <td>${m.vendedora || ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
+      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.medio_pago || ''}</td>
+      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
+        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
+      </td>
+    </tr>
+  `).join('');
+
+  const tabla = `
+    <div class="tabla-caja">
+      <table>
+        <thead>
+          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
+        </thead>
+        <tbody>${filasTabla}</tbody>
+      </table>
+    </div>
+  `;
+  return { lista: filasMovimientos, tabla };
+}
+
+function filtrarCajaDelDia() {
+  const inputEl = document.getElementById('cd-buscar');
+  const q = (inputEl ? inputEl.value : '').trim().toLowerCase();
+  const todos = window._movimientosCajaActual || [];
+  const filtrados = q === '' ? todos : todos.filter(m => {
+    const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
+    const vendedora = (m.vendedora || '').toLowerCase();
+    const desc = (m.descripcion || '').toLowerCase();
+    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
+  });
+  const { lista, tabla } = renderFilasMovimientosCD(filtrados);
+  const contador = document.getElementById('cd-contador');
+  if (contador) contador.textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
+  const listaBox = document.getElementById('cd-lista-movimientos');
+  if (listaBox) listaBox.innerHTML = lista;
+  const tablaBox = document.getElementById('cd-tabla-movimientos');
+  if (tablaBox) tablaBox.innerHTML = tabla;
+}
+window.filtrarCajaDelDia = filtrarCajaDelDia;
+
+// ============================================================
+// PANTALLA: Editar / corregir un movimiento de caja (tocando el ✏️ de un movimiento en Caja del Día)
+// ============================================================
+async function pantallaEditarMovimiento(id) {
+  render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
+
+  const { data: m, error } = await sb
+    .from('movimientos_caja')
+    .select('id, fecha, descripcion, monto, cantidad, medio_pago, ingresa_egresa, codigo, proveedor_id, clientes(nombre)')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !m) {
+    render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el movimiento.</p></div>`);
+    return;
+  }
+
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>✏️ Corregir movimiento</h1>
+      <div class="sub">${m.ingresa_egresa === 'INGRESA' ? 'Entrada' : 'Salida'} del ${fechaCortaAR(m.fecha)}${m.clientes ? ' · ' + m.clientes.nombre : ''}</div>
+
+      <label>Descripción</label>
+      <input type="text" id="em-descripcion" value="${(m.descripcion || '').replace(/"/g, '&quot;')}">
+
+      <label>Monto</label>
+      <input type="number" id="em-monto" value="${m.monto || 0}">
+
+      <label>Cantidad</label>
+      <input type="number" id="em-cantidad" value="${m.cantidad || 1}" min="1">
+
+      <label>Medio de pago</label>
+      <select id="em-medio">
+        ${['EFECTIVO','TARJETA FISER','TRANSFERENCIA SANTANDER','MERCADO PAGO FISER','MERCADO PAGO LAUREANO','UALA CARLA','LEMON LAUREANO','CUENTA CORRIENTE']
+          .map(op => `<option ${op === m.medio_pago ? 'selected' : ''}>${op}</option>`).join('')}
+      </select>
+
+      <label>Tipo de producto</label>
+      <select id="em-tipo-producto">
+        <option value="">— Sin especificar —</option>
+      </select>
+
+      <label>Proveedor</label>
+      <select id="em-proveedor">
+        <option value="">— Sin especificar —</option>
+      </select>
+
+      <button class="btn btn-verde" onclick='guardarCorreccionMovimiento(${JSON.stringify(id)})'>Guardar corrección</button>
+      <button class="btn btn-outline" style="margin-top:10px; color:#9a3a1e; border-color:#e7c9c0;" onclick='confirmarBorrarMovimiento(${JSON.stringify(id)})'>🗑️ Borrar este movimiento (fue un error)</button>
+      <div id="em-msg"></div>
+
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+    </div>
+  `);
+
+  const { data: tipos } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
+  const selTipo = document.getElementById('em-tipo-producto');
+  if (tipos) {
+    selTipo.innerHTML = '<option value="">— Sin especificar —</option>' +
+      tipos.map(c => `<option value="${c.codigo}" ${Number(c.codigo) === Number(m.codigo) ? 'selected' : ''}>${c.codigo} — ${c.descripcion}</option>`).join('');
+  }
+
+  const { data: provs } = await sb.from('proveedores').select('id, nombre').order('nombre');
+  const selProv = document.getElementById('em-proveedor');
+  if (provs) {
+    selProv.innerHTML = '<option value="">— Sin especificar —</option>' +
+      provs.map(p => `<option value="${p.id}" ${p.id === m.proveedor_id ? 'selected' : ''}>${p.nombre}</option>`).join('');
+  }
+}
+window.pantallaEditarMovimiento = pantallaEditarMovimiento;
+
+async function guardarCorreccionMovimiento(id) {
+  const msgBox = document.getElementById('em-msg');
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const tipoProducto = document.getElementById('em-tipo-producto').value;
+  const proveedorId = document.getElementById('em-proveedor').value || null;
+
+  const { error } = await sb.from('movimientos_caja').update({
+    descripcion: document.getElementById('em-descripcion').value.trim(),
+    monto: parseFloat(document.getElementById('em-monto').value) || 0,
+    cantidad: parseInt(document.getElementById('em-cantidad').value) || 1,
+    medio_pago: document.getElementById('em-medio').value,
+    codigo: tipoProducto ? parseInt(tipoProducto) : null,
+    proveedor_id: proveedorId
+  }).eq('id', id);
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Corregido.</div>`;
+}
+window.guardarCorreccionMovimiento = guardarCorreccionMovimiento;
+
+async function confirmarBorrarMovimiento(id) {
+  if (!confirm('¿Seguro que querés borrar este movimiento? No se puede deshacer.')) return;
+  const { error } = await sb.from('movimientos_caja').delete().eq('id', id);
+  if (error) { document.getElementById('em-msg').innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  pantallaCajaDelDia();
+}
+window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
+
+// ============================================================
+// PANTALLA: ✅ Chequeo del día — revisión automática antes de cerrar
+// Corre varias verificaciones simples y muestra un semáforo (✅ / ⚠️)
+// para que cualquiera (no hace falta saber de sistemas) vea de un
+// vistazo si algo quedó mal cargado hoy.
+// ============================================================
+function pantallaChequeoDelDia(modo) {
+  if (!modo) {
+    render(`
+      ${pintarUsuarioActual()}
+      <div class="card">
+        <h1>✅ Chequeo del día</h1>
+        <div class="sub">Elegí qué querés revisar</div>
+        <button class="btn" style="margin-top:14px;" onclick="pantallaChequeoDelDia('hoy')">📅 Chequeo general (de hoy)</button>
+        <button class="btn" style="margin-top:10px;" onclick="pantallaChequeoDelDia('cc')">🧾 Chequeo Cuenta Corriente</button>
+        <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+      </div>
+    `);
+    return;
+  }
+  const fecha = document.getElementById('cd-fecha') ? document.getElementById('cd-fecha').value : fechaHoyISO();
+  const titulo = modo === 'cc' ? '🧾 Chequeo Cuenta Corriente' : '✅ Chequeo del día';
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>${titulo}</h1>
+      <div class="sub">${modo === 'cc' ? 'Revisión general, no solo de hoy' : fechaCortaAR(fecha)}</div>
+      <div id="chq-resultado"><p>Revisando...</p></div>
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaChequeoDelDia()">← Volver</button>
+    </div>
+  `);
+  cargarChequeoDelDia(fecha, modo);
+}
+window.pantallaChequeoDelDia = pantallaChequeoDelDia;
+
+// Herramientas para comparar nombres de clientes y detectar posibles duplicados
+// (ej. "Zipiur" vs "Zipiur Joyas" vs "Zipiun Joyas" — mismo cliente cargado distinto).
+function normalizarNombreCliente(n) {
+  return (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+function distanciaLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+async function cargarChequeoDelDia(fecha, modo) {
+  modo = modo || 'hoy';
+  const box = document.getElementById('chq-resultado');
+  const itemsHoy = [];
+  const itemsCC = [];
+
+  if (modo === 'hoy') {
+    const { data: sinMedio } = await sb.from('movimientos_caja').select('id').eq('fecha', fecha).is('medio_pago', null);
+    itemsHoy.push({
+      ok: !sinMedio || sinMedio.length === 0,
+      texto: (!sinMedio || sinMedio.length === 0)
+        ? 'Todos los movimientos tienen medio de pago cargado.'
+        : `${sinMedio.length} movimiento(s) sin medio de pago — revisalos, si no la caja no va a cerrar bien.`
+    });
+
+    const { data: sobresHoy } = await sb.from('sobres').select('numero, cliente_id, descripcion').eq('fecha_entrada', fecha);
+    const incompletos = (sobresHoy || []).filter(s => !s.cliente_id || !s.descripcion || s.descripcion.trim() === '');
+    itemsHoy.push({
+      ok: incompletos.length === 0,
+      texto: incompletos.length === 0
+        ? `${(sobresHoy || []).length} sobre(s) nuevos hoy, todos con cliente y descripción.`
+        : `${incompletos.length} sobre(s) de hoy sin cliente o sin descripción: ${incompletos.map(s => s.numero).join(', ')}`
+    });
+
+    const cincoDiasAtras = new Date();
+    cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
+    const { data: estancados } = await sb.from('sobres')
+      .select('numero, orfebre, baja_taller')
+      .not('baja_taller', 'is', null)
+      .is('salio_taller', null)
+      .lt('baja_taller', cincoDiasAtras.toISOString());
+    itemsHoy.push({
+      ok: !estancados || estancados.length === 0,
+      texto: (!estancados || estancados.length === 0)
+        ? 'No hay sobres estancados en taller hace más de 5 días.'
+        : `${estancados.length} sobre(s) llevan más de 5 días en taller sin volver: ${estancados.map(s => s.numero + ' (' + s.orfebre + ')').join(', ')}`
+    });
+
+    const { data: negativos } = await sb.from('movimientos_caja').select('id, descripcion, monto').eq('fecha', fecha).lt('monto', 0);
+    itemsHoy.push({
+      ok: !negativos || negativos.length === 0,
+      texto: (!negativos || negativos.length === 0)
+        ? 'Ningún movimiento con monto negativo.'
+        : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
+    });
+
+    const { data: todosClientes } = await sb.from('clientes').select('id, nombre');
+    const listaClientes = (todosClientes || [])
+      .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
+      .filter(c => c.norm.length >= 4);
+    const parecidos = [];
+    for (let i = 0; i < listaClientes.length; i++) {
+      for (let j = i + 1; j < listaClientes.length; j++) {
+        const a = listaClientes[i], b = listaClientes[j];
+        let sospechoso = false;
+        if (a.norm === b.norm) sospechoso = true;
+        else if (a.norm.includes(b.norm) || b.norm.includes(a.norm)) sospechoso = true;
+        else if (Math.min(a.norm.length, b.norm.length) >= 5 && distanciaLevenshtein(a.norm, b.norm) <= 2) sospechoso = true;
+        if (sospechoso) parecidos.push(`"${a.nombre}" ↔ "${b.nombre}"`);
+      }
+    }
+    itemsHoy.push({
+      ok: parecidos.length === 0,
+      texto: parecidos.length === 0
+        ? 'No hay clientes con nombres parecidos cargados como si fueran distintos.'
+        : `${parecidos.length} par(es) de clientes con nombres parecidos, revisá si son la misma persona: ${parecidos.join(' · ')}`
+    });
+  }
+
+  if (modo === 'cc') {
+    const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+    const idsCC = (clientesCC || []).map(c => c.id);
+    let sobresCC = [], pagosCC = [];
+    if (idsCC.length) {
+      const r1 = await sb.from('sobres').select('cliente_id, precio_total, fecha_entrada').in('cliente_id', idsCC);
+      sobresCC = r1.data || [];
+      const r2 = await sb.from('movimientos_caja').select('cliente_id, monto, fecha').in('cliente_id', idsCC).eq('codigo', 502).eq('ingresa_egresa', 'INGRESA');
+      pagosCC = r2.data || [];
+    }
+    const cuentaPorCliente = {};
+    (clientesCC || []).forEach(c => { cuentaPorCliente[c.id] = { nombre: c.nombre, debe: 0, haber: 0, ultimaFecha: null }; });
+    sobresCC.forEach(s => {
+      const c = cuentaPorCliente[s.cliente_id];
+      if (!c) return;
+      c.debe += Number(s.precio_total) || 0;
+      if (s.fecha_entrada && (!c.ultimaFecha || s.fecha_entrada > c.ultimaFecha)) c.ultimaFecha = s.fecha_entrada;
+    });
+    pagosCC.forEach(p => {
+      const c = cuentaPorCliente[p.cliente_id];
+      if (!c) return;
+      c.haber += Number(p.monto) || 0;
+      if (p.fecha && (!c.ultimaFecha || p.fecha > c.ultimaFecha)) c.ultimaFecha = p.fecha;
+    });
+    const cuentas = Object.values(cuentaPorCliente).map(c => ({ ...c, saldo: c.debe - c.haber }));
+
+    const saldosNegativos = cuentas.filter(c => c.saldo < 0);
+    itemsCC.push({
+      ok: saldosNegativos.length === 0,
+      texto: saldosNegativos.length === 0
+        ? 'Ningún cliente de cuenta corriente con saldo negativo.'
+        : `${saldosNegativos.length} cliente(s) con saldo negativo (pagaron de más): ${saldosNegativos.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+    });
+
+    const pagoSinDeuda = cuentas.filter(c => c.haber > 0 && c.debe === 0);
+    itemsCC.push({
+      ok: pagoSinDeuda.length === 0,
+      texto: pagoSinDeuda.length === 0
+        ? 'Todos los pagos de cuenta corriente corresponden a compras registradas.'
+        : `${pagoSinDeuda.length} cliente(s) con pagos cargados pero sin ninguna compra registrada — revisá si el pago quedó bien asignado: ${pagoSinDeuda.map(c => c.nombre).join(', ')}`
+    });
+
+    const sesentaDiasAtras = new Date();
+    sesentaDiasAtras.setDate(sesentaDiasAtras.getDate() - 60);
+    const isoSesenta = sesentaDiasAtras.toISOString().slice(0, 10);
+    const trabadas = cuentas.filter(c => c.saldo > 0 && c.ultimaFecha && c.ultimaFecha < isoSesenta);
+    itemsCC.push({
+      ok: trabadas.length === 0,
+      texto: trabadas.length === 0
+        ? 'No hay deudas de cuenta corriente trabadas (sin movimiento hace más de 60 días).'
+        : `${trabadas.length} cuenta(s) con saldo pendiente y sin movimiento hace más de 60 días: ${trabadas.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+    });
+  }
+
+  const items = modo === 'cc' ? itemsCC : itemsHoy;
+  const okCount = items.filter(i => i.ok).length;
+  const resumen = okCount === items.length
+    ? `<div class="msg msg-ok" style="font-weight:700;">✅ Todo en orden, no hay nada para revisar.</div>`
+    : `<div class="msg msg-error" style="font-weight:700;">⚠️ Hay ${items.length - okCount} punto(s) para revisar.</div>`;
+
+  let totalesHtml = '';
+  if (modo === 'hoy') {
+    const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
+    const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+    const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
+    totalesHtml = `
+      <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
+        <div>Entró hoy: <strong>$${totalIngresa.toLocaleString('es-AR')}</strong></div>
+        <div>Salió hoy: <strong>$${totalEgresa.toLocaleString('es-AR')}</strong></div>
+      </div>
+    `;
+  }
+
+  box.innerHTML = `
+    ${resumen}
+    ${totalesHtml}
+    <div style="margin-top:16px;">
+      ${items.map(i => `
+        <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
+          <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+window.cargarChequeoDelDia = cargarChequeoDelDia;
+
 async function cargarCajaDelDia() {
   const fecha = document.getElementById('cd-fecha').value;
   const resBox = document.getElementById('cd-resultado');
@@ -2383,7 +3036,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('vendedora, descripcion, ingresa_egresa, medio_pago, monto, codigo, tipo_cliente, created_at, clientes(nombre)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre)')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -2431,38 +3084,8 @@ async function cargarCajaDelDia() {
       `;
       }).join('');
 
-  const filasMovimientos = movimientos.map(m => `
-    <div class="lista-sobre">
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}</div>
-      <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}</div>
-    </div>
-  `).join('');
-
-  const filasTabla = movimientos.map(m => `
-    <tr>
-      <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
-      <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
-      <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
-      <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
-        ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
-      </td>
-    </tr>
-  `).join('');
-
-  const tablaCaja = `
-    <div class="tabla-caja">
-      <table>
-        <thead>
-          <tr><th>Hora</th><th>Vendedora</th><th>Cliente</th><th>Tipo</th><th>Descripción</th><th>Medio</th><th style="text-align:right;">Monto</th></tr>
-        </thead>
-        <tbody>${filasTabla}</tbody>
-      </table>
-    </div>
-  `;
+  window._movimientosCajaActual = movimientos;
+  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos);
 
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
@@ -2494,9 +3117,12 @@ async function cargarCajaDelDia() {
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
     <div class="lista-sobre">${filasMedios}</div>
 
-    <label style="margin-top:16px;">Movimientos (${movimientos.length})</label>
-    <div class="lista-movil-caja">${filasMovimientos}</div>
-    ${tablaCaja}
+    <label style="margin-top:16px;">🔎 Buscar por nombre de cliente</label>
+    <input type="text" id="cd-buscar" placeholder="Escribí el nombre..." oninput="filtrarCajaDelDia()">
+
+    <label id="cd-contador" style="margin-top:16px;">Movimientos (${movimientos.length})</label>
+    <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
+    <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
     <div style="text-align:center; margin-top:20px;">
       <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
@@ -2633,7 +3259,6 @@ async function buscarSobreParaPagoParcial() {
   if (!s) { resBox.innerHTML = `<div class="vacio">No se encontró ningún sobre con ese número.</div>`; return; }
   if (s.fecha_salida) { resBox.innerHTML = `<div class="msg msg-error">Ese sobre ya fue retirado. Un pago sobre un sobre ya entregado se maneja por Cuenta Corriente, no acá.</div>`; return; }
 
-  // ARREGLADO (03/09/2026): excluir CUENTA CORRIENTE del cálculo de "pagado" (ver pagadoPorSobres).
   const { data: pagos } = await sb
     .from('movimientos_caja')
     .select('monto')
@@ -2733,6 +3358,22 @@ function pantallaEgreso() {
       <label>Descripción</label>
       <input type="text" id="eg-descripcion" placeholder="Ej: compra de bolsitas, alquiler, etc.">
 
+      <label>Proveedor (opcional)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="eg-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor('eg')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="eg-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="eg-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="eg-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('eg')">Agregar proveedor</button>
+        <div id="eg-nuevo-proveedor-msg"></div>
+      </div>
+
       <label>Monto</label>
       <input type="number" id="eg-monto" placeholder="0">
 
@@ -2750,13 +3391,58 @@ function pantallaEgreso() {
       <div id="eg-msg"></div>
     </div>
   `);
+  cargarProveedores('eg');
 }
 window.pantallaEgreso = pantallaEgreso;
+
+async function cargarProveedores(prefix) {
+  const select = document.getElementById(prefix + '-proveedor');
+  if (!select) return;
+  const { data } = await sb.from('proveedores').select('id, nombre').order('nombre');
+  if (!data) return;
+  select.innerHTML = '<option value="">— Sin especificar —</option>' +
+    data.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+}
+window.cargarProveedores = cargarProveedores;
+
+function toggleNuevoProveedor(prefix) {
+  const box = document.getElementById(prefix + '-nuevo-proveedor-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') document.getElementById(prefix + '-nuevo-proveedor-nombre').focus();
+}
+window.toggleNuevoProveedor = toggleNuevoProveedor;
+
+async function guardarNuevoProveedor(prefix) {
+  const nombre = document.getElementById(prefix + '-nuevo-proveedor-nombre').value.trim();
+  const telefono = document.getElementById(prefix + '-nuevo-proveedor-telefono').value.trim();
+  const msgBox = document.getElementById(prefix + '-nuevo-proveedor-msg');
+  if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Escribí un nombre.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { data: existente } = await sb.from('proveedores').select('id').ilike('nombre', nombre).limit(1).maybeSingle();
+  if (existente) {
+    msgBox.innerHTML = `<div class="msg msg-error">Ya existe un proveedor con ese nombre.</div>`;
+    return;
+  }
+
+  const { data: nuevo, error } = await sb.from('proveedores').insert({ nombre: nombre, telefono: telefono || null }).select('id').single();
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Proveedor "${nombre}" agregado.</div>`;
+  document.getElementById(prefix + '-nuevo-proveedor-nombre').value = '';
+  document.getElementById(prefix + '-nuevo-proveedor-telefono').value = '';
+  await cargarProveedores(prefix);
+  document.getElementById(prefix + '-proveedor').value = nuevo.id;
+  document.getElementById(prefix + '-nuevo-proveedor-box').style.display = 'none';
+}
+window.guardarNuevoProveedor = guardarNuevoProveedor;
 
 async function guardarEgreso() {
   const msgBox = document.getElementById('eg-msg');
   const codigo = parseInt(document.getElementById('eg-tipo').value) || null;
   const descripcion = document.getElementById('eg-descripcion').value.trim();
+  const proveedorId = document.getElementById('eg-proveedor').value || null;
   const monto = parseFloat(document.getElementById('eg-monto').value) || 0;
   const medioPago = document.getElementById('eg-medio').value;
 
@@ -2772,7 +3458,8 @@ async function guardarEgreso() {
     ingresa_egresa: 'EGRESA',
     medio_pago: medioPago,
     monto: monto,
-    canal: 'LOCAL'
+    canal: 'LOCAL',
+    proveedor_id: proveedorId
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -2780,6 +3467,7 @@ async function guardarEgreso() {
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Egreso de $${monto.toLocaleString('es-AR')} registrado.</div>`;
   document.getElementById('eg-descripcion').value = '';
   document.getElementById('eg-monto').value = '';
+  document.getElementById('eg-proveedor').value = '';
 }
 window.guardarEgreso = guardarEgreso;
 
@@ -2794,6 +3482,17 @@ function mesActualISO() {
 }
 
 function pantallaReportes() {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') {
+    render(`
+      ${pintarUsuarioActual()}
+      <div class="card">
+        <h1>Reportes</h1>
+        <p class="msg msg-error">Esta sección es solo para administradores.</p>
+        <button class="btn btn-outline" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+      </div>
+    `);
+    return;
+  }
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -3151,10 +3850,11 @@ function pantallaVentaDirecta() {
 
       <label>Tipo de producto (opcional, para los reportes)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <input type="text" id="vd-tipo-producto" placeholder="Escribí el código o el nombre..." oninput="buscarTipoProducto('vd')" autocomplete="off" style="flex:1;">
+        <select id="vd-tipo-producto" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
         <button type="button" onclick="toggleNuevaCategoria('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
-      <div id="vd-tipo-producto-sugerencias"></div>
       <div id="vd-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="vd-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -3164,6 +3864,22 @@ function pantallaVentaDirecta() {
 
       <label>Cantidad</label>
       <input type="number" id="vd-cantidad" placeholder="1" value="1" min="1">
+
+      <label>Proveedor (opcional, si el producto se lo compramos a alguien — para saber a quién recomprar)</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="vd-proveedor" style="flex:1;">
+          <option value="">— Sin especificar —</option>
+        </select>
+        <button type="button" onclick="toggleNuevoProveedor('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
+      </div>
+      <div id="vd-nuevo-proveedor-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
+        <label style="margin-top:0;">Nombre del proveedor nuevo</label>
+        <input type="text" id="vd-nuevo-proveedor-nombre" placeholder="Ej: Metalúrgica Ruiz">
+        <label>Teléfono (opcional)</label>
+        <input type="text" id="vd-nuevo-proveedor-telefono" placeholder="Ej: 3511234567">
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="guardarNuevoProveedor('vd')">Agregar proveedor</button>
+        <div id="vd-nuevo-proveedor-msg"></div>
+      </div>
 
       <label>Monto (total de toda la venta)</label>
       <input type="number" id="vd-monto" placeholder="0">
@@ -3185,6 +3901,7 @@ function pantallaVentaDirecta() {
   `);
   document.getElementById('vd-descripcion').focus();
   cargarTiposProducto('vd');
+  cargarProveedores('vd');
 }
 window.pantallaVentaDirecta = pantallaVentaDirecta;
 
@@ -3218,44 +3935,16 @@ function elegirClienteVentaDirecta(id, nombre) {
 }
 window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
 
-// --- Tipo de producto: campo de texto con autocompletado (código o nombre), usado en
-//     Entrada y Venta Directa. Se guarda una vez la lista de categorías y se filtra en el
-//     momento sin volver a pedirle nada al servidor por cada letra que escriben.
-let _codigosProductoCache = null;
-let _tipoProductoSeleccionado = {}; // { ne: 9002, vd: 1000, ... }
-
+// --- Tipo de producto: desplegable simple, usado en Entrada y Venta Directa.
 async function cargarTiposProducto(prefix) {
-  if (!_codigosProductoCache) {
-    const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
-    _codigosProductoCache = data || [];
-  }
+  const select = document.getElementById(prefix + '-tipo-producto');
+  if (!select) return;
+  const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
+  if (!data) return;
+  select.innerHTML = '<option value="">— Sin especificar —</option>' +
+    data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
 }
 window.cargarTiposProducto = cargarTiposProducto;
-
-function buscarTipoProducto(prefix) {
-  const input = document.getElementById(prefix + '-tipo-producto');
-  const box = document.getElementById(prefix + '-tipo-producto-sugerencias');
-  if (!input || !box) return;
-  _tipoProductoSeleccionado[prefix] = null; // hasta que no elija de la lista, no cuenta como elegido
-  const q = input.value.trim().toLowerCase();
-  if (!q) { box.innerHTML = ''; return; }
-  const lista = _codigosProductoCache || [];
-  const filtrados = lista.filter(c => String(c.codigo).includes(q) || c.descripcion.toLowerCase().includes(q)).slice(0, 8);
-  if (filtrados.length === 0) { box.innerHTML = `<div class="vacio" style="font-size:12px; padding:6px 0;">Sin resultados — tocá el ✏️ para agregarla</div>`; return; }
-  box.innerHTML = filtrados.map(c => `
-    <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirTipoProducto(${JSON.stringify(prefix)}, ${c.codigo}, ${JSON.stringify(c.descripcion)})'>
-      <div class="nro" style="font-size:14px;">${c.codigo} — ${c.descripcion}</div>
-    </div>
-  `).join('');
-}
-window.buscarTipoProducto = buscarTipoProducto;
-
-function elegirTipoProducto(prefix, codigo, descripcion) {
-  _tipoProductoSeleccionado[prefix] = codigo;
-  document.getElementById(prefix + '-tipo-producto').value = codigo + ' — ' + descripcion;
-  document.getElementById(prefix + '-tipo-producto-sugerencias').innerHTML = '';
-}
-window.elegirTipoProducto = elegirTipoProducto;
 
 function toggleNuevaCategoria(prefix) {
   const box = document.getElementById(prefix + '-nueva-categoria-box');
@@ -3289,9 +3978,8 @@ async function guardarNuevaCategoria(prefix) {
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Categoría "${nombre}" agregada.</div>`;
   document.getElementById(prefix + '-nueva-categoria-nombre').value = '';
-  _codigosProductoCache = null; // fuerza a traer la lista de nuevo con la categoría recién creada
   await cargarTiposProducto(prefix);
-  elegirTipoProducto(prefix, nuevoCodigo, nombre.toUpperCase());
+  document.getElementById(prefix + '-tipo-producto').value = String(nuevoCodigo);
   document.getElementById(prefix + '-nueva-categoria-box').style.display = 'none';
 }
 window.guardarNuevaCategoria = guardarNuevaCategoria;
@@ -3322,7 +4010,8 @@ async function guardarVentaDirecta() {
     }
   }
 
-  const tipoProducto = _tipoProductoSeleccionado['vd'] || null;
+  const tipoProducto = document.getElementById('vd-tipo-producto').value;
+  const proveedorId = document.getElementById('vd-proveedor').value || null;
 
   const { error } = await sb.from('movimientos_caja').insert({
     vendedora: usuarioActual.nombre,
@@ -3334,7 +4023,8 @@ async function guardarVentaDirecta() {
     cantidad: cantidad,
     canal: 'LOCAL',
     cliente_id: clienteId,
-    codigo: tipoProducto || null
+    codigo: tipoProducto ? parseInt(tipoProducto) : null,
+    proveedor_id: proveedorId
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
@@ -3345,21 +4035,15 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-monto').value = '';
   document.getElementById('vd-cantidad').value = '1';
   document.getElementById('vd-tipo-producto').value = '';
-  _tipoProductoSeleccionado['vd'] = null;
+  document.getElementById('vd-proveedor').value = '';
+  
   _clienteIdVentaDirecta = null;
 }
 window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
-// TEMPORAL (mientras seguimos probando): se saltea el login y
-// entra directo como usuario "Prueba". El botón "Cambiar" arriba
-// sigue funcionando para volver a la pantalla de login normal
-// cuando haga falta. Para reactivar el login de entrada, volver
-// a dejar solo: pantallaLogin();
-// ============================================================
-usuarioActual = { id: null, nombre: 'Prueba', rol: 'ADMIN' };
-pantallaCajaDelDia();
+pantallaLogin();
 </script>
 </body>
 </html>
