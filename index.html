@@ -1196,6 +1196,16 @@ async function guardarNuevaEntrada() {
     return;
   }
 
+  // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes), es
+  // obligatorio adjuntar la foto de referencia, para no perder tiempo después
+  // buscándola en el grupo de WhatsApp.
+  const trabajoNormalizado = trabajo.toLowerCase();
+  const necesitaFoto = trabajoNormalizado.includes('muestra') || trabajoNormalizado.includes('whatsapp');
+  if (necesitaFoto && !_fotoReferenciaDataURL) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ El trabajo dice "muestra" o "WhatsApp" — hay que adjuntar la foto de referencia antes de guardar.</div>`;
+    return;
+  }
+
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   // IMPORTANTE: todo el guardado va envuelto en try/catch. Si se corta la conexión a mitad de
