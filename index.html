@@ -2416,8 +2416,7 @@ function pantallaCajaDelDia() {
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="toggleAperturaCaja()">☀️ Apertura</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaEgreso()">➖ Egreso</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaPagoParcial()">💵 Parcial</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia('hoy')">✅ Chequeo del día</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia('cc')">🧾 Chequeo Cuenta Corriente</button>
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:600;" onclick="pantallaChequeoDelDia()">✅ Chequeo del día</button>
       </div>
 
       <div id="cd-apertura-box" class="lista-sobre" style="display:none; margin-top:10px;">
@@ -2647,7 +2646,19 @@ window.confirmarBorrarMovimiento = confirmarBorrarMovimiento;
 // vistazo si algo quedó mal cargado hoy.
 // ============================================================
 function pantallaChequeoDelDia(modo) {
-  modo = modo || 'hoy'; // 'hoy' = movimientos/sobres/taller de hoy · 'cc' = cuenta corriente general
+  if (!modo) {
+    render(`
+      ${pintarUsuarioActual()}
+      <div class="card">
+        <h1>✅ Chequeo del día</h1>
+        <div class="sub">Elegí qué querés revisar</div>
+        <button class="btn" style="margin-top:14px;" onclick="pantallaChequeoDelDia('hoy')">📅 Chequeo general (de hoy)</button>
+        <button class="btn" style="margin-top:10px;" onclick="pantallaChequeoDelDia('cc')">🧾 Chequeo Cuenta Corriente</button>
+        <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+      </div>
+    `);
+    return;
+  }
   const fecha = document.getElementById('cd-fecha') ? document.getElementById('cd-fecha').value : fechaHoyISO();
   const titulo = modo === 'cc' ? '🧾 Chequeo Cuenta Corriente' : '✅ Chequeo del día';
   render(`
@@ -2656,7 +2667,7 @@ function pantallaChequeoDelDia(modo) {
       <h1>${titulo}</h1>
       <div class="sub">${modo === 'cc' ? 'Revisión general, no solo de hoy' : fechaCortaAR(fecha)}</div>
       <div id="chq-resultado"><p>Revisando...</p></div>
-      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaCajaDelDia()">← Volver a Caja del día</button>
+      <button class="btn btn-outline" style="margin-top:14px;" onclick="pantallaChequeoDelDia()">← Volver</button>
     </div>
   `);
   cargarChequeoDelDia(fecha, modo);
