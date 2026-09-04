@@ -420,6 +420,9 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
+      <label>¿Para qué día lo necesita el cliente? (opcional)</label>
+      <input type="date" id="ne-para-el-dia">
+
       <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
       <select id="ne-destino">
         <option value="">No va a taller (queda en el local)</option>
@@ -1246,6 +1249,7 @@ async function guardarNuevaEntrada() {
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const trabajo = document.getElementById('ne-trabajo').value.trim();
+  const paraElDia = document.getElementById('ne-para-el-dia').value || null;
   const destino = document.getElementById('ne-destino').value;
   const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
@@ -1320,7 +1324,8 @@ async function guardarNuevaEntrada() {
       tipo_cliente: tipoCliente,
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
-      foto_referencia: _fotoReferenciaDataURL
+      foto_referencia: _fotoReferenciaDataURL,
+      para_el_dia: paraElDia
     })
     .select('id')
     .single();
@@ -1401,6 +1406,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
   document.getElementById('ne-destino').value = '';
+  document.getElementById('ne-para-el-dia').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
