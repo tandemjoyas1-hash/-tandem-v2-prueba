@@ -1680,7 +1680,11 @@ function filaRetiro(s, pagadoPorSobre) {
 
 async function pagadoPorSobres(ids) {
   if (!ids || ids.length === 0) return {};
-  const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', ids).eq('ingresa_egresa', 'INGRESA');
+  // OJO: excluimos medio_pago = 'CUENTA CORRIENTE' porque ese registro es la venta a
+  // crédito en sí (se crea en Nueva Entrada para que quede contabilizado el monto),
+  // no un cobro real. Si lo contáramos, el saldo de Retiro daría $0 en sobres que
+  // en realidad el cliente todavía debe.
+  const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', ids).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
   const mapa = {};
   (pagos || []).forEach(p => { mapa[p.sobre_id] = (mapa[p.sobre_id] || 0) + Number(p.monto); });
   return mapa;
@@ -2057,7 +2061,8 @@ async function buscarSobreDetalle() {
     .from('movimientos_caja')
     .select('fecha, monto, medio_pago, descripcion')
     .eq('sobre_id', s.id)
-    .eq('ingresa_egresa', 'INGRESA');
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
 
   const { data: items } = await sb
     .from('items_sobre')
@@ -2192,7 +2197,8 @@ async function mostrarSobresParaBoleta(clienteId, nombreCliente, telefono) {
     .from('movimientos_caja')
     .select('sobre_id, monto')
     .in('sobre_id', sobres.map(s => s.id))
-    .eq('ingresa_egresa', 'INGRESA');
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
 
   const pagadoPorSobre = {};
   (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
@@ -2337,7 +2343,7 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
 
     await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', s.id);
 
-    const { data: pagos } = await sb.from('movimientos_caja').select('monto').eq('sobre_id', s.id).eq('ingresa_egresa', 'INGRESA');
+    const { data: pagos } = await sb.from('movimientos_caja').select('monto').eq('sobre_id', s.id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
     const pagado = (pagos || []).reduce((acc, m) => acc + Number(m.monto), 0);
     const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
     const montoCobrado = esCuentaCorriente ? 0 : saldo;
@@ -3084,7 +3090,8 @@ async function buscarSobreParaPagoParcial() {
     .from('movimientos_caja')
     .select('monto')
     .eq('sobre_id', s.id)
-    .eq('ingresa_egresa', 'INGRESA');
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
 
   const pagado = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
   const precioTotal = Number(s.precio_total) || 0;
