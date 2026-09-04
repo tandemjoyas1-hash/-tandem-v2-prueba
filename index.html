@@ -2738,15 +2738,77 @@ async function cargarChequeoDelDia(fecha) {
       : `${parecidos.length} par(es) de clientes con nombres parecidos, revisá si son la misma persona: ${parecidos.join(' · ')}`
   });
 
-  // 6) Totales del día, para que los tengas a mano
+  // ---- A partir de acá, chequeos de CUENTA CORRIENTE (mira todo, no solo hoy) ----
+
+  // Traemos los clientes mayoristas/taller y armamos su saldo (debe - haber),
+  // igual que hace la pantalla de Cuenta Corriente.
+  const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+  const idsCC = (clientesCC || []).map(c => c.id);
+  let sobresCC = [], pagosCC = [];
+  if (idsCC.length) {
+    const r1 = await sb.from('sobres').select('cliente_id, precio_total, fecha_entrada').in('cliente_id', idsCC);
+    sobresCC = r1.data || [];
+    const r2 = await sb.from('movimientos_caja').select('cliente_id, monto, fecha').in('cliente_id', idsCC).eq('codigo', 502).eq('ingresa_egresa', 'INGRESA');
+    pagosCC = r2.data || [];
+  }
+  const cuentaPorCliente = {};
+  (clientesCC || []).forEach(c => { cuentaPorCliente[c.id] = { nombre: c.nombre, debe: 0, haber: 0, ultimaFecha: null }; });
+  sobresCC.forEach(s => {
+    const c = cuentaPorCliente[s.cliente_id];
+    if (!c) return;
+    c.debe += Number(s.precio_total) || 0;
+    if (s.fecha_entrada && (!c.ultimaFecha || s.fecha_entrada > c.ultimaFecha)) c.ultimaFecha = s.fecha_entrada;
+  });
+  pagosCC.forEach(p => {
+    const c = cuentaPorCliente[p.cliente_id];
+    if (!c) return;
+    c.haber += Number(p.monto) || 0;
+    if (p.fecha && (!c.ultimaFecha || p.fecha > c.ultimaFecha)) c.ultimaFecha = p.fecha;
+  });
+  const cuentas = Object.values(cuentaPorCliente).map(c => ({ ...c, saldo: c.debe - c.haber }));
+
+  // 6) Saldos negativos: el cliente pagó de más (posible error de carga o pago mal asignado)
+  const saldosNegativos = cuentas.filter(c => c.saldo < 0);
+  items.push({
+    ok: saldosNegativos.length === 0,
+    texto: saldosNegativos.length === 0
+      ? 'Ningún cliente de cuenta corriente con saldo negativo.'
+      : `${saldosNegativos.length} cliente(s) con saldo negativo (pagaron de más): ${saldosNegativos.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+  });
+
+  // 7) Pago cargado sin ninguna compra registrada — puede estar mal asignado a ese cliente
+  const pagoSinDeuda = cuentas.filter(c => c.haber > 0 && c.debe === 0);
+  items.push({
+    ok: pagoSinDeuda.length === 0,
+    texto: pagoSinDeuda.length === 0
+      ? 'Todos los pagos de cuenta corriente corresponden a compras registradas.'
+      : `${pagoSinDeuda.length} cliente(s) con pagos cargados pero sin ninguna compra registrada — revisá si el pago quedó bien asignado: ${pagoSinDeuda.map(c => c.nombre).join(', ')}`
+  });
+
+  // 8) Deudas "trabadas": saldo pendiente hace más de 60 días sin ningún movimiento nuevo
+  const sesentaDiasAtras = new Date();
+  sesentaDiasAtras.setDate(sesentaDiasAtras.getDate() - 60);
+  const isoSesenta = sesentaDiasAtras.toISOString().slice(0, 10);
+  const trabadas = cuentas.filter(c => c.saldo > 0 && c.ultimaFecha && c.ultimaFecha < isoSesenta);
+  items.push({
+    ok: trabadas.length === 0,
+    texto: trabadas.length === 0
+      ? 'No hay deudas de cuenta corriente trabadas (sin movimiento hace más de 60 días).'
+      : `${trabadas.length} cuenta(s) con saldo pendiente y sin movimiento hace más de 60 días: ${trabadas.map(c => c.nombre + ' ($' + c.saldo.toLocaleString('es-AR') + ')').join(', ')}`
+  });
+
+  // 9) Totales del día, para que los tengas a mano
   const { data: movsHoy } = await sb.from('movimientos_caja').select('ingresa_egresa, monto').eq('fecha', fecha);
   const totalIngresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'INGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
   const totalEgresa = (movsHoy || []).filter(m => m.ingresa_egresa === 'EGRESA').reduce((a, m) => a + Number(m.monto || 0), 0);
 
+  const itemsHoy = items.slice(0, 5);
+  const itemsCC = items.slice(5);
+
   const okCount = items.filter(i => i.ok).length;
   const resumen = okCount === items.length
     ? `<div class="msg msg-ok" style="font-weight:700;">✅ Todo en orden, no hay nada para revisar.</div>`
-    : `<div class="msg msg-error" style="font-weight:700;">⚠️ Hay ${items.length - okCount} punto(s) para revisar antes de cerrar.</div>`;
+    : `<div class="msg msg-error" style="font-weight:700;">⚠️ Hay ${items.length - okCount} punto(s) para revisar.</div>`;
 
   box.innerHTML = `
     ${resumen}
@@ -2754,8 +2816,17 @@ async function cargarChequeoDelDia(fecha) {
       <div>Entró hoy: <strong>$${totalIngresa.toLocaleString('es-AR')}</strong></div>
       <div>Salió hoy: <strong>$${totalEgresa.toLocaleString('es-AR')}</strong></div>
     </div>
-    <div style="margin-top:14px;">
-      ${items.map(i => `
+    <div style="margin-top:16px; font-weight:700;">📅 De hoy</div>
+    <div style="margin-top:6px;">
+      ${itemsHoy.map(i => `
+        <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
+          <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="margin-top:16px; font-weight:700;">🧾 Cuenta corriente (general)</div>
+    <div style="margin-top:6px;">
+      ${itemsCC.map(i => `
         <div class="lista-sobre" style="border-left: 4px solid ${i.ok ? '#3a7d44' : '#c0392b'};">
           <div>${i.ok ? '✅' : '⚠️'} ${i.texto}</div>
         </div>
