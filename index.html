@@ -1329,32 +1329,13 @@ async function guardarNuevaEntrada() {
   // un estado ambiguo donde no se sabe si se guardó o no.
   try {
 
-  // 1) Buscar si el cliente ya existe (por nombre, sin importar mayúsc/minúsc)
+  // 1) Buscar o crear el cliente (con aviso si hay uno muy parecido ya cargado)
   let clienteId;
-  const { data: clienteExistente } = await sb
-    .from('clientes')
-    .select('id')
-    .ilike('nombre', nombreCliente)
-    .limit(1)
-    .maybeSingle();
-
-  if (clienteExistente) {
-    clienteId = clienteExistente.id;
-    if (telefono) {
-      // Solo completa el teléfono si el cliente no tenía uno cargado (no pisa uno ya existente)
-      await sb.from('clientes').update({ telefono: telefono }).eq('id', clienteId).is('telefono', null);
-    }
-  } else {
-    const { data: clienteNuevo, error: errCliente } = await sb
-      .from('clientes')
-      .insert({ nombre: nombreCliente, tipo_cliente: tipoCliente, telefono: telefono || null })
-      .select('id')
-      .single();
-    if (errCliente) {
-      msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
-      return;
-    }
-    clienteId = clienteNuevo.id;
+  try {
+    clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, telefono);
+  } catch (errCliente) {
+    msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
+    return;
   }
 
   // 2) Crear el sobre
@@ -3164,6 +3145,53 @@ function pantallaChequeoDelDia(modo) {
 }
 window.pantallaChequeoDelDia = pantallaChequeoDelDia;
 
+// NUEVO (05/09/2026): busca o crea un cliente, con AVISO si ya existe uno con nombre muy
+// parecido pero escrito distinto (con/sin tilde, una letra distinta, etc.) — para no terminar
+// con "Federico Sebastián Palavecino" y "federico sebastian palavecino" como dos clientes
+// separados (pasó el 05/09/2026, generó una venta duplicada). Reutiliza normalizarNombreCliente
+// y distanciaLevenshtein, que ya existían para el Chequeo del día.
+async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
+  // 1) Coincidencia exacta (sin importar mayúsc/minúsc) — camino normal, no molesta a nadie.
+  const { data: exacto } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+  if (exacto) {
+    if (telefono) await sb.from('clientes').update({ telefono: telefono }).eq('id', exacto.id).is('telefono', null);
+    return exacto.id;
+  }
+
+  // 2) No hubo exacta: buscamos candidatos parecidos (misma primera palabra) y comparamos
+  // ignorando tildes/mayúsculas con distanciaLevenshtein, igual que el Chequeo del día.
+  const primeraPalabra = nombreCliente.trim().split(/\s+/)[0];
+  const normEscrito = normalizarNombreCliente(nombreCliente);
+  let candidatos = [];
+  if (primeraPalabra.length >= 3) {
+    const { data } = await sb.from('clientes').select('id, nombre').ilike('nombre', '%' + primeraPalabra + '%').limit(30);
+    candidatos = data || [];
+  }
+  let parecido = null;
+  for (const c of candidatos) {
+    const normExistente = normalizarNombreCliente(c.nombre);
+    if (normExistente === normEscrito) { parecido = c; break; } // idéntico salvo tildes/mayúsc — no hace falta preguntar
+    if (Math.min(normExistente.length, normEscrito.length) >= 5 && distanciaLevenshtein(normExistente, normEscrito) <= 2) {
+      parecido = c; // similar pero no idéntico — este sí conviene confirmar
+    }
+  }
+
+  if (parecido) {
+    const esIdentico = normalizarNombreCliente(parecido.nombre) === normEscrito;
+    const usarExistente = esIdentico || confirm(`Ya existe un cliente cargado como "${parecido.nombre}".\n\n¿Es la misma persona que "${nombreCliente}"?\n\nAceptar = usar "${parecido.nombre}" (recomendado)\nCancelar = crear "${nombreCliente}" como cliente nuevo y distinto`);
+    if (usarExistente) {
+      if (telefono) await sb.from('clientes').update({ telefono: telefono }).eq('id', parecido.id).is('telefono', null);
+      return parecido.id;
+    }
+  }
+
+  // 3) Ningún parecido (o el usuario confirmó que es alguien distinto): se crea nuevo.
+  const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: tipoCliente, telefono: telefono || null }).select('id').single();
+  if (errCliente) throw errCliente;
+  return nuevo.id;
+}
+window.buscarOCrearCliente = buscarOCrearCliente;
+
 // Herramientas para comparar nombres de clientes y detectar posibles duplicados
 // (ej. "Zipiur" vs "Zipiur Joyas" vs "Zipiun Joyas" — mismo cliente cargado distinto).
 function normalizarNombreCliente(n) {
@@ -4331,13 +4359,11 @@ async function guardarVentaDirecta() {
   // Si escribió un nombre pero no lo eligió de la lista, se crea como cliente nuevo (igual que en Entrada)
   let clienteId = _clienteIdVentaDirecta;
   if (!clienteId && nombreCliente) {
-    const { data: existente } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
-    if (existente) {
-      clienteId = existente.id;
-    } else {
-      const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: 'CONSUMIDOR_FINAL' }).select('id').single();
-      if (errCliente) { msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`; return; }
-      clienteId = nuevo.id;
+    try {
+      clienteId = await buscarOCrearCliente(nombreCliente, 'CONSUMIDOR_FINAL', null);
+    } catch (errCliente) {
+      msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`;
+      return;
     }
   }
 
