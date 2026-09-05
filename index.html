@@ -2220,6 +2220,30 @@ async function buscarSobreDetalle() {
     .select('descripcion, precio')
     .eq('sobre_id', s.id);
 
+  // NUEVO (05/09/2026): fotos adicionales del sobre (varias, se pueden agregar en cualquier momento,
+  // ej. cliente manda después la foto de los laterales de un sello). Se guardan en la tabla
+  // tandem.fotos_sobre + bucket de Storage "fotos-sobres". No reemplaza a foto_referencia (la foto
+  // original del OCR de entrada), se suman aparte.
+  const { data: fotosExtra } = await sb
+    .from('fotos_sobre')
+    .select('id, url, path')
+    .eq('sobre_id', s.id)
+    .order('created_at');
+
+  const galeriaFotos = `
+    <div id="bs-galeria-fotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0;">
+      ${(fotosExtra || []).map(f => `
+        <div style="position:relative;">
+          <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid #e6ddc9; cursor:pointer;">
+          <span onclick="borrarFotoSobre('${f.id}', '${f.path}')" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+        </div>
+      `).join('')}
+    </div>
+    <input type="file" id="bs-fotos-input" accept="image/*" multiple capture="environment" style="margin-bottom:6px;">
+    <button class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px;" onclick="subirFotosSobre('${s.id}')">📷 Agregar foto(s)</button>
+    <div id="bs-fotos-msg"></div>
+  `;
+
   const pagado = (movimientos || []).reduce((acc, m) => acc + Number(m.monto), 0);
   const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
 
@@ -2256,6 +2280,9 @@ async function buscarSobreDetalle() {
       <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
       <div>Precio total: $${(Number(s.precio_total) || 0).toLocaleString('es-AR')} · Pagado: $${pagado.toLocaleString('es-AR')} · Saldo: $${saldo.toLocaleString('es-AR')}</div>
 
+      <label style="margin-top:14px;">📷 Fotos del sobre</label>
+      ${galeriaFotos}
+
       ${(items && items.length > 0) ? `
         <label style="margin-top:14px;">🧾 Ítems de este sobre</label>
         ${items.map(it => `
@@ -2274,6 +2301,43 @@ async function buscarSobreDetalle() {
   `;
 }
 window.buscarSobreDetalle = buscarSobreDetalle;
+
+// NUEVO (05/09/2026): subir una o varias fotos a un sobre existente (ej: cliente manda después
+// la foto de los laterales de un sello). Sube cada archivo al bucket "fotos-sobres" y guarda su
+// URL en tandem.fotos_sobre. Al terminar, vuelve a mostrar el detalle del sobre con las fotos nuevas.
+async function subirFotosSobre(sobreId) {
+  const input = document.getElementById('bs-fotos-input');
+  const msgBox = document.getElementById('bs-fotos-msg');
+  const archivos = input.files;
+  if (!archivos || archivos.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Elegí al menos una foto primero.</div>`; return; }
+
+  msgBox.innerHTML = `<div class="msg">Subiendo ${archivos.length} foto(s)...</div>`;
+
+  let subidas = 0;
+  for (const archivo of archivos) {
+    const nombreArchivo = `${sobreId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${archivo.name}`;
+    const { error: errorSubida } = await sb.storage.from('fotos-sobres').upload(nombreArchivo, archivo);
+    if (errorSubida) { msgBox.innerHTML = `<div class="msg msg-error">Error subiendo ${archivo.name}: ${errorSubida.message}</div>`; continue; }
+
+    const { data: urlData } = sb.storage.from('fotos-sobres').getPublicUrl(nombreArchivo);
+    await sb.from('fotos_sobre').insert({ sobre_id: sobreId, url: urlData.publicUrl, path: nombreArchivo });
+    subidas++;
+  }
+
+  msgBox.innerHTML = subidas > 0 ? `<div class="msg msg-exito">${subidas} foto(s) agregada(s) ✅</div>` : '';
+  buscarSobreDetalle();
+}
+window.subirFotosSobre = subirFotosSobre;
+
+// NUEVO (05/09/2026): borrar una foto agregada por error (borra el archivo del Storage y la fila
+// de la tabla fotos_sobre).
+async function borrarFotoSobre(fotoId, path) {
+  if (!confirm('¿Borrar esta foto?')) return;
+  await sb.storage.from('fotos-sobres').remove([path]);
+  await sb.from('fotos_sobre').delete().eq('id', fotoId);
+  buscarSobreDetalle();
+}
+window.borrarFotoSobre = borrarFotoSobre;
 
 // ============================================================
 // PANTALLA 8: Boletas — cuando un cliente se lleva varios sobres juntos
