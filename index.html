@@ -2205,6 +2205,23 @@ async function registrarPagoCC(clienteId, nombreCliente) {
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
+  // NUEVO (05/09/2026): mismo aviso de posible duplicado que en Venta Directa, para pagos a
+  // cuenta (evita que dos vendedoras carguen el mismo pago dos veces sin saberlo).
+  const { data: pagosDuplicados } = await sb.from('movimientos_caja')
+    .select('vendedora, created_at')
+    .eq('ingresa_egresa', 'INGRESA')
+    .eq('codigo', 502)
+    .eq('cliente_id', clienteId)
+    .eq('monto', monto)
+    .eq('fecha', fechaHoyISO());
+
+  if (pagosDuplicados && pagosDuplicados.length > 0) {
+    const anterior = pagosDuplicados[0];
+    const hora = new Date(anterior.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    const seguir = confirm(`⚠️ POSIBLE PAGO DUPLICADO\n\n${anterior.vendedora || 'Alguien'} ya cargó hoy a las ${hora} un pago de $${monto.toLocaleString('es-AR')} de ${nombreCliente}.\n\n¿Es un pago distinto y hay que cargarlo igual?\n\nAceptar = SÍ, cargar de nuevo\nCancelar = NO, no cargar (era el mismo)`);
+    if (!seguir) { msgBox.innerHTML = `<div class="msg msg-error">No se guardó — se detectó como posible duplicado.</div>`; return; }
+  }
+
   const { error } = await sb.from('movimientos_caja').insert({
     vendedora: usuarioActual.nombre,
     codigo: 502,
@@ -4369,6 +4386,25 @@ async function guardarVentaDirecta() {
 
   const tipoProducto = document.getElementById('vd-tipo-producto').value;
   const proveedorId = document.getElementById('vd-proveedor').value || null;
+
+  // NUEVO (05/09/2026): aviso de posible venta duplicada. Si otra vendedora (o la misma) ya
+  // cargó hoy una venta del mismo monto para el mismo cliente (o, si no hay cliente, la misma
+  // descripción), se avisa antes de guardar — cubre el caso de que Romi la cargue a la mañana
+  // y Sofi la vuelva a cargar al mediodía sin saber que ya estaba.
+  let queryDuplicado = sb.from('movimientos_caja')
+    .select('vendedora, created_at, descripcion')
+    .eq('ingresa_egresa', 'INGRESA')
+    .eq('monto', monto)
+    .eq('fecha', fechaHoyISO());
+  queryDuplicado = clienteId ? queryDuplicado.eq('cliente_id', clienteId) : queryDuplicado.eq('descripcion', descripcion);
+  const { data: posiblesDuplicados } = await queryDuplicado;
+
+  if (posiblesDuplicados && posiblesDuplicados.length > 0) {
+    const anterior = posiblesDuplicados[0];
+    const hora = new Date(anterior.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    const seguir = confirm(`⚠️ POSIBLE VENTA DUPLICADA\n\n${anterior.vendedora || 'Alguien'} ya cargó hoy a las ${hora} una venta de $${monto.toLocaleString('es-AR')} para ${nombreCliente || 'este mismo cliente/descripción'} ("${anterior.descripcion}").\n\n¿Es una venta distinta y hay que cargarla igual?\n\nAceptar = SÍ, cargar de nuevo (es otra venta)\nCancelar = NO, no cargar (era la misma)`);
+    if (!seguir) { msgBox.innerHTML = `<div class="msg msg-error">No se guardó — se detectó como posible duplicado.</div>`; return; }
+  }
 
   const { error } = await sb.from('movimientos_caja').insert({
     vendedora: usuarioActual.nombre,
