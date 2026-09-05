@@ -2967,6 +2967,14 @@ async function guardarAperturaCaja() {
 window.toggleAperturaCaja = toggleAperturaCaja;
 window.guardarAperturaCaja = guardarAperturaCaja;
 
+function descSobreExtra(m) {
+  if (!m.sobres || !m.sobres.descripcion) return '';
+  const a = (m.descripcion || '').trim().toLowerCase();
+  const b = (m.sobres.descripcion || '').trim().toLowerCase();
+  if (!b || a === b) return '';
+  return '🔧 ' + m.sobres.descripcion;
+}
+
 function renderFilasMovimientosCD(movimientos) {
   if (!movimientos || movimientos.length === 0) {
     return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
@@ -2975,7 +2983,7 @@ function renderFilasMovimientosCD(movimientos) {
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
-      <div class="desc">${m.descripcion || ''}${m.sobres && m.sobres.descripcion ? '<br><span style="color:#6b6255;">🔧 ' + m.sobres.descripcion + '</span>' : ''}</div>
+      <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
     </div>
   `).join('');
 
@@ -2985,7 +2993,7 @@ function renderFilasMovimientosCD(movimientos) {
       <td>${m.vendedora || ''}</td>
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${m.sobres && m.sobres.descripcion ? '<br><span style="color:#6b6255; font-size:12px;">🔧 ' + m.sobres.descripcion + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
       <td>${m.medio_pago || ''}</td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
