@@ -2230,7 +2230,9 @@ async function buscarSobreDetalle() {
     .eq('sobre_id', s.id)
     .order('created_at');
 
-  const galeriaFotos = `
+  const galeriaFotos = (() => {
+  window._fotosPendientes = [];
+  return `
     <div id="bs-galeria-fotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0;">
       ${(fotosExtra || []).map(f => `
         <div style="position:relative;">
@@ -2239,10 +2241,13 @@ async function buscarSobreDetalle() {
         </div>
       `).join('')}
     </div>
-    <input type="file" id="bs-fotos-input" accept="image/*" multiple style="margin-bottom:6px;">
-    <button class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px;" onclick="subirFotosSobre('${s.id}')">📷 Agregar foto(s)</button>
+    <div id="bs-pendientes" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
+    <input type="file" id="bs-fotos-input" accept="image/*" style="display:none;" onchange="agregarFotoPendiente('${s.id}')">
+    <button class="btn" style="width:auto; padding:8px 16px; font-size:13px;" onclick="document.getElementById('bs-fotos-input').click()">➕ Elegir foto</button>
+    <button id="bs-btn-subir" class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px; display:none;" onclick="subirFotosSobre('${s.id}')">📷 Subir fotos elegidas</button>
     <div id="bs-fotos-msg"></div>
   `;
+  })();
 
   const pagado = (movimientos || []).reduce((acc, m) => acc + Number(m.monto), 0);
   const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
@@ -2302,14 +2307,48 @@ async function buscarSobreDetalle() {
 }
 window.buscarSobreDetalle = buscarSobreDetalle;
 
-// NUEVO (05/09/2026): subir una o varias fotos a un sobre existente (ej: cliente manda después
-// la foto de los laterales de un sello). Sube cada archivo al bucket "fotos-sobres" y guarda su
-// URL en tandem.fotos_sobre. Al terminar, vuelve a mostrar el detalle del sobre con las fotos nuevas.
-async function subirFotosSobre(sobreId) {
+// NUEVO (05/09/2026, v2): en vez de depender del selector "multiple" de la galería (que en
+// varios celulares como Samsung/Xiaomi no deja tildar varias fotos a la vez), se agregan de a
+// una: cada vez que se elige una foto se guarda en una lista pendiente en memoria con su
+// vista previa, y recién al tocar "Subir fotos elegidas" se mandan todas juntas al servidor.
+window._fotosPendientes = window._fotosPendientes || [];
+
+function agregarFotoPendiente(sobreId) {
   const input = document.getElementById('bs-fotos-input');
+  const archivo = input.files && input.files[0];
+  if (!archivo) return;
+
+  window._fotosPendientes.push(archivo);
+  pintarFotosPendientes();
+  input.value = ''; // limpia para poder elegir otra foto después (aunque sea la "misma")
+}
+window.agregarFotoPendiente = agregarFotoPendiente;
+
+function quitarFotoPendiente(indice) {
+  window._fotosPendientes.splice(indice, 1);
+  pintarFotosPendientes();
+}
+window.quitarFotoPendiente = quitarFotoPendiente;
+
+function pintarFotosPendientes() {
+  const cont = document.getElementById('bs-pendientes');
+  const btnSubir = document.getElementById('bs-btn-subir');
+  if (!cont) return;
+  cont.innerHTML = window._fotosPendientes.map((archivo, i) => `
+    <div style="position:relative;">
+      <img src="${URL.createObjectURL(archivo)}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; border:2px dashed #d4af6a;">
+      <span onclick="quitarFotoPendiente(${i})" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+    </div>
+  `).join('');
+  if (btnSubir) btnSubir.style.display = window._fotosPendientes.length > 0 ? 'inline-block' : 'none';
+}
+
+// Sube todas las fotos que se fueron juntando en la lista pendiente al bucket "fotos-sobres" y
+// guarda cada URL en tandem.fotos_sobre. Al terminar, refresca el detalle del sobre.
+async function subirFotosSobre(sobreId) {
   const msgBox = document.getElementById('bs-fotos-msg');
-  const archivos = input.files;
-  if (!archivos || archivos.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Elegí al menos una foto primero.</div>`; return; }
+  const archivos = window._fotosPendientes || [];
+  if (archivos.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Elegí al menos una foto primero.</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg">Subiendo ${archivos.length} foto(s)...</div>`;
 
@@ -2324,6 +2363,7 @@ async function subirFotosSobre(sobreId) {
     subidas++;
   }
 
+  window._fotosPendientes = [];
   msgBox.innerHTML = subidas > 0 ? `<div class="msg msg-exito">${subidas} foto(s) agregada(s) ✅</div>` : '';
   buscarSobreDetalle();
 }
