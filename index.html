@@ -213,6 +213,7 @@ function pintarUsuarioActual() {
 
 function cerrarSesion() {
   usuarioActual = null;
+  try { localStorage.removeItem('tandem_sesion'); } catch (e) {}
   pantallaLogin();
 }
 window.cerrarSesion = cerrarSesion;
@@ -309,13 +310,19 @@ async function intentarLogin() {
   }
 
   usuarioActual = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
-  if (usuario.rol === 'ORFEBRE') {
+  // Guarda la sesión en este dispositivo para no pedir PIN de nuevo la próxima vez que se abra la app
+  try { localStorage.setItem('tandem_sesion', JSON.stringify(usuarioActual)); } catch (e) {}
+  irAPantallaInicial();
+}
+window.intentarLogin = intentarLogin;
+
+function irAPantallaInicial() {
+  if (usuarioActual.rol === 'ORFEBRE') {
     pantallaVerFoto();
   } else {
     pantallaNuevaEntrada();
   }
 }
-window.intentarLogin = intentarLogin;
 
 // ============================================================
 // PANTALLA SUPER SIMPLE: solo para los orfebres (Pachula, Daniel).
@@ -4444,7 +4451,17 @@ window.guardarVentaDirecta = guardarVentaDirecta;
 
 // Arranque
 // ============================================================
-pantallaLogin();
+(function iniciarApp() {
+  try {
+    const guardada = localStorage.getItem('tandem_sesion');
+    if (guardada) {
+      usuarioActual = JSON.parse(guardada);
+      irAPantallaInicial();
+      return;
+    }
+  } catch (e) {}
+  pantallaLogin();
+})();
 </script>
 </body>
 </html>
