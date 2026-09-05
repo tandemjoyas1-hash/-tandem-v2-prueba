@@ -364,7 +364,7 @@ function buscarFotoSobre() {
     // fotos guardadas en tandem.fotos_sobre para este sobre (ej: mesa + laterales de un sello).
     const { data: fotosExtra } = await sb
       .from('fotos_sobre')
-      .select('url')
+      .select('url, etiqueta')
       .eq('sobre_id', s.id)
       .order('created_at');
 
@@ -372,8 +372,8 @@ function buscarFotoSobre() {
     // la misma que la primera fila de fotos_sobre desde que se unificó el guardado).
     const urlsExtra = (fotosExtra || []).map(f => f.url);
     const todasLasFotos = s.foto_referencia && !urlsExtra.includes(s.foto_referencia)
-      ? [s.foto_referencia, ...urlsExtra]
-      : urlsExtra;
+      ? [{ url: s.foto_referencia, etiqueta: null }, ...(fotosExtra || [])]
+      : (fotosExtra || []);
 
     if (todasLasFotos.length === 0) {
       box.innerHTML = `
@@ -387,8 +387,9 @@ function buscarFotoSobre() {
 
     box.innerHTML = `
       <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
-      ${todasLasFotos.map(url => `
-        <img src="${url}" onclick="window.open('${url}','_blank')" style="width:100%; max-height:60vh; object-fit:contain; border-radius:10px; border:1px solid #e6ddc9; margin-top:10px; cursor:pointer;">
+      ${todasLasFotos.map(f => `
+        ${f.etiqueta ? `<div style="text-align:center; margin-top:10px; font-size:15px; font-weight:700; color:#7a5c00;">🏷️ ${f.etiqueta}</div>` : ''}
+        <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="width:100%; max-height:60vh; object-fit:contain; border-radius:10px; border:1px solid #e6ddc9; margin-top:${f.etiqueta ? '4' : '10'}px; cursor:pointer;">
       `).join('')}
       <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
       ${fechaEntregaHtml}
@@ -1162,7 +1163,7 @@ async function adjuntarFotoReferencia() {
   const archivo = input.files[0];
   if (!archivo) return;
   const dataURL = await archivoADataURL(archivo);
-  window._fotosReferenciaLista.push(dataURL);
+  window._fotosReferenciaLista.push({ dataURL: dataURL, etiqueta: '' });
   pintarPreviewFotoReferencia();
   input.value = ''; // limpia para poder elegir otra foto después
 }
@@ -1180,11 +1181,14 @@ function pintarPreviewFotoReferencia() {
   const lista = window._fotosReferenciaLista;
   if (!lista || lista.length === 0) { box.innerHTML = ''; return; }
   box.innerHTML = `
-    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-      ${lista.map((dataURL, i) => `
-        <div style="position:relative;">
-          <img src="${dataURL}" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid #e6ddc9;">
-          <span onclick="quitarFotoReferencia(${i})" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;">
+      ${lista.map((item, i) => `
+        <div style="width:90px;">
+          <div style="position:relative;">
+            <img src="${item.dataURL}" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid #e6ddc9;">
+            <span onclick="quitarFotoReferencia(${i})" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+          </div>
+          <input type="text" placeholder="Ej: lateral izq." style="font-size:11px; padding:4px; margin-top:3px; width:100%; box-sizing:border-box;" oninput="window._fotosReferenciaLista[${i}].etiqueta=this.value">
         </div>
       `).join('')}
     </div>
@@ -1202,7 +1206,7 @@ document.addEventListener('paste', async (evento) => {
     if (item.type.startsWith('image/')) {
       const archivo = item.getAsFile();
       const dataURL = await archivoADataURL(archivo);
-      window._fotosReferenciaLista.push(dataURL);
+      window._fotosReferenciaLista.push({ dataURL: dataURL, etiqueta: '' });
       pintarPreviewFotoReferencia();
       break;
     }
@@ -1364,7 +1368,7 @@ async function guardarNuevaEntrada() {
       tipo_cliente: tipoCliente,
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
-      foto_referencia: window._fotosReferenciaLista[0] || null,
+      foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
       para_el_dia: paraElDia
     })
     .select('id')
@@ -1390,14 +1394,14 @@ async function guardarNuevaEntrada() {
   // 2.05) NUEVO (05/09/2026): subir TODAS las fotos de referencia (no solo la primera) a la
   // tabla tandem.fotos_sobre + bucket "fotos-sobres", para que se vean todas en la pantalla FOTO
   // y en Sobres (ej: mesa + laterales de un sello). No frena el guardado si alguna falla.
-  for (const dataURL of window._fotosReferenciaLista) {
+  for (const item of window._fotosReferenciaLista) {
     try {
-      const blob = await (await fetch(dataURL)).blob();
+      const blob = await (await fetch(item.dataURL)).blob();
       const nombreArchivo = `${sobreNuevo.id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
       const { error: errSubida } = await sb.storage.from('fotos-sobres').upload(nombreArchivo, blob);
       if (!errSubida) {
         const { data: urlData } = sb.storage.from('fotos-sobres').getPublicUrl(nombreArchivo);
-        await sb.from('fotos_sobre').insert({ sobre_id: sobreNuevo.id, url: urlData.publicUrl, path: nombreArchivo });
+        await sb.from('fotos_sobre').insert({ sobre_id: sobreNuevo.id, url: urlData.publicUrl, path: nombreArchivo, etiqueta: item.etiqueta || null });
       }
     } catch (err) { /* si falla una foto, no corta el guardado del sobre */ }
   }
@@ -2278,22 +2282,25 @@ async function buscarSobreDetalle() {
   // original del OCR de entrada), se suman aparte.
   const { data: fotosExtra } = await sb
     .from('fotos_sobre')
-    .select('id, url, path')
+    .select('id, url, path, etiqueta')
     .eq('sobre_id', s.id)
     .order('created_at');
 
   const galeriaFotos = (() => {
   window._fotosPendientes = [];
   return `
-    <div id="bs-galeria-fotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0;">
+    <div id="bs-galeria-fotos" style="display:flex; flex-wrap:wrap; gap:10px; margin:10px 0;">
       ${(fotosExtra || []).map(f => `
-        <div style="position:relative;">
-          <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid #e6ddc9; cursor:pointer;">
-          <span onclick="borrarFotoSobre('${f.id}', '${f.path}')" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+        <div style="width:100px;">
+          <div style="position:relative;">
+            <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:1px solid #e6ddc9; cursor:pointer;">
+            <span onclick="borrarFotoSobre('${f.id}', '${f.path}')" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+          </div>
+          <input type="text" value="${f.etiqueta || ''}" placeholder="Ej: lateral izq." style="font-size:11px; padding:4px; margin-top:3px; width:100%; box-sizing:border-box;" onchange="guardarEtiquetaFoto('${f.id}', this.value)">
         </div>
       `).join('')}
     </div>
-    <div id="bs-pendientes" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
+    <div id="bs-pendientes" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px;"></div>
     <input type="file" id="bs-fotos-input" accept="image/*" style="display:none;" onchange="agregarFotoPendiente('${s.id}')">
     <button class="btn btn-outline" style="width:auto; display:inline-block; padding:10px 18px; font-size:14px; margin-top:8px;" onclick="document.getElementById('bs-fotos-input').click()">➕ Elegir foto</button>
     <button id="bs-btn-subir" class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px; display:none;" onclick="subirFotosSobre('${s.id}')">📷 Subir fotos elegidas</button>
@@ -2370,7 +2377,7 @@ function agregarFotoPendiente(sobreId) {
   const archivo = input.files && input.files[0];
   if (!archivo) return;
 
-  window._fotosPendientes.push(archivo);
+  window._fotosPendientes.push({ archivo: archivo, etiqueta: '' });
   pintarFotosPendientes();
   input.value = ''; // limpia para poder elegir otra foto después (aunque sea la "misma")
 }
@@ -2386,32 +2393,36 @@ function pintarFotosPendientes() {
   const cont = document.getElementById('bs-pendientes');
   const btnSubir = document.getElementById('bs-btn-subir');
   if (!cont) return;
-  cont.innerHTML = window._fotosPendientes.map((archivo, i) => `
-    <div style="position:relative;">
-      <img src="${URL.createObjectURL(archivo)}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; border:2px dashed #d4af6a;">
-      <span onclick="quitarFotoPendiente(${i})" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+  cont.innerHTML = window._fotosPendientes.map((item, i) => `
+    <div style="width:90px;">
+      <div style="position:relative;">
+        <img src="${URL.createObjectURL(item.archivo)}" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:2px dashed #d4af6a;">
+        <span onclick="quitarFotoPendiente(${i})" style="position:absolute; top:-6px; right:-6px; background:#b23b3b; color:#fff; border-radius:50%; width:20px; height:20px; font-size:13px; line-height:20px; text-align:center; cursor:pointer;">✕</span>
+      </div>
+      <input type="text" placeholder="Ej: lateral izq." style="font-size:11px; padding:4px; margin-top:3px; width:100%; box-sizing:border-box;" oninput="window._fotosPendientes[${i}].etiqueta=this.value">
     </div>
   `).join('');
   if (btnSubir) btnSubir.style.display = window._fotosPendientes.length > 0 ? 'inline-block' : 'none';
 }
 
 // Sube todas las fotos que se fueron juntando en la lista pendiente al bucket "fotos-sobres" y
-// guarda cada URL en tandem.fotos_sobre. Al terminar, refresca el detalle del sobre.
+// guarda cada URL + etiqueta en tandem.fotos_sobre. Al terminar, refresca el detalle del sobre.
 async function subirFotosSobre(sobreId) {
   const msgBox = document.getElementById('bs-fotos-msg');
-  const archivos = window._fotosPendientes || [];
-  if (archivos.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Elegí al menos una foto primero.</div>`; return; }
+  const pendientes = window._fotosPendientes || [];
+  if (pendientes.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Elegí al menos una foto primero.</div>`; return; }
 
-  msgBox.innerHTML = `<div class="msg">Subiendo ${archivos.length} foto(s)...</div>`;
+  msgBox.innerHTML = `<div class="msg">Subiendo ${pendientes.length} foto(s)...</div>`;
 
   let subidas = 0;
-  for (const archivo of archivos) {
+  for (const item of pendientes) {
+    const archivo = item.archivo;
     const nombreArchivo = `${sobreId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${archivo.name}`;
     const { error: errorSubida } = await sb.storage.from('fotos-sobres').upload(nombreArchivo, archivo);
     if (errorSubida) { msgBox.innerHTML = `<div class="msg msg-error">Error subiendo ${archivo.name}: ${errorSubida.message}</div>`; continue; }
 
     const { data: urlData } = sb.storage.from('fotos-sobres').getPublicUrl(nombreArchivo);
-    await sb.from('fotos_sobre').insert({ sobre_id: sobreId, url: urlData.publicUrl, path: nombreArchivo });
+    await sb.from('fotos_sobre').insert({ sobre_id: sobreId, url: urlData.publicUrl, path: nombreArchivo, etiqueta: item.etiqueta || null });
     subidas++;
   }
 
@@ -2420,6 +2431,13 @@ async function subirFotosSobre(sobreId) {
   buscarSobreDetalle();
 }
 window.subirFotosSobre = subirFotosSobre;
+
+// NUEVO (05/09/2026): guardar/editar la etiqueta de una foto ya subida (ej: "lateral izq.",
+// "ítem 1"), sin tener que borrarla y volver a subirla.
+async function guardarEtiquetaFoto(fotoId, etiqueta) {
+  await sb.from('fotos_sobre').update({ etiqueta: etiqueta || null }).eq('id', fotoId);
+}
+window.guardarEtiquetaFoto = guardarEtiquetaFoto;
 
 // NUEVO (05/09/2026): borrar una foto agregada por error (borra el archivo del Storage y la fila
 // de la tabla fotos_sobre).
