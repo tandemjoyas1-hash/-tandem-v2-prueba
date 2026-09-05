@@ -2066,14 +2066,14 @@ function buscarClienteCC() {
 }
 window.buscarClienteCC = buscarClienteCC;
 
-async function verCuentaCliente(clienteId, nombreCliente) {
+async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando cuenta de ${nombreCliente}...</p></div>`);
   await cargarPreciosMateriales();
 
   // "COMPRÓ" = TODOS los sobres de este cliente, tengan o no saldo pendiente hoy
   // (igual que la planilla vieja: la columna DEBE suma el total de cada trabajo,
   // independientemente de si ya se retiró o no).
-  const { data: sobres } = await sb
+  const { data: sobresTodos } = await sb
     .from('sobres')
     .select('id, numero, descripcion, precio_total, fecha_entrada')
     .eq('cliente_id', clienteId)
@@ -2081,7 +2081,7 @@ async function verCuentaCliente(clienteId, nombreCliente) {
 
   // "FUE PAGANDO" = todos los pagos a cuenta (código 502), sea que se hayan
   // aplicado a un sobre puntual o como pago suelto.
-  const { data: pagos } = await sb
+  const { data: pagosTodos } = await sb
     .from('movimientos_caja')
     .select('monto, fecha, descripcion, sobre_id')
     .eq('cliente_id', clienteId)
@@ -2089,12 +2089,23 @@ async function verCuentaCliente(clienteId, nombreCliente) {
     .eq('codigo', 502)
     .order('fecha');
 
-  const debe = (sobres || []).reduce((acc, s) => acc + (Number(s.precio_total) || 0), 0);
-  const haber = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
+  // NUEVO (05/09/2026): el saldo en $ SIEMPRE se calcula con el historial completo (si no, se
+  // vería un saldo mal calculado). Lo que se COLAPSA por defecto, para no tener que scrollear
+  // meses y meses en clientes viejos, es la LISTA detallada de sobres y pagos: por defecto solo
+  // se listan los del mes actual, con un botón para desplegar el historial completo si hace falta.
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  const esDeEsteMes = (fechaStr) => fechaStr && new Date(fechaStr) >= inicioMes;
+
+  const sobres = verTodo ? (sobresTodos || []) : (sobresTodos || []).filter(s => esDeEsteMes(s.fecha_entrada));
+  const pagos = verTodo ? (pagosTodos || []) : (pagosTodos || []).filter(p => esDeEsteMes(p.fecha));
+  const hayHistorialViejo = !verTodo && ((sobresTodos || []).length > sobres.length || (pagosTodos || []).length > pagos.length);
+
+  const debe = (sobresTodos || []).reduce((acc, s) => acc + (Number(s.precio_total) || 0), 0);
+  const haber = (pagosTodos || []).reduce((acc, p) => acc + Number(p.monto), 0);
   const saldo = debe - haber;
 
-  const filasCompras = (sobres || []).length === 0
-    ? `<div class="vacio">Sin compras registradas</div>`
+  const filasCompras = sobres.length === 0
+    ? `<div class="vacio">Sin compras ${verTodo ? '' : 'este mes '}registradas</div>`
     : sobres.map(s => `
         <div class="lista-sobre">
           <div class="nro">#${s.numero} — $${(Number(s.precio_total) || 0).toLocaleString('es-AR')}</div>
@@ -2103,8 +2114,8 @@ async function verCuentaCliente(clienteId, nombreCliente) {
         </div>
       `).join('');
 
-  const filasPagos = (pagos || []).length === 0
-    ? `<div class="vacio">Sin pagos registrados</div>`
+  const filasPagos = pagos.length === 0
+    ? `<div class="vacio">Sin pagos ${verTodo ? '' : 'este mes '}registrados</div>`
     : pagos.map(p => `
         <div class="lista-sobre">
           <div class="nro">$${Number(p.monto).toLocaleString('es-AR')}</div>
@@ -2128,9 +2139,10 @@ async function verCuentaCliente(clienteId, nombreCliente) {
   });
   const materialesConSaldo = Object.keys(saldosMetal);
 
-  const filasMetal = (movsMetal || []).length === 0
-    ? `<div class="vacio">Sin movimientos de metal</div>`
-    : movsMetal.map(m => `
+  const movsMetalMostrar = verTodo ? (movsMetal || []) : (movsMetal || []).filter(m => esDeEsteMes(m.fecha));
+  const filasMetal = movsMetalMostrar.length === 0
+    ? `<div class="vacio">Sin movimientos de metal ${verTodo ? '' : 'este mes '}</div>`
+    : movsMetalMostrar.map(m => `
         <div class="lista-sobre">
           <div class="nro">${m.tipo === 'ENTREGA' ? '➕' : '➖'} ${Number(m.gramos).toLocaleString('es-AR')}g ${etiquetaMaterial(m.material)}</div>
           <div class="cli">${new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-AR')}${m.sobres ? ' · sobre #' + m.sobres.numero : ''}</div>
@@ -2143,22 +2155,6 @@ async function verCuentaCliente(clienteId, nombreCliente) {
     <div class="card">
       <h1>${nombreCliente}</h1>
       <div class="sub">Cuenta corriente</div>
-
-      <div class="lista-sobre" style="background:#f7f7f7;">
-        <div>Le vendimos a crédito (debe): <strong>$${debe.toLocaleString('es-AR')}</strong></div>
-        <div>Nos pagó (haber): <strong>$${haber.toLocaleString('es-AR')}</strong></div>
-        <div style="font-size:20px; font-weight:700; color:${saldo > 0 ? '#993c1d' : '#27500a'}; margin-top:6px;">
-          ${saldo > 0 ? 'Saldo que nos debe: $' + saldo.toLocaleString('es-AR') : (saldo < 0 ? 'Tiene a favor: $' + Math.abs(saldo).toLocaleString('es-AR') : 'Cuenta al día ($0)')}
-        </div>
-      </div>
-
-      <label style="margin-top:18px;">🛒 Compró (a crédito)</label>
-      ${filasCompras}
-
-      <label style="margin-top:18px;">💵 Fue pagando</label>
-      ${filasPagos}
-
-      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
 
       <label>🥈 Metal en consignación</label>
       ${materialesConSaldo.length > 0 ? `
@@ -2173,6 +2169,26 @@ async function verCuentaCliente(clienteId, nombreCliente) {
         <button class="btn btn-outline" style="width:auto; flex:1; font-size:13px; padding:10px;" onclick="mostrarFormMetal('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', 'USO')">➖ Se usó en un sobre</button>
       </div>
       <div id="cc-metal-form"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <div class="lista-sobre" style="background:#f7f7f7;">
+        <div>Le vendimos a crédito (debe): <strong>$${debe.toLocaleString('es-AR')}</strong></div>
+        <div>Nos pagó (haber): <strong>$${haber.toLocaleString('es-AR')}</strong></div>
+        <div style="font-size:20px; font-weight:700; color:${saldo > 0 ? '#993c1d' : '#27500a'}; margin-top:6px;">
+          ${saldo > 0 ? 'Saldo que nos debe: $' + saldo.toLocaleString('es-AR') : (saldo < 0 ? 'Tiene a favor: $' + Math.abs(saldo).toLocaleString('es-AR') : 'Cuenta al día ($0)')}
+        </div>
+      </div>
+
+      <div class="sub" style="margin-top:10px;">${verTodo ? 'Mostrando el historial completo' : 'Mostrando solo este mes'}</div>
+      ${hayHistorialViejo ? `<button class="btn btn-outline" style="margin-top:6px;" onclick="verCuentaCliente('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', true)">📂 Ver historial completo (meses anteriores)</button>` : ''}
+      ${verTodo ? `<button class="btn btn-outline" style="margin-top:6px;" onclick="verCuentaCliente('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', false)">🔼 Ver solo este mes</button>` : ''}
+
+      <label style="margin-top:18px;">🛒 Compró (a crédito)</label>
+      ${filasCompras}
+
+      <label style="margin-top:18px;">💵 Fue pagando</label>
+      ${filasPagos}
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
 
