@@ -2068,6 +2068,7 @@ window.buscarClienteCC = buscarClienteCC;
 
 async function verCuentaCliente(clienteId, nombreCliente) {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando cuenta de ${nombreCliente}...</p></div>`);
+  await cargarPreciosMateriales();
 
   // "COMPRÓ" = TODOS los sobres de este cliente, tengan o no saldo pendiente hoy
   // (igual que la planilla vieja: la columna DEBE suma el total de cada trabajo,
@@ -2112,6 +2113,31 @@ async function verCuentaCliente(clienteId, nombreCliente) {
         </div>
       `).join('');
 
+  // NUEVO (05/09/2026): metal en consignación — mayoristas que entregan su propio metal y solo
+  // se les cobra la mano de obra. Se suma con cada entrega y se resta con cada trabajo realizado.
+  const { data: movsMetal } = await sb
+    .from('metal_clientes')
+    .select('id, fecha, tipo, material, gramos, nota, sobres(numero)')
+    .eq('cliente_id', clienteId)
+    .order('fecha', { ascending: false });
+
+  const saldosMetal = {};
+  (movsMetal || []).forEach(m => {
+    const g = Number(m.gramos) || 0;
+    saldosMetal[m.material] = (saldosMetal[m.material] || 0) + (m.tipo === 'ENTREGA' ? g : -g);
+  });
+  const materialesConSaldo = Object.keys(saldosMetal);
+
+  const filasMetal = (movsMetal || []).length === 0
+    ? `<div class="vacio">Sin movimientos de metal</div>`
+    : movsMetal.map(m => `
+        <div class="lista-sobre">
+          <div class="nro">${m.tipo === 'ENTREGA' ? '➕' : '➖'} ${Number(m.gramos).toLocaleString('es-AR')}g ${etiquetaMaterial(m.material)}</div>
+          <div class="cli">${new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-AR')}${m.sobres ? ' · sobre #' + m.sobres.numero : ''}</div>
+          ${m.nota ? `<div class="desc">${m.nota}</div>` : ''}
+        </div>
+      `).join('');
+
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -2131,6 +2157,22 @@ async function verCuentaCliente(clienteId, nombreCliente) {
 
       <label style="margin-top:18px;">💵 Fue pagando</label>
       ${filasPagos}
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <label>🥈 Metal en consignación</label>
+      ${materialesConSaldo.length > 0 ? `
+        <div class="lista-sobre" style="background:#f7f7f7;">
+          ${materialesConSaldo.map(mat => `<div>${etiquetaMaterial(mat)}: <strong>${saldosMetal[mat].toLocaleString('es-AR')}g</strong> disponible${saldosMetal[mat] !== 1 ? 's' : ''}</div>`).join('')}
+        </div>
+      ` : ''}
+      ${filasMetal}
+
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn btn-outline" style="width:auto; flex:1; font-size:13px; padding:10px;" onclick="mostrarFormMetal('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', 'ENTREGA')">➕ Entregó metal</button>
+        <button class="btn btn-outline" style="width:auto; flex:1; font-size:13px; padding:10px;" onclick="mostrarFormMetal('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', 'USO')">➖ Se usó en un sobre</button>
+      </div>
+      <div id="cc-metal-form"></div>
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
 
@@ -2184,6 +2226,81 @@ async function registrarPagoCC(clienteId, nombreCliente) {
   verCuentaCliente(clienteId, nombreCliente);
 }
 window.registrarPagoCC = registrarPagoCC;
+
+// NUEVO (05/09/2026): "Metal en consignación" — mayoristas que traen su propio metal para que
+// les hagamos el trabajo y solo se les cobra la mano de obra. Se registra por separado de la
+// cuenta corriente en pesos: acá se lleva la cuenta en gramos por tipo de material.
+function etiquetaMaterial(materialId) {
+  const mapa = _preciosMaterialesActual || {};
+  return mapa[materialId] ? mapa[materialId].nombre : (materialId || 'Plata');
+}
+
+function opcionesMaterialMetal(seleccionado) {
+  const mapa = _preciosMaterialesActual || {};
+  const ids = Object.keys(mapa);
+  if (ids.length === 0) return `<option value="PLATA">Plata</option>`;
+  return ids.map(id => `<option value="${id}" ${id === seleccionado ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('');
+}
+
+async function mostrarFormMetal(clienteId, nombreCliente, tipo) {
+  await cargarPreciosMateriales();
+  const box = document.getElementById('cc-metal-form');
+  const hoy = fechaHoyISO();
+  box.innerHTML = `
+    <div class="lista-sobre" style="background:#fdf8ec; margin-top:8px;">
+      <label style="margin-top:0;">${tipo === 'ENTREGA' ? '➕ Registrar entrega de metal' : '➖ Registrar metal usado en un sobre'}</label>
+      <label style="margin-top:8px; font-size:12px;">Fecha</label>
+      <input type="date" id="cm-fecha" value="${hoy}">
+      <label style="margin-top:8px; font-size:12px;">Material</label>
+      <select id="cm-material">${opcionesMaterialMetal('PLATA')}</select>
+      <label style="margin-top:8px; font-size:12px;">Gramos</label>
+      <input type="number" id="cm-gramos" placeholder="Ej: 50" step="0.01">
+      ${tipo === 'USO' ? `
+        <label style="margin-top:8px; font-size:12px;">N° de sobre (opcional)</label>
+        <input type="text" id="cm-sobre" placeholder="Ej: 4801">
+      ` : ''}
+      <label style="margin-top:8px; font-size:12px;">Nota (opcional)</label>
+      <input type="text" id="cm-nota" placeholder="Ej: trajo un anillo viejo para fundir">
+      <button class="btn btn-verde" style="margin-top:10px;" onclick="guardarMovMetal('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}', '${tipo}')">Guardar</button>
+      <div id="cm-msg"></div>
+    </div>
+  `;
+}
+window.mostrarFormMetal = mostrarFormMetal;
+
+async function guardarMovMetal(clienteId, nombreCliente, tipo) {
+  const msgBox = document.getElementById('cm-msg');
+  const fecha = document.getElementById('cm-fecha').value;
+  const material = document.getElementById('cm-material').value;
+  const gramos = parseFloat(document.getElementById('cm-gramos').value);
+  const nota = document.getElementById('cm-nota').value.trim();
+  const inputSobre = document.getElementById('cm-sobre');
+  const numeroSobre = inputSobre ? inputSobre.value.trim() : '';
+
+  if (!fecha || isNaN(gramos) || gramos <= 0) {
+    msgBox.innerHTML = `<div class="msg msg-error">Poné una fecha y una cantidad de gramos válida.</div>`;
+    return;
+  }
+
+  let sobreId = null;
+  if (numeroSobre) {
+    const { data: s } = await sb.from('sobres').select('id').eq('numero', normalizarSobre(numeroSobre)).maybeSingle();
+    if (!s) { msgBox.innerHTML = `<div class="msg msg-error">No se encontró el sobre ${numeroSobre}.</div>`; return; }
+    sobreId = s.id;
+  }
+
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+  const { error } = await sb.from('metal_clientes').insert({
+    cliente_id: clienteId, fecha: fecha, tipo: tipo, material: material,
+    gramos: gramos, sobre_id: sobreId, nota: nota || null
+  });
+
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  verCuentaCliente(clienteId, nombreCliente);
+}
+window.guardarMovMetal = guardarMovMetal;
 
 // ============================================================
 // PANTALLA 7: Buscar Sobre — ver el historial y los pagos completos de un sobre
