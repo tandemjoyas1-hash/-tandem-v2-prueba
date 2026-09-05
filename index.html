@@ -2243,7 +2243,7 @@ async function buscarSobreDetalle() {
     </div>
     <div id="bs-pendientes" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;"></div>
     <input type="file" id="bs-fotos-input" accept="image/*" style="display:none;" onchange="agregarFotoPendiente('${s.id}')">
-    <button class="btn" style="width:auto; padding:8px 16px; font-size:13px;" onclick="document.getElementById('bs-fotos-input').click()">➕ Elegir foto</button>
+    <button class="btn btn-outline" style="width:auto; display:inline-block; padding:10px 18px; font-size:14px; margin-top:8px;" onclick="document.getElementById('bs-fotos-input').click()">➕ Elegir foto</button>
     <button id="bs-btn-subir" class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px; display:none;" onclick="subirFotosSobre('${s.id}')">📷 Subir fotos elegidas</button>
     <div id="bs-fotos-msg"></div>
   `;
