@@ -457,13 +457,13 @@ function pantallaNuevaEntrada() {
         <option value="Laureano">🧪 Laureano</option>
       </select>
 
-      <label>Tipo de producto (opcional, para los reportes)</label>
+      <label>Tipo de producto (opcional, para los reportes — escribí para buscar)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <select id="ne-tipo-producto" style="flex:1;">
-          <option value="">— Sin especificar —</option>
-        </select>
+        <input type="text" id="ne-tipo-producto-busqueda" style="flex:1;" placeholder="Ej: acero, anillo, cadena..." autocomplete="off" oninput="filtrarTipoProducto('ne')" onfocus="filtrarTipoProducto('ne')">
         <button type="button" onclick="toggleNuevaCategoria('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
+      <input type="hidden" id="ne-tipo-producto" value="">
+      <div id="ne-tipo-producto-sugerencias"></div>
       <div id="ne-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="ne-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -969,10 +969,10 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
-    // El select recién se termina de llenar (cargarTiposProducto es async), por eso esperamos un toque.
+    // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
     setTimeout(() => {
       const sel = document.getElementById('ne-tipo-producto');
-      if (sel) sel.value = _borradorEntrada.tipoProducto;
+      if (sel) { sel.value = _borradorEntrada.tipoProducto; pintarTipoProductoTexto('ne'); }
     }, 400);
   }
 }
@@ -3079,10 +3079,10 @@ async function pantallaEditarMovimiento(id) {
           .map(op => `<option ${op === m.medio_pago ? 'selected' : ''}>${op}</option>`).join('')}
       </select>
 
-      <label>Tipo de producto</label>
-      <select id="em-tipo-producto">
-        <option value="">— Sin especificar —</option>
-      </select>
+      <label>Tipo de producto (escribí para buscar)</label>
+      <input type="text" id="em-tipo-producto-busqueda" placeholder="Ej: acero, anillo, cadena..." autocomplete="off" oninput="filtrarTipoProducto('em')" onfocus="filtrarTipoProducto('em')">
+      <input type="hidden" id="em-tipo-producto" value="">
+      <div id="em-tipo-producto-sugerencias"></div>
 
       <label>Proveedor</label>
       <select id="em-proveedor">
@@ -3097,11 +3097,10 @@ async function pantallaEditarMovimiento(id) {
     </div>
   `);
 
-  const { data: tipos } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
-  const selTipo = document.getElementById('em-tipo-producto');
-  if (tipos) {
-    selTipo.innerHTML = '<option value="">— Sin especificar —</option>' +
-      tipos.map(c => `<option value="${c.codigo}" ${Number(c.codigo) === Number(m.codigo) ? 'selected' : ''}>${c.codigo} — ${c.descripcion}</option>`).join('');
+  await cargarTiposProducto('em');
+  if (m.codigo) {
+    document.getElementById('em-tipo-producto').value = String(m.codigo);
+    pintarTipoProductoTexto('em');
   }
 
   const { data: provs } = await sb.from('proveedores').select('id, nombre').order('nombre');
@@ -4239,13 +4238,13 @@ function pantallaVentaDirecta() {
       <label>Descripción</label>
       <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
 
-      <label>Tipo de producto (opcional, para los reportes)</label>
+      <label>Tipo de producto (opcional, para los reportes — escribí para buscar)</label>
       <div style="display:flex; gap:8px; align-items:center;">
-        <select id="vd-tipo-producto" style="flex:1;">
-          <option value="">— Sin especificar —</option>
-        </select>
+        <input type="text" id="vd-tipo-producto-busqueda" style="flex:1;" placeholder="Ej: acero, anillo, cadena..." autocomplete="off" oninput="filtrarTipoProducto('vd')" onfocus="filtrarTipoProducto('vd')">
         <button type="button" onclick="toggleNuevaCategoria('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
       </div>
+      <input type="hidden" id="vd-tipo-producto" value="">
+      <div id="vd-tipo-producto-sugerencias"></div>
       <div id="vd-nueva-categoria-box" style="display:none; margin-top:8px; padding:10px; background:#fafafa; border-radius:8px;">
         <label style="margin-top:0;">Nombre de la categoría nueva</label>
         <input type="text" id="vd-nueva-categoria-nombre" placeholder="Ej: Anillos de acero">
@@ -4326,16 +4325,73 @@ function elegirClienteVentaDirecta(id, nombre) {
 }
 window.elegirClienteVentaDirecta = elegirClienteVentaDirecta;
 
-// --- Tipo de producto: desplegable simple, usado en Entrada y Venta Directa.
+// --- Tipo de producto: buscador con autocompletado (escribís y se achica la lista),
+// usado en Entrada, Venta Directa y Editar Movimiento. El código elegido se guarda
+// en el input oculto "<prefix>-tipo-producto" (mismo id de siempre, no cambia nada
+// de cómo se lee/guarda en el resto del código).
+let _cacheTiposProducto = null;
+
 async function cargarTiposProducto(prefix) {
-  const select = document.getElementById(prefix + '-tipo-producto');
-  if (!select) return;
-  const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('codigo');
-  if (!data) return;
-  select.innerHTML = '<option value="">— Sin especificar —</option>' +
-    data.map(c => `<option value="${c.codigo}">${c.codigo} — ${c.descripcion}</option>`).join('');
+  const hidden = document.getElementById(prefix + '-tipo-producto');
+  if (!hidden) return;
+  if (!_cacheTiposProducto) {
+    const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('descripcion');
+    _cacheTiposProducto = data || [];
+  }
+  pintarTipoProductoTexto(prefix);
 }
 window.cargarTiposProducto = cargarTiposProducto;
+
+// Muestra en el input visible el texto correspondiente al código que ya esté
+// guardado en el input oculto (usado al editar un movimiento existente, o al
+// restaurar un borrador).
+function pintarTipoProductoTexto(prefix) {
+  const hidden = document.getElementById(prefix + '-tipo-producto');
+  const visible = document.getElementById(prefix + '-tipo-producto-busqueda');
+  if (!hidden || !visible || !_cacheTiposProducto) return;
+  const codigo = hidden.value;
+  if (!codigo) { visible.value = ''; return; }
+  const encontrado = _cacheTiposProducto.find(c => String(c.codigo) === String(codigo));
+  visible.value = encontrado ? `${encontrado.codigo} — ${encontrado.descripcion}` : '';
+}
+window.pintarTipoProductoTexto = pintarTipoProductoTexto;
+
+function filtrarTipoProducto(prefix) {
+  const box = document.getElementById(prefix + '-tipo-producto-sugerencias');
+  if (!box || !_cacheTiposProducto) return;
+  const texto = (document.getElementById(prefix + '-tipo-producto-busqueda').value || '').trim().toLowerCase();
+
+  // Si borran todo, se limpia también el código elegido.
+  if (!texto) {
+    document.getElementById(prefix + '-tipo-producto').value = '';
+    box.innerHTML = '';
+    return;
+  }
+
+  const coincidencias = _cacheTiposProducto
+    .filter(c => c.descripcion.toLowerCase().includes(texto) || String(c.codigo).includes(texto))
+    .slice(0, 8);
+
+  if (coincidencias.length === 0) {
+    box.innerHTML = `<div style="padding:8px 10px; color:#8a8378; font-size:13px;">Sin resultados. Tocá ✏️ para agregar "${texto}" como categoría nueva.</div>`;
+    return;
+  }
+
+  box.innerHTML = coincidencias.map(c => `
+    <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirTipoProducto(${JSON.stringify(prefix)}, ${JSON.stringify(String(c.codigo))}, ${JSON.stringify(c.descripcion)})'>
+      <div class="nro" style="font-size:14px;">${c.descripcion}</div>
+      <div class="cli" style="font-size:12px;">Código ${c.codigo}</div>
+    </div>
+  `).join('');
+}
+window.filtrarTipoProducto = filtrarTipoProducto;
+
+function elegirTipoProducto(prefix, codigo, descripcion) {
+  document.getElementById(prefix + '-tipo-producto').value = codigo;
+  document.getElementById(prefix + '-tipo-producto-busqueda').value = `${codigo} — ${descripcion}`;
+  document.getElementById(prefix + '-tipo-producto-sugerencias').innerHTML = '';
+}
+window.elegirTipoProducto = elegirTipoProducto;
 
 function toggleNuevaCategoria(prefix) {
   const box = document.getElementById(prefix + '-nueva-categoria-box');
@@ -4369,8 +4425,11 @@ async function guardarNuevaCategoria(prefix) {
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Categoría "${nombre}" agregada.</div>`;
   document.getElementById(prefix + '-nueva-categoria-nombre').value = '';
+  _cacheTiposProducto = null; // forzar recarga para que incluya la categoría recién creada
   await cargarTiposProducto(prefix);
   document.getElementById(prefix + '-tipo-producto').value = String(nuevoCodigo);
+  pintarTipoProductoTexto(prefix);
+  document.getElementById(prefix + '-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById(prefix + '-nueva-categoria-box').style.display = 'none';
 }
 window.guardarNuevaCategoria = guardarNuevaCategoria;
