@@ -1458,6 +1458,8 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
   document.getElementById('ne-tipo-producto').value = '';
+  document.getElementById('ne-tipo-producto-busqueda').value = '';
+  document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('ne-cantidad').value = '1';
   document.getElementById('ne-proveedor').value = '';
   window._fotosReferenciaLista = [];
@@ -4502,6 +4504,8 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-monto').value = '';
   document.getElementById('vd-cantidad').value = '1';
   document.getElementById('vd-tipo-producto').value = '';
+  document.getElementById('vd-tipo-producto-busqueda').value = '';
+  document.getElementById('vd-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('vd-proveedor').value = '';
   
   _clienteIdVentaDirecta = null;
