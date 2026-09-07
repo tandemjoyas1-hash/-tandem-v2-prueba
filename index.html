@@ -511,6 +511,12 @@ function pantallaNuevaEntrada() {
         <option>CUENTA CORRIENTE</option>
       </select>
 
+      <label>Canal (de dónde vino la venta)</label>
+      <select id="ne-canal">
+        <option value="LOCAL">🏪 Local</option>
+        <option value="REDES">📱 Redes</option>
+      </select>
+
       <button class="btn btn-verde" onclick="guardarNuevaEntrada()">Guardar entrada</button>
       <div id="ne-msg"></div>
     </div>
@@ -554,7 +560,8 @@ function irAlCatalogoDesdeEntrada() {
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
-    medioPago: document.getElementById('ne-medio-pago').value
+    medioPago: document.getElementById('ne-medio-pago').value,
+    canal: document.getElementById('ne-canal').value
   };
   pantallaCatalogo();
 }
@@ -967,6 +974,7 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
+  if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
@@ -1248,6 +1256,7 @@ async function leerFotoSobre() {
     if (datos.trabajo) document.getElementById('ne-trabajo').value = datos.trabajo;
     if (datos.total) document.getElementById('ne-total').value = datos.total;
     if (datos.senia) document.getElementById('ne-sena').value = datos.senia;
+    if (datos.canal === 'REDES') document.getElementById('ne-canal').value = 'REDES';
 
     msgBox.innerHTML = `<div class="msg msg-ok">✅ Listo, revisá los datos antes de guardar.</div>`;
   } catch (err) {
@@ -1307,6 +1316,7 @@ async function guardarNuevaEntrada() {
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
   const medioPago = document.getElementById('ne-medio-pago').value;
+  const canal = document.getElementById('ne-canal').value;
 
   if (!numeroSobre) {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el N° de sobre.</div>`;
@@ -1357,7 +1367,8 @@ async function guardarNuevaEntrada() {
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
       foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
-      para_el_dia: paraElDia
+      para_el_dia: paraElDia,
+      canal: canal
     })
     .select('id')
     .single();
@@ -1410,6 +1421,7 @@ async function guardarNuevaEntrada() {
       medio_pago: 'CUENTA CORRIENTE',
       monto: total,
       cantidad: cantidad,
+      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -1424,6 +1436,7 @@ async function guardarNuevaEntrada() {
       medio_pago: medioPago,
       monto: sena,
       cantidad: cantidad,
+      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -1462,6 +1475,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('ne-cantidad').value = '1';
   document.getElementById('ne-proveedor').value = '';
+  document.getElementById('ne-canal').value = 'LOCAL';
   window._fotosReferenciaLista = [];
   pintarPreviewFotoReferencia();
   
