@@ -2926,7 +2926,7 @@ function pantallaCajaDelDia() {
         </div>
 
         <div id="ap-billetes-box" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
-          ${[20000, 10000, 2000, 1000, 500, 200, 100].map(valor => `
+          ${[20000, 10000, 2000, 1000, 500, 200, 100, 50].map(valor => `
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
               <span style="width:70px; font-weight:600;">$${valor.toLocaleString('es-AR')}</span>
               <span>×</span>
@@ -3549,7 +3549,7 @@ async function cargarCajaDelDia() {
       </div>
 
       <div id="cd-billetes-box" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
-        ${[20000, 10000, 2000, 1000, 500, 200, 100].map(valor => `
+        ${[20000, 10000, 2000, 1000, 500, 200, 100, 50].map(valor => `
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
             <span style="width:70px; font-weight:600;">$${valor.toLocaleString('es-AR')}</span>
             <span>×</span>
