@@ -4337,6 +4337,12 @@ function pantallaVentaDirecta() {
         <option>LEMON LAUREANO</option>
       </select>
 
+      <label>Canal (de dónde vino la venta)</label>
+      <select id="vd-canal">
+        <option value="LOCAL">🏪 Local</option>
+        <option value="REDES">📱 Redes</option>
+      </select>
+
       <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
       <div id="vd-msg"></div>
     </div>
@@ -4492,6 +4498,7 @@ async function guardarVentaDirecta() {
   const monto = parseFloat(document.getElementById('vd-monto').value) || 0;
   const cantidad = parseInt(document.getElementById('vd-cantidad').value) || 1;
   const medioPago = document.getElementById('vd-medio-pago').value;
+  const canal = document.getElementById('vd-canal').value;
   const nombreCliente = document.getElementById('vd-cliente').value.trim();
 
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
@@ -4540,7 +4547,7 @@ async function guardarVentaDirecta() {
     medio_pago: medioPago,
     monto: monto,
     cantidad: cantidad,
-    canal: 'LOCAL',
+    canal: canal,
     cliente_id: clienteId,
     codigo: tipoProducto ? parseInt(tipoProducto) : null,
     proveedor_id: proveedorId
@@ -4557,6 +4564,7 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-tipo-producto-busqueda').value = '';
   document.getElementById('vd-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('vd-proveedor').value = '';
+  document.getElementById('vd-canal').value = 'LOCAL';
   
   _clienteIdVentaDirecta = null;
 }
