@@ -514,7 +514,8 @@ function pantallaNuevaEntrada() {
       <label>Canal (de dónde vino la venta)</label>
       <select id="ne-canal">
         <option value="LOCAL">🏪 Local</option>
-        <option value="REDES">📱 Redes</option>
+        <option value="REDES_RETIRA">📱 Redes - retira en el local</option>
+        <option value="REDES_ENVIO">📦 Redes - envío</option>
       </select>
 
       <button class="btn btn-verde" onclick="guardarNuevaEntrada()">Guardar entrada</button>
@@ -1256,7 +1257,7 @@ async function leerFotoSobre() {
     if (datos.trabajo) document.getElementById('ne-trabajo').value = datos.trabajo;
     if (datos.total) document.getElementById('ne-total').value = datos.total;
     if (datos.senia) document.getElementById('ne-sena').value = datos.senia;
-    if (datos.canal === 'REDES') document.getElementById('ne-canal').value = 'REDES';
+    if (datos.canal === 'REDES') document.getElementById('ne-canal').value = 'REDES_RETIRA';
 
     msgBox.innerHTML = `<div class="msg msg-ok">✅ Listo, revisá los datos antes de guardar.</div>`;
   } catch (err) {
@@ -4047,12 +4048,17 @@ async function cargarReportes() {
     }
   });
 
-  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES: { cantidad: 0, total: 0 } };
+  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES_RETIRA: { cantidad: 0, total: 0 }, REDES_ENVIO: { cantidad: 0, total: 0 } };
   (sobresDelMes || []).forEach(s => {
-    const canal = (s.canal === 'REDES') ? 'REDES' : 'LOCAL';
+    // 'REDES' (sin sufijo) es un valor viejo de antes de separar retira/envío — se cuenta como retira.
+    let canal = 'LOCAL';
+    if (s.canal === 'REDES_ENVIO') canal = 'REDES_ENVIO';
+    else if (s.canal === 'REDES_RETIRA' || s.canal === 'REDES') canal = 'REDES_RETIRA';
     porCanal[canal].cantidad += 1;
     porCanal[canal].total += Number(s.precio_total) || 0;
   });
+  const totalRedes = porCanal.REDES_RETIRA.total + porCanal.REDES_ENVIO.total;
+  const cantidadRedes = porCanal.REDES_RETIRA.cantidad + porCanal.REDES_ENVIO.cantidad;
 
   resBox.innerHTML = `
     <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
@@ -4068,7 +4074,9 @@ async function cargarReportes() {
     <div class="lista-sobre" style="margin-top:10px;">
       <div style="font-weight:700; margin-bottom:6px;">📍 Por canal</div>
       <div>🏪 Local: <strong>${porCanal.LOCAL.cantidad} sobres — $${porCanal.LOCAL.total.toLocaleString('es-AR')}</strong></div>
-      <div>📱 Redes: <strong>${porCanal.REDES.cantidad} sobres — $${porCanal.REDES.total.toLocaleString('es-AR')}</strong></div>
+      <div>📱 Redes (total): <strong>${cantidadRedes} sobres — $${totalRedes.toLocaleString('es-AR')}</strong></div>
+      <div style="margin-left:16px; font-size:14px; color:#666;">↳ Retira en el local: ${porCanal.REDES_RETIRA.cantidad} sobres — $${porCanal.REDES_RETIRA.total.toLocaleString('es-AR')}</div>
+      <div style="margin-left:16px; font-size:14px; color:#666;">↳ Envío: ${porCanal.REDES_ENVIO.cantidad} sobres — $${porCanal.REDES_ENVIO.total.toLocaleString('es-AR')}</div>
     </div>
   `;
 }
@@ -4340,7 +4348,8 @@ function pantallaVentaDirecta() {
       <label>Canal (de dónde vino la venta)</label>
       <select id="vd-canal">
         <option value="LOCAL">🏪 Local</option>
-        <option value="REDES">📱 Redes</option>
+        <option value="REDES_RETIRA">📱 Redes - retira en el local</option>
+        <option value="REDES_ENVIO">📦 Redes - envío</option>
       </select>
 
       <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
