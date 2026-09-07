@@ -511,13 +511,6 @@ function pantallaNuevaEntrada() {
         <option>CUENTA CORRIENTE</option>
       </select>
 
-      <label>Canal (de dónde vino la venta)</label>
-      <select id="ne-canal">
-        <option value="LOCAL">🏪 Local</option>
-        <option value="REDES_RETIRA">📱 Redes - retira en el local</option>
-        <option value="REDES_ENVIO">📦 Redes - envío</option>
-      </select>
-
       <button class="btn btn-verde" onclick="guardarNuevaEntrada()">Guardar entrada</button>
       <div id="ne-msg"></div>
     </div>
@@ -561,8 +554,7 @@ function irAlCatalogoDesdeEntrada() {
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
-    medioPago: document.getElementById('ne-medio-pago').value,
-    canal: document.getElementById('ne-canal').value
+    medioPago: document.getElementById('ne-medio-pago').value
   };
   pantallaCatalogo();
 }
@@ -975,7 +967,6 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
-  if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
@@ -1257,7 +1248,6 @@ async function leerFotoSobre() {
     if (datos.trabajo) document.getElementById('ne-trabajo').value = datos.trabajo;
     if (datos.total) document.getElementById('ne-total').value = datos.total;
     if (datos.senia) document.getElementById('ne-sena').value = datos.senia;
-    if (datos.canal === 'REDES') document.getElementById('ne-canal').value = 'REDES_RETIRA';
 
     msgBox.innerHTML = `<div class="msg msg-ok">✅ Listo, revisá los datos antes de guardar.</div>`;
   } catch (err) {
@@ -1317,7 +1307,6 @@ async function guardarNuevaEntrada() {
   const total = parseFloat(document.getElementById('ne-total').value) || null;
   const sena = parseFloat(document.getElementById('ne-sena').value) || 0;
   const medioPago = document.getElementById('ne-medio-pago').value;
-  const canal = document.getElementById('ne-canal').value;
 
   if (!numeroSobre) {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el N° de sobre.</div>`;
@@ -1368,8 +1357,7 @@ async function guardarNuevaEntrada() {
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
       foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
-      para_el_dia: paraElDia,
-      canal: canal
+      para_el_dia: paraElDia
     })
     .select('id')
     .single();
@@ -1422,7 +1410,6 @@ async function guardarNuevaEntrada() {
       medio_pago: 'CUENTA CORRIENTE',
       monto: total,
       cantidad: cantidad,
-      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -1437,7 +1424,6 @@ async function guardarNuevaEntrada() {
       medio_pago: medioPago,
       monto: sena,
       cantidad: cantidad,
-      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -1476,7 +1462,6 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('ne-cantidad').value = '1';
   document.getElementById('ne-proveedor').value = '';
-  document.getElementById('ne-canal').value = 'LOCAL';
   window._fotosReferenciaLista = [];
   pintarPreviewFotoReferencia();
   
@@ -1979,8 +1964,9 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
     return;
   }
 
+  let errorCobro = null;
   if (montoCobrado > 0) {
-    await sb.from('movimientos_caja').insert({
+    const { error: errCobro } = await sb.from('movimientos_caja').insert({
       vendedora: usuarioActual.nombre,
       descripcion: 'cobro saldo sobre ' + numero,
       ingresa_egresa: 'INGRESA',
@@ -1990,6 +1976,12 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
       cliente_id: sobreData.cliente_id,
       sobre_id: sobreId
     });
+    errorCobro = errCobro;
+  }
+
+  if (errorCobro) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ El sobre se marcó como retirado, PERO el cobro de $${montoCobrado.toLocaleString('es-AR')} NO se guardó (${errorCobro.message}). Avisale a Mauricio para que lo cargue a mano.</div>`;
+    return;
   }
 
   const detalle = esCuentaCorriente
@@ -2823,6 +2815,7 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
     .select('sobres(id, numero, precio_total, tipo_cliente, fecha_salida)')
     .eq('boleta_id', boletaId);
 
+  const errores = [];
   for (const r of relaciones) {
     const s = r.sobres;
     if (s.fecha_salida) continue;
@@ -2835,7 +2828,7 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
     const montoCobrado = esCuentaCorriente ? 0 : saldo;
 
     if (montoCobrado > 0) {
-      await sb.from('movimientos_caja').insert({
+      const { error: errCobro } = await sb.from('movimientos_caja').insert({
         vendedora: usuarioActual.nombre,
         descripcion: 'cobro saldo sobre ' + s.numero + ' (boleta ' + numeroBoleta + ')',
         ingresa_egresa: 'INGRESA',
@@ -2845,6 +2838,7 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
         cliente_id: clienteId,
         sobre_id: s.id
       });
+      if (errCobro) errores.push('#' + s.numero + ' ($' + montoCobrado.toLocaleString('es-AR') + ')');
     }
 
     await sb.from('historial_sobres').insert({
@@ -2862,6 +2856,7 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
 
   msgBox.innerHTML = `
     <div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>
+    ${errores.length > 0 ? `<div class="msg msg-error">⚠️ El cobro de ${errores.join(', ')} NO se guardó. Avisale a Mauricio para cargarlo a mano.</div>` : ''}
     ${botonWhatsApp(telefonoCliente, mensajeWa)}
   `;
 }
@@ -3022,7 +3017,7 @@ function renderFilasMovimientosCD(movimientos) {
   }
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
     </div>
@@ -3034,7 +3029,7 @@ function renderFilasMovimientosCD(movimientos) {
       <td>${m.vendedora || ''}</td>
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}</td>
+      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''}</td>
       <td>${m.medio_pago || ''}</td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
@@ -3460,7 +3455,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion, foto_referencia)')
     .eq('fecha', fecha)
     .order('created_at');
 
@@ -4048,17 +4043,12 @@ async function cargarReportes() {
     }
   });
 
-  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES_RETIRA: { cantidad: 0, total: 0 }, REDES_ENVIO: { cantidad: 0, total: 0 } };
+  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES: { cantidad: 0, total: 0 } };
   (sobresDelMes || []).forEach(s => {
-    // 'REDES' (sin sufijo) es un valor viejo de antes de separar retira/envío — se cuenta como retira.
-    let canal = 'LOCAL';
-    if (s.canal === 'REDES_ENVIO') canal = 'REDES_ENVIO';
-    else if (s.canal === 'REDES_RETIRA' || s.canal === 'REDES') canal = 'REDES_RETIRA';
+    const canal = (s.canal === 'REDES') ? 'REDES' : 'LOCAL';
     porCanal[canal].cantidad += 1;
     porCanal[canal].total += Number(s.precio_total) || 0;
   });
-  const totalRedes = porCanal.REDES_RETIRA.total + porCanal.REDES_ENVIO.total;
-  const cantidadRedes = porCanal.REDES_RETIRA.cantidad + porCanal.REDES_ENVIO.cantidad;
 
   resBox.innerHTML = `
     <div class="lista-sobre" style="background:#f7f7f7; margin-top:10px;">
@@ -4074,9 +4064,7 @@ async function cargarReportes() {
     <div class="lista-sobre" style="margin-top:10px;">
       <div style="font-weight:700; margin-bottom:6px;">📍 Por canal</div>
       <div>🏪 Local: <strong>${porCanal.LOCAL.cantidad} sobres — $${porCanal.LOCAL.total.toLocaleString('es-AR')}</strong></div>
-      <div>📱 Redes (total): <strong>${cantidadRedes} sobres — $${totalRedes.toLocaleString('es-AR')}</strong></div>
-      <div style="margin-left:16px; font-size:14px; color:#666;">↳ Retira en el local: ${porCanal.REDES_RETIRA.cantidad} sobres — $${porCanal.REDES_RETIRA.total.toLocaleString('es-AR')}</div>
-      <div style="margin-left:16px; font-size:14px; color:#666;">↳ Envío: ${porCanal.REDES_ENVIO.cantidad} sobres — $${porCanal.REDES_ENVIO.total.toLocaleString('es-AR')}</div>
+      <div>📱 Redes: <strong>${porCanal.REDES.cantidad} sobres — $${porCanal.REDES.total.toLocaleString('es-AR')}</strong></div>
     </div>
   `;
 }
@@ -4345,13 +4333,6 @@ function pantallaVentaDirecta() {
         <option>LEMON LAUREANO</option>
       </select>
 
-      <label>Canal (de dónde vino la venta)</label>
-      <select id="vd-canal">
-        <option value="LOCAL">🏪 Local</option>
-        <option value="REDES_RETIRA">📱 Redes - retira en el local</option>
-        <option value="REDES_ENVIO">📦 Redes - envío</option>
-      </select>
-
       <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
       <div id="vd-msg"></div>
     </div>
@@ -4507,7 +4488,6 @@ async function guardarVentaDirecta() {
   const monto = parseFloat(document.getElementById('vd-monto').value) || 0;
   const cantidad = parseInt(document.getElementById('vd-cantidad').value) || 1;
   const medioPago = document.getElementById('vd-medio-pago').value;
-  const canal = document.getElementById('vd-canal').value;
   const nombreCliente = document.getElementById('vd-cliente').value.trim();
 
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
@@ -4556,7 +4536,7 @@ async function guardarVentaDirecta() {
     medio_pago: medioPago,
     monto: monto,
     cantidad: cantidad,
-    canal: canal,
+    canal: 'LOCAL',
     cliente_id: clienteId,
     codigo: tipoProducto ? parseInt(tipoProducto) : null,
     proveedor_id: proveedorId
@@ -4573,7 +4553,6 @@ async function guardarVentaDirecta() {
   document.getElementById('vd-tipo-producto-busqueda').value = '';
   document.getElementById('vd-tipo-producto-sugerencias').innerHTML = '';
   document.getElementById('vd-proveedor').value = '';
-  document.getElementById('vd-canal').value = 'LOCAL';
   
   _clienteIdVentaDirecta = null;
 }
