@@ -2392,7 +2392,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -2488,7 +2488,29 @@ async function buscarSobreDetalle() {
       ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
-      <div style="margin:8px 0; font-weight:600;">${estadoDeSobre(s)}</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
+        <div style="font-weight:600;">${estadoDeSobre(s)}</div>
+        ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
+      </div>
+      <div id="bs-cancelar-box" class="lista-sobre" style="display:none; margin-bottom:10px;">
+        <div style="font-weight:700; margin-bottom:8px; color:#b23b3b;">❌ Cancelar sobre ${s.numero}</div>
+        <label>¿Cuánto hay que devolverle al cliente? (dejá 0 si no se devuelve nada)</label>
+        <input type="number" id="bs-cancelar-monto" value="${pagado}">
+        <label>Medio por el que se devuelve</label>
+        <select id="bs-cancelar-medio">
+          <option value="EFECTIVO">Efectivo</option>
+          <option value="TRANSFERENCIA SANTANDER">Transferencia Santander</option>
+          <option value="MERCADO PAGO FISER">Mercado Pago Fiser</option>
+          <option value="MERCADO PAGO LAUREANO">Mercado Pago Laureano</option>
+          <option value="UALA CARLA">Uala Carla</option>
+          <option value="LEMON LAUREANO">Lemon Laureano</option>
+          <option value="TARJETA FISER">Tarjeta Fiser</option>
+        </select>
+        <label>Motivo de la cancelación</label>
+        <input type="text" id="bs-cancelar-motivo" placeholder="Ej: el material no era plata">
+        <button class="btn" style="background:#b23b3b; color:#fff; margin-top:10px;" onclick="confirmarCancelarSobre('${s.id}', '${s.numero}', ${s.cliente_id ? "'" + s.cliente_id + "'" : 'null'})">Confirmar cancelación</button>
+        <div id="bs-cancelar-msg"></div>
+      </div>
       <div>Precio total: $${(Number(s.precio_total) || 0).toLocaleString('es-AR')} · Pagado: $${pagado.toLocaleString('es-AR')} · Saldo: $${saldo.toLocaleString('es-AR')}</div>
 
       <label style="margin-top:14px;">📷 Fotos del sobre</label>
@@ -2512,6 +2534,52 @@ async function buscarSobreDetalle() {
   `;
 }
 window.buscarSobreDetalle = buscarSobreDetalle;
+
+function toggleCancelarSobre() {
+  const box = document.getElementById('bs-cancelar-box');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleCancelarSobre = toggleCancelarSobre;
+
+async function confirmarCancelarSobre(sobreId, numero, clienteId) {
+  const monto = Number(document.getElementById('bs-cancelar-monto').value) || 0;
+  const medio = document.getElementById('bs-cancelar-medio').value;
+  const motivo = document.getElementById('bs-cancelar-motivo').value.trim();
+  const msgBox = document.getElementById('bs-cancelar-msg');
+
+  if (!motivo) {
+    msgBox.innerHTML = `<div class="msg msg-error">Contá el motivo de la cancelación.</div>`;
+    return;
+  }
+  if (!confirm(`¿Confirmás cancelar el sobre ${numero}${monto > 0 ? ' y devolver $' + monto.toLocaleString('es-AR') : ''}? Esto no se puede deshacer desde acá.`)) return;
+
+  if (monto > 0) {
+    const { error: errDevol } = await sb.from('movimientos_caja').insert({
+      vendedora: usuarioActual.nombre,
+      descripcion: 'Devolución seña sobre ' + numero + ' (cancelado: ' + motivo + ')',
+      ingresa_egresa: 'EGRESA',
+      medio_pago: medio,
+      monto: monto,
+      cliente_id: clienteId
+    });
+    if (errDevol) {
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ No se pudo registrar la devolución (${errDevol.message}). No se canceló el sobre, intentá de nuevo.</div>`;
+      return;
+    }
+  }
+
+  await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', sobreId);
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId,
+    evento: 'CANCELADO',
+    detalle: motivo + (monto > 0 ? ' — se devolvió $' + monto.toLocaleString('es-AR') + ' por ' + medio : ' — sin devolución')
+  });
+
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} cancelado.</div>`;
+  setTimeout(() => buscarSobreDetalle(), 800);
+}
+window.confirmarCancelarSobre = confirmarCancelarSobre;
 
 // NUEVO (05/09/2026, v2): en vez de depender del selector "multiple" de la galería (que en
 // varios celulares como Samsung/Xiaomi no deja tildar varias fotos a la vez), se agregan de a
