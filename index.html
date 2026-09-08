@@ -935,9 +935,26 @@ async function guardarProductoNuevo() {
     return;
   }
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Producto "${descripcion}" agregado.</div>`;
+  msgBox.innerHTML = `
+    <div class="msg msg-ok">✅ Producto "${descripcion}" agregado.</div>
+    <button class="btn btn-outline" style="margin-top:8px;" onclick='verProductoEnCatalogo(${JSON.stringify(cod)})'>🔍 Ver el producto en el catálogo</button>
+  `;
 }
 window.guardarProductoNuevo = guardarProductoNuevo;
+
+// Vuelve a la pantalla del catálogo y busca directo el producto por su código, para confirmar
+// que quedó bien cargado sin tener que buscarlo a mano.
+function verProductoEnCatalogo(cod) {
+  pantallaCatalogo();
+  setTimeout(() => {
+    const input = document.getElementById('cat-buscar');
+    if (input) {
+      input.value = cod;
+      buscarEnCatalogo();
+    }
+  }, 50);
+}
+window.verProductoEnCatalogo = verProductoEnCatalogo;
 
 function buscarPorCategoriaCatalogo(cat) {
   document.getElementById('cat-buscar').value = '';
