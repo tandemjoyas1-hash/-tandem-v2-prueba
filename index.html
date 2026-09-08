@@ -352,8 +352,11 @@ function buscarFotoSobre() {
   const box = document.getElementById('vf-resultado');
   if (!numero) { box.innerHTML = ''; return; }
 
+  // Se limpia de una, para no dejar pegada en pantalla la foto de una búsqueda anterior
+  // mientras se espera el cuarto de segundo antes de buscar la nueva.
+  box.innerHTML = `<div class="msg">Buscando...</div>`;
+
   _timeoutVerFoto = setTimeout(async () => {
-    box.innerHTML = `<div class="msg">Buscando...</div>`;
     const { data: s, error } = await sb
       .from('sobres')
       .select('id, numero, descripcion, foto_referencia, para_el_dia')
