@@ -788,6 +788,7 @@ async function pantallaEditarProducto(cod) {
 
       <label>Cambiar foto (opcional)</label>
       <input type="file" id="ep-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ep-foto-ok')">
+      <div style="font-size:11px; color:#8a8378; margin-top:2px;">📋 También podés copiar una foto (por ejemplo de WhatsApp) y pegarla acá con Ctrl+V</div>
       <div id="ep-foto-ok"></div>
 
       <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
@@ -855,6 +856,7 @@ function pantallaAgregarProducto() {
 
       <label>Foto (opcional)</label>
       <input type="file" id="ap-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ap-foto-ok')">
+      <div style="font-size:11px; color:#8a8378; margin-top:2px;">📋 También podés copiar una foto (por ejemplo de WhatsApp) y pegarla acá con Ctrl+V</div>
       <div id="ap-foto-ok"></div>
 
       <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
@@ -911,6 +913,7 @@ async function guardarProductoNuevo() {
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   const nuevo = {
+    id: 'P' + Date.now(),
     cod: cod,
     cat: document.getElementById('ap-cat').value,
     descripcion: descripcion,
@@ -1132,6 +1135,33 @@ function mostrarFotoElegida(input, idDestino) {
   }
 }
 window.mostrarFotoElegida = mostrarFotoElegida;
+
+// Permite pegar una imagen copiada (por ejemplo, de WhatsApp Web) directo con Ctrl+V, sin tener
+// que guardarla como archivo primero. Funciona para cualquiera de las pantallas de producto que
+// esté abierta en ese momento (Agregar producto o Editar producto).
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.indexOf('image') !== 0) continue;
+    const blob = item.getAsFile();
+    if (!blob) continue;
+
+    const inputAp = document.getElementById('ap-foto');
+    const inputEp = document.getElementById('ep-foto');
+    const inputDestino = (inputAp && inputAp.offsetParent !== null) ? { input: inputAp, msg: 'ap-foto-ok' }
+      : (inputEp && inputEp.offsetParent !== null) ? { input: inputEp, msg: 'ep-foto-ok' }
+      : null;
+    if (!inputDestino) continue;
+
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'foto-pegada.png', { type: blob.type || 'image/png' }));
+    inputDestino.input.files = dt.files;
+    mostrarFotoElegida(inputDestino.input, inputDestino.msg);
+    e.preventDefault();
+    break;
+  }
+});
 
 function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
