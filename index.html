@@ -1625,15 +1625,20 @@ function agregarNumeroASobres(idDestino, numero) {
 }
 window.agregarNumeroASobres = agregarNumeroASobres;
 
+let _bajarTallerLoteEnCurso = false;
 async function bajarATallerLote() {
+  if (_bajarTallerLoteEnCurso) return;
   const resBox = document.getElementById('bt-resultado');
   const numeros = document.getElementById('bt-sobres').value.trim().split(/[\s,]+/).filter(n => n);
   const orfebre = document.getElementById('bt-orfebre').value;
 
   if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
 
-  resBox.innerHTML = `<div class="msg">Guardando...</div>`;
-  const ok = [], errores = [];
+  _bajarTallerLoteEnCurso = true;
+  resBox.innerHTML = `<div class="msg">⏳ Guardando... no vuelvas a tocar el botón</div>`;
+  // ok = se bajaron ahora mismo. yaEstaban = no hizo falta nada, ya estaban bien (no es un error).
+  // errores = de verdad no se pudieron bajar (no existen, ya retirados, falla de guardado).
+  const ok = [], yaEstaban = [], errores = [];
 
   for (const numero of numeros) {
     const { data: sobre, error: errBuscar } = await sb
@@ -1644,7 +1649,7 @@ async function bajarATallerLote() {
 
     if (errBuscar || !sobre) { errores.push(numero + ' (no existe)'); continue; }
     if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
-    if (sobre.baja_taller) { errores.push(numero + ' (ya estaba en taller)'); continue; }
+    if (sobre.baja_taller) { yaEstaban.push(numero); continue; }
 
     const { error } = await sb
       .from('sobres')
@@ -1663,9 +1668,11 @@ async function bajarATallerLote() {
 
   resBox.innerHTML = `
     ${ok.length > 0 ? `<div class="msg msg-ok">✅ Bajados a ${orfebre}: ${ok.join(', ')}</div>` : ''}
+    ${yaEstaban.length > 0 ? `<div class="msg" style="background:#eef3ea; color:#3a5a2c;">ℹ️ Ya estaban bajados (no hacía falta hacer nada): ${yaEstaban.join(', ')}</div>` : ''}
     ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron bajar: ${errores.join(', ')}</div>` : ''}
   `;
   document.getElementById('bt-sobres').value = '';
+  _bajarTallerLoteEnCurso = false;
 }
 window.bajarATallerLote = bajarATallerLote;
 
