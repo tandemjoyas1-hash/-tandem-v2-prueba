@@ -1860,6 +1860,17 @@ async function marcarListo(sobreId, numero) {
     return;
   }
 
+  // Si se cargó o cambió un precio acá (por ejemplo, un sobre que entró sin precio definido),
+  // y ese sobre está a cuenta corriente, hay que actualizar también el monto del movimiento de
+  // caja — si no, la deuda real nunca queda reflejada (quedaba en $0 aunque el sobre ya tuviera
+  // precio puesto).
+  if (precio) {
+    const { data: movCta } = await sb.from('movimientos_caja').select('id').eq('sobre_id', sobreId).eq('medio_pago', 'CUENTA CORRIENTE').maybeSingle();
+    if (movCta) {
+      await sb.from('movimientos_caja').update({ monto: precio }).eq('id', movCta.id);
+    }
+  }
+
   if (items.length > 0) {
     await sb.from('items_sobre').insert(items.map(it => ({ sobre_id: sobreId, descripcion: it.descripcion, precio: it.precio })));
   }
