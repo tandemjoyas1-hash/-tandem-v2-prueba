@@ -99,7 +99,7 @@ input.addEventListener('input', () => {
 
     const { data: s, error } = await sb
       .from('sobres')
-      .select('numero, descripcion, foto_referencia, para_el_dia')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia')
       .eq('numero', numeroNormalizado)
       .maybeSingle();
 
@@ -110,7 +110,20 @@ input.addEventListener('input', () => {
       ? `<div class="fecha">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
       : '';
 
-    if (!s.foto_referencia) {
+    // Además de foto_referencia (la primera, vieja), se buscan TODAS las fotos
+    // guardadas en tandem.fotos_sobre para este sobre (ej: mesa + laterales de un sello).
+    const { data: fotosExtra } = await sb
+      .from('fotos_sobre')
+      .select('url, etiqueta')
+      .eq('sobre_id', s.id)
+      .order('created_at');
+
+    const urlsExtra = (fotosExtra || []).map(f => f.url);
+    const todasLasFotos = s.foto_referencia && !urlsExtra.includes(s.foto_referencia)
+      ? [{ url: s.foto_referencia, etiqueta: null }, ...(fotosExtra || [])]
+      : (fotosExtra || []);
+
+    if (todasLasFotos.length === 0) {
       box.innerHTML = `
         <div class="nro">#${s.numero}</div>
         <div class="vacio">Este sobre no tiene foto cargada.</div>
@@ -122,7 +135,10 @@ input.addEventListener('input', () => {
 
     box.innerHTML = `
       <div class="nro">#${s.numero}</div>
-      <img src="${s.foto_referencia}">
+      ${todasLasFotos.map(f => `
+        ${f.etiqueta ? `<div style="text-align:center; margin-top:10px; font-size:15px; font-weight:700; color:#7a5c00;">🏷️ ${f.etiqueta}</div>` : ''}
+        <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="cursor:pointer;">
+      `).join('')}
       <div class="desc">${s.descripcion || ''}</div>
       ${fechaHtml}
     `;
