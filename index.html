@@ -959,18 +959,23 @@ function verProductoEnCatalogo(cod) {
 }
 window.verProductoEnCatalogo = verProductoEnCatalogo;
 
+let _categoriaActivaCatalogo = null;
+
 function buscarPorCategoriaCatalogo(cat) {
-  document.getElementById('cat-buscar').value = '';
+  // Si tocás la misma categoría que ya estaba activa, se desactiva (vuelve a buscar en todas)
+  const yaEstabaActiva = _categoriaActivaCatalogo === cat;
+  _categoriaActivaCatalogo = yaEstabaActiva ? null : cat;
+
   document.querySelectorAll('[id^="cat-btn-"]').forEach(btn => {
     btn.classList.remove('btn-verde');
     btn.classList.add('btn-outline');
   });
-  const activo = document.getElementById('cat-btn-' + cat.replace(/\s+/g, '-'));
-  if (activo) {
-    activo.classList.remove('btn-outline');
-    activo.classList.add('btn-verde');
+  if (_categoriaActivaCatalogo) {
+    const activo = document.getElementById('cat-btn-' + cat.replace(/\s+/g, '-'));
+    if (activo) { activo.classList.remove('btn-outline'); activo.classList.add('btn-verde'); }
   }
-  buscarEnCatalogo(cat);
+  // NO se borra lo que ya estaba escrito — así se puede buscar texto DENTRO de la categoría
+  buscarEnCatalogo();
 }
 window.buscarPorCategoriaCatalogo = buscarPorCategoriaCatalogo;
 
@@ -1058,10 +1063,11 @@ async function compartirFotosSeleccionadas() {
 }
 window.compartirFotosSeleccionadas = compartirFotosSeleccionadas;
 
-async function buscarEnCatalogo(categoriaExacta) {
+async function buscarEnCatalogo() {
   const termino = document.getElementById('cat-buscar').value.trim();
+  const categoria = _categoriaActivaCatalogo;
   const resBox = document.getElementById('cat-resultado');
-  if (!termino && !categoriaExacta) { resBox.innerHTML = ''; return; }
+  if (!termino && !categoria) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   try {
@@ -1070,18 +1076,21 @@ async function buscarEnCatalogo(categoriaExacta) {
     let consulta = sb.schema('public')
       .from('products')
       .select('cod, cat, descripcion, medidas, peso, labor, material, foto')
-      .limit(categoriaExacta ? 40 : 10);
+      .limit(80);
 
-    consulta = categoriaExacta
-      ? consulta.eq('cat', categoriaExacta).order('cod', { ascending: true })
-      : consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%').order('foto', { ascending: false, nullsFirst: false });
+    if (categoria) consulta = consulta.eq('cat', categoria);
+    if (termino) consulta = consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%');
+
+    // Orden: alfabético por descripción — así el orden es siempre el mismo y previsible,
+    // en vez de saltar según qué producto tenga o no una foto cargada.
+    consulta = consulta.order('descripcion', { ascending: true });
 
     const { data: productos, error } = await consulta;
 
     if (error) throw error;
 
     if (!productos || productos.length === 0) {
-      resBox.innerHTML = `<div class="vacio">Sin resultados para "${categoriaExacta || termino}"</div>`;
+      resBox.innerHTML = `<div class="vacio">Sin resultados para "${categoria || termino}"</div>`;
       return;
     }
 
