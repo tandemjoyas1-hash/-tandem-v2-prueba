@@ -1063,12 +1063,27 @@ async function compartirFotosSeleccionadas() {
 }
 window.compartirFotosSeleccionadas = compartirFotosSeleccionadas;
 
-async function buscarEnCatalogo() {
+let _catalogoBusquedaId = 0;
+let _catalogoTimeout = null;
+
+function buscarEnCatalogo() {
+  clearTimeout(_catalogoTimeout);
   const termino = document.getElementById('cat-buscar').value.trim();
   const categoria = _categoriaActivaCatalogo;
   const resBox = document.getElementById('cat-resultado');
   if (!termino && !categoria) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  // Espera un poquito después de la última letra tipeada, y además se queda con el ID de esta
+  // búsqueda puntual: si mientras esperaba la respuesta llegó una búsqueda MÁS NUEVA (porque
+  // seguiste escribiendo), esta respuesta vieja se descarta en vez de pisar el resultado bueno.
+  const miId = ++_catalogoBusquedaId;
+  _catalogoTimeout = setTimeout(() => ejecutarBusquedaCatalogo(termino, categoria, miId), 300);
+}
+window.buscarEnCatalogo = buscarEnCatalogo;
+
+async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
+  const resBox = document.getElementById('cat-resultado');
 
   try {
     await cargarPreciosMateriales();
@@ -1086,6 +1101,8 @@ async function buscarEnCatalogo() {
     consulta = consulta.order('descripcion', { ascending: true });
 
     const { data: productos, error } = await consulta;
+
+    if (miId !== _catalogoBusquedaId) return; // llegó una búsqueda más nueva mientras esperaba, se descarta esta
 
     if (error) throw error;
 
@@ -1143,7 +1160,7 @@ async function buscarEnCatalogo() {
     resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
 }
-window.buscarEnCatalogo = buscarEnCatalogo;
+window.ejecutarBusquedaCatalogo = ejecutarBusquedaCatalogo;
 
 function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
   if (!_borradorEntrada) return; // modo consulta: solo mirar precios, no hay nada que "elegir"
