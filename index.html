@@ -790,7 +790,11 @@ async function pantallaEditarProducto(cod) {
       <input type="number" id="ep-labor" value="${p.labor || 0}">
 
       <label>Cambiar foto (opcional)</label>
-      <input type="file" id="ep-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ep-foto-ok')">
+      <div style="display:flex; gap:8px;">
+        <input type="file" id="ep-foto" accept="image/*" style="flex:1;" onchange="mostrarFotoElegida(this,'ep-foto-ok')">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:0 14px;" onclick="document.getElementById('ep-foto-camara').click()">📷 Sacar foto</button>
+        <input type="file" id="ep-foto-camara" accept="image/*" capture="environment" style="display:none;" onchange="copiarFotoDeCamara(this,'ep-foto','ep-foto-ok')">
+      </div>
       <div style="font-size:11px; color:#8a8378; margin-top:2px;">📋 También podés copiar una foto (por ejemplo de WhatsApp) y pegarla acá con Ctrl+V</div>
       <div id="ep-foto-ok"></div>
 
@@ -858,7 +862,11 @@ function pantallaAgregarProducto() {
       <input type="number" id="ap-labor" placeholder="0">
 
       <label>Foto (opcional)</label>
-      <input type="file" id="ap-foto" accept="image/*" onchange="mostrarFotoElegida(this,'ap-foto-ok')">
+      <div style="display:flex; gap:8px;">
+        <input type="file" id="ap-foto" accept="image/*" style="flex:1;" onchange="mostrarFotoElegida(this,'ap-foto-ok')">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:0 14px;" onclick="document.getElementById('ap-foto-camara').click()">📷 Sacar foto</button>
+        <input type="file" id="ap-foto-camara" accept="image/*" capture="environment" style="display:none;" onchange="copiarFotoDeCamara(this,'ap-foto','ap-foto-ok')">
+      </div>
       <div style="font-size:11px; color:#8a8378; margin-top:2px;">📋 También podés copiar una foto (por ejemplo de WhatsApp) y pegarla acá con Ctrl+V</div>
       <div id="ap-foto-ok"></div>
 
@@ -1181,6 +1189,20 @@ function mostrarFotoElegida(input, idDestino) {
   }
 }
 window.mostrarFotoElegida = mostrarFotoElegida;
+
+// Copia la foto sacada con la cámara (input oculto con capture) al input principal de foto,
+// para que el guardado (que lee del input principal) la encuentre igual que si la hubieras
+// elegido del álbum.
+function copiarFotoDeCamara(inputCamara, idInputPrincipal, idMsg) {
+  const archivo = inputCamara.files && inputCamara.files[0];
+  if (!archivo) return;
+  const dt = new DataTransfer();
+  dt.items.add(archivo);
+  const inputPrincipal = document.getElementById(idInputPrincipal);
+  inputPrincipal.files = dt.files;
+  mostrarFotoElegida(inputPrincipal, idMsg);
+}
+window.copiarFotoDeCamara = copiarFotoDeCamara;
 
 // Permite pegar una imagen copiada (por ejemplo, de WhatsApp Web) directo con Ctrl+V, sin tener
 // que guardarla como archivo primero. Funciona para cualquiera de las pantallas de producto que
