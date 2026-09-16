@@ -850,9 +850,13 @@ function pantallaAgregarProducto() {
       <h1>➕ Agregar producto</h1>
 
       <label>Categoría</label>
-      <select id="ap-cat" onchange="sugerirCodigoNuevo()">
+      <select id="ap-cat" onchange="sugerirCodigoNuevo(); toggleCategoriaNuevaAP();">
         ${CATEGORIAS_CATALOGO.map(c => `<option>${c}</option>`).join('')}
+        <option value="__nueva__">➕ Nueva categoría...</option>
       </select>
+      <div id="ap-nueva-cat-box" style="display:none; margin-top:8px;">
+        <input type="text" id="ap-nueva-cat-nombre" placeholder="Nombre de la nueva categoría">
+      </div>
 
       <label>Código (se sugiere solo, podés cambiarlo)</label>
       <input type="text" id="ap-cod" placeholder="Ej: DP.300">
@@ -899,9 +903,18 @@ function pantallaAgregarProducto() {
 }
 window.pantallaAgregarProducto = pantallaAgregarProducto;
 
+function toggleCategoriaNuevaAP() {
+  const esNueva = document.getElementById('ap-cat').value === '__nueva__';
+  const box = document.getElementById('ap-nueva-cat-box');
+  box.style.display = esNueva ? 'block' : 'none';
+  if (esNueva) document.getElementById('ap-nueva-cat-nombre').focus();
+}
+window.toggleCategoriaNuevaAP = toggleCategoriaNuevaAP;
+
 async function sugerirCodigoNuevo() {
   const cat = document.getElementById('ap-cat').value;
   const codInput = document.getElementById('ap-cod');
+  if (cat === '__nueva__') { codInput.value = ''; return; }
   codInput.value = 'Calculando...';
 
   const { data } = await sb.schema('public')
@@ -934,6 +947,12 @@ async function guardarProductoNuevo() {
   const descripcion = document.getElementById('ap-descripcion').value.trim();
   const peso = parseFloat(document.getElementById('ap-peso').value) || 0;
 
+  let cat = document.getElementById('ap-cat').value;
+  if (cat === '__nueva__') {
+    cat = document.getElementById('ap-nueva-cat-nombre').value.trim();
+    if (!cat) { msgBox.innerHTML = `<div class="msg msg-error">Escribí el nombre de la nueva categoría.</div>`; return; }
+  }
+
   if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
 
@@ -942,7 +961,7 @@ async function guardarProductoNuevo() {
   const nuevo = {
     id: 'P' + Date.now(),
     cod: cod,
-    cat: document.getElementById('ap-cat').value,
+    cat: cat,
     descripcion: descripcion,
     material: document.getElementById('ap-material').value || 'PLATA',
     medidas: document.getElementById('ap-medidas').value.trim() || null,
