@@ -709,7 +709,7 @@ window.aplicarAjusteGeneralManoObra = aplicarAjusteGeneralManoObra;
 async function pantallaDetalleProducto(cod) {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
-  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).maybeSingle();
+  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).limit(1).maybeSingle();
   if (error || !p) {
     render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el producto.</p></div>`);
     return;
@@ -768,7 +768,7 @@ window.pantallaDetalleProducto = pantallaDetalleProducto;
 async function pantallaEditarProducto(cod) {
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
-  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).maybeSingle();
+  const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).limit(1).maybeSingle();
   if (error || !p) {
     render(`${pintarUsuarioActual()}<div class="card"><p class="msg msg-error">No se encontró el producto.</p></div>`);
     return;
@@ -890,7 +890,7 @@ function pantallaAgregarProducto() {
       <div style="font-size:11px; color:#8a8378; margin-top:2px;">📋 También podés copiar una foto (por ejemplo de WhatsApp) y pegarla acá con Ctrl+V</div>
       <div id="ap-foto-ok"></div>
 
-      <button class="btn btn-verde" onclick="guardarProductoNuevo()">Guardar producto</button>
+      <button class="btn btn-verde" id="ap-btn-guardar" onclick="guardarProductoNuevo()">Guardar producto</button>
       <div id="ap-msg"></div>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
     </div>
@@ -943,6 +943,8 @@ window.sugerirCodigoNuevo = sugerirCodigoNuevo;
 
 async function guardarProductoNuevo() {
   const msgBox = document.getElementById('ap-msg');
+  const btn = document.getElementById('ap-btn-guardar');
+  if (btn.disabled) return; // ya se está guardando, evita el doble toque
   const cod = document.getElementById('ap-cod').value.trim();
   const descripcion = document.getElementById('ap-descripcion').value.trim();
   const peso = parseFloat(document.getElementById('ap-peso').value) || 0;
@@ -956,7 +958,15 @@ async function guardarProductoNuevo() {
   if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
 
-  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  btn.disabled = true;
+  msgBox.innerHTML = `<div class="msg">⏳ Guardando... puede tardar unos segundos</div>`;
+
+  const { data: yaExiste } = await sb.schema('public').from('products').select('cod').eq('cod', cod).maybeSingle();
+  if (yaExiste) {
+    msgBox.innerHTML = `<div class="msg msg-error">Ya existe un producto con el código "${cod}". Usá otro código.</div>`;
+    btn.disabled = false;
+    return;
+  }
 
   const nuevo = {
     id: 'P' + Date.now(),
@@ -979,6 +989,7 @@ async function guardarProductoNuevo() {
   if (error) {
     const mensaje = error.code === '23505' ? 'Ya existe un producto con ese código.' : error.message;
     msgBox.innerHTML = `<div class="msg msg-error">${mensaje}</div>`;
+    btn.disabled = false;
     return;
   }
 
