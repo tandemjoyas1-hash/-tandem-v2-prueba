@@ -632,7 +632,7 @@ async function cargarPrecioGramoActual() {
   const mapa = await cargarPreciosMateriales();
   const el = document.getElementById('cat-precio-gramo-texto');
   if (el) {
-    el.innerHTML = Object.keys(mapa).map(id => `${mapa[id].nombre}: $${mapa[id].precio_gramo.toLocaleString('es-AR')}`).join(' · ');
+    el.innerHTML = Object.keys(mapa).filter(id => Number(mapa[id].precio_gramo) > 0).map(id => `${mapa[id].nombre}: $${mapa[id].precio_gramo.toLocaleString('es-AR')}`).join(' · ');
   }
 }
 window.cargarPrecioGramoActual = cargarPrecioGramoActual;
