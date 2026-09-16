@@ -2504,8 +2504,8 @@ function pantallaBuscarSobre() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Sobres</h1>
-      <label>Buscar por N° de sobre</label>
-      <input type="text" id="bs-numero" placeholder="Ej: 4801">
+      <label>Buscar por N° de sobre o nombre del cliente</label>
+      <input type="text" id="bs-numero" placeholder="Ej: 4801 o Georgi">
       <button class="btn btn-verde" onclick="buscarSobreDetalle()">Buscar</button>
       <div id="bs-resultado"></div>
 
@@ -2565,7 +2565,33 @@ async function buscarSobreDetalle() {
     return;
   }
   if (!s) {
-    resBox.innerHTML = `<div class="vacio">No se encontró ningún sobre con ese número.</div>`;
+    const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + numero + '%').limit(15);
+    let porCliente = [];
+    if (clientesMatch && clientesMatch.length > 0) {
+      const ids = clientesMatch.map(c => c.id);
+      const { data } = await sb
+        .from('sobres')
+        .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, clientes(nombre)')
+        .in('cliente_id', ids)
+        .order('fecha_entrada', { ascending: false })
+        .limit(20);
+      porCliente = data || [];
+    }
+    if (porCliente.length === 0) {
+      resBox.innerHTML = `<div class="vacio">No se encontró ningún sobre con ese número o cliente.</div>`;
+      return;
+    }
+    if (porCliente.length === 1) {
+      document.getElementById('bs-numero').value = porCliente[0].numero;
+      return buscarSobreDetalle();
+    }
+    resBox.innerHTML = porCliente.map(s2 => `
+      <div class="lista-sobre" onclick="document.getElementById('bs-numero').value='${s2.numero}'; buscarSobreDetalle(); window.scrollTo({top:0, behavior:'smooth'});" style="cursor:pointer;">
+        <div class="nro">#${s2.numero} — ${s2.clientes ? s2.clientes.nombre : ''}</div>
+        <div class="cli">${estadoDeSobre(s2)}</div>
+        <div class="desc">${s2.descripcion || ''}</div>
+      </div>
+    `).join('');
     return;
   }
 
