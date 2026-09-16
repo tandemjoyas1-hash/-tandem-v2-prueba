@@ -570,7 +570,7 @@ function abrirCatalogoParaConsulta() {
 }
 window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
-const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
+const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Anillos Personalizados', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
 
 function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
@@ -717,6 +717,8 @@ async function pantallaDetalleProducto(cod) {
 
   await cargarPreciosMateriales();
 
+  const tienePrecioFijo = p.precio_fijo !== null && p.precio_fijo !== undefined && Number(p.precio_fijo) > 0;
+
   const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
   const zipiur = metal + (Number(p.labor) || 0);
   const mayor = zipiur * 1.2;
@@ -737,19 +739,26 @@ async function pantallaDetalleProducto(cod) {
       <h1 style="margin-top:14px;">${p.descripcion}</h1>
       <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
 
-      <div class="lista-sobre" style="background:#f7f7f7;">
-        <div>Material: <strong>${(_preciosMaterialesActual[p.material] && _preciosMaterialesActual[p.material].nombre) || p.material || 'Plata'}</strong></div>
-        <div>Peso: <strong>${p.peso || '-'} g</strong></div>
-        <div>Mano de obra: <strong>$${(Number(p.labor) || 0).toLocaleString('es-AR')}</strong></div>
-      </div>
-
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
-        ${boton('Zipiur', zipiur)}
-        ${boton('Mayor', mayor)}
-        ${boton('Redes', redes)}
-        ${boton('Menor', menor)}
-      </div>
-
+      ${tienePrecioFijo ? `
+        <div class="lista-sobre" style="background:#f7f7f7;">
+          <div>Precio único (público en general)</div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr; gap:6px;">
+          ${boton('Precio', Number(p.precio_fijo))}
+        </div>
+      ` : `
+        <div class="lista-sobre" style="background:#f7f7f7;">
+          <div>Material: <strong>${(_preciosMaterialesActual[p.material] && _preciosMaterialesActual[p.material].nombre) || p.material || 'Plata'}</strong></div>
+          <div>Peso: <strong>${p.peso || '-'} g</strong></div>
+          <div>Mano de obra: <strong>$${(Number(p.labor) || 0).toLocaleString('es-AR')}</strong></div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+          ${boton('Zipiur', zipiur)}
+          ${boton('Mayor', mayor)}
+          ${boton('Redes', redes)}
+          ${boton('Menor', menor)}
+        </div>
+      `}
       <button class="btn btn-outline" style="margin-top:14px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar este producto</button>
     </div>
   `);
@@ -783,10 +792,13 @@ async function pantallaEditarProducto(cod) {
         ${Object.keys(mapa).map(id => `<option value="${id}" ${id === materialActual ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('')}
       </select>
 
-      <label>Peso (gramos)</label>
+      <label>💲 Precio fijo (solo para productos de precio único, ej: personalizados)</label>
+      <input type="number" id="ep-precio-fijo" value="${p.precio_fijo || ''}" placeholder="Dejar vacío si el precio se calcula por peso y mano de obra">
+
+      <label>Peso (gramos) — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ep-peso" value="${p.peso || 0}">
 
-      <label>Mano de obra</label>
+      <label>Mano de obra — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ep-labor" value="${p.labor || 0}">
 
       <label>Cambiar foto (opcional)</label>
@@ -814,7 +826,8 @@ async function guardarEdicionProducto(cod) {
     descripcion: document.getElementById('ep-descripcion').value.trim(),
     material: document.getElementById('ep-material').value,
     peso: parseFloat(document.getElementById('ep-peso').value) || 0,
-    labor: parseFloat(document.getElementById('ep-labor').value) || 0
+    labor: parseFloat(document.getElementById('ep-labor').value) || 0,
+    precio_fijo: document.getElementById('ep-precio-fijo').value ? parseFloat(document.getElementById('ep-precio-fijo').value) : null
   };
 
   const archivoFoto = document.getElementById('ep-foto').files[0];
@@ -855,10 +868,13 @@ function pantallaAgregarProducto() {
       <label>Medidas (opcional)</label>
       <input type="text" id="ap-medidas" placeholder="Ej: 2cm">
 
-      <label>Peso (gramos)</label>
+      <label>💲 Precio fijo (solo para productos de precio único, sin niveles por mayor/menor — ej: personalizados)</label>
+      <input type="number" id="ap-precio-fijo" placeholder="Dejar vacío si el precio se calcula por peso y mano de obra">
+
+      <label>Peso (gramos) — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ap-peso" placeholder="0">
 
-      <label>Mano de obra</label>
+      <label>Mano de obra — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ap-labor" placeholder="0">
 
       <label>Foto (opcional)</label>
@@ -931,7 +947,8 @@ async function guardarProductoNuevo() {
     material: document.getElementById('ap-material').value || 'PLATA',
     medidas: document.getElementById('ap-medidas').value.trim() || null,
     peso: peso,
-    labor: parseFloat(document.getElementById('ap-labor').value) || 0
+    labor: parseFloat(document.getElementById('ap-labor').value) || 0,
+    precio_fijo: document.getElementById('ap-precio-fijo').value ? parseFloat(document.getElementById('ap-precio-fijo').value) : null
   };
 
   const archivoFoto = document.getElementById('ap-foto').files[0];
@@ -1098,7 +1115,7 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
 
     let consulta = sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, material, foto')
+      .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo')
       .limit(80);
 
     if (categoria) consulta = consulta.eq('cat', categoria);
@@ -1125,6 +1142,7 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
         <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
       </div>
       <div class="cat-grid">` + productos.map(p => {
+      const tienePrecioFijo = p.precio_fijo !== null && p.precio_fijo !== undefined && Number(p.precio_fijo) > 0;
       const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
@@ -1150,13 +1168,19 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
           ` : ''}
           ${foto}
           <div class="nro" style="font-size:13px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}<br>M.Obra: $${(Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}${tienePrecioFijo ? '' : '<br>M.Obra: $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+          ${tienePrecioFijo ? `
+            <div style="display:grid; grid-template-columns: 1fr; gap:4px;">
+              ${boton('Precio', Number(p.precio_fijo))}
+            </div>
+          ` : `
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
             ${boton('Zipiur', zipiur)}
             ${boton('Mayor', mayor)}
             ${boton('Redes', redes)}
             ${boton('Menor', menor)}
           </div>
+          `}
           <button type="button" class="btn btn-outline" style="margin-top:6px; padding:6px; font-size:11.5px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar</button>
         </div>
       `;
@@ -2192,14 +2216,19 @@ async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
     .eq('cliente_id', clienteId)
     .order('fecha_entrada');
 
-  // "FUE PAGANDO" = todos los pagos a cuenta (código 502), sea que se hayan
-  // aplicado a un sobre puntual o como pago suelto.
+  // "FUE PAGANDO" = TODOS los pagos reales que hizo el cliente (código 502 sueltos
+  // + señas/cobros de saldo ligados a un sobre puntual), excluyendo lo que quedó
+  // anotado como CUENTA CORRIENTE (eso es deuda, no pago).
+  // Corregido 15/09/2026: antes solo contaba código 502 y se perdían los pagos
+  // hechos en efectivo/tarjeta al retirar un sobre (quedaban "debiendo" aunque
+  // ya estaban pagados).
   const { data: pagosTodos } = await sb
     .from('movimientos_caja')
     .select('monto, fecha, descripcion, sobre_id')
     .eq('cliente_id', clienteId)
     .eq('ingresa_egresa', 'INGRESA')
-    .eq('codigo', 502)
+    .neq('medio_pago', 'CUENTA CORRIENTE')
+    .or('sobre_id.not.is.null,codigo.eq.502')
     .order('fecha');
 
   // NUEVO (05/09/2026): el saldo en $ SIEMPRE se calcula con el historial completo (si no, se
