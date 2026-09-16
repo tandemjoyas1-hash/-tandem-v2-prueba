@@ -42,6 +42,7 @@
   }
   input:focus { outline: none; border-color: #c9a24a; }
   .nro { font-weight: 700; font-size: 20px; text-align: center; }
+  .cliente { text-align: center; font-size: 16px; color: #7a5c00; margin-top: 2px; font-weight: 600; }
   .desc { text-align: center; margin-top: 14px; font-size: 32px; font-weight: 600; line-height: 1.3; }
   .fecha { text-align: center; margin-top: 8px; font-size: 16px; font-weight: 700; color: #7a5c00; }
   .vacio { color: #8a8378; text-align: center; margin-top: 10px; }
@@ -99,7 +100,7 @@ input.addEventListener('input', () => {
 
     const { data: s, error } = await sb
       .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia, clientes(nombre)')
       .eq('numero', numeroNormalizado)
       .maybeSingle();
 
@@ -108,6 +109,9 @@ input.addEventListener('input', () => {
 
     const fechaHtml = s.para_el_dia
       ? `<div class="fecha">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
+      : '';
+    const clienteHtml = s.clientes && s.clientes.nombre
+      ? `<div class="cliente">${s.clientes.nombre}</div>`
       : '';
 
     // Además de foto_referencia (la primera, vieja), se buscan TODAS las fotos
@@ -126,6 +130,7 @@ input.addEventListener('input', () => {
     if (todasLasFotos.length === 0) {
       box.innerHTML = `
         <div class="nro">#${s.numero}</div>
+        ${clienteHtml}
         <div class="vacio">Este sobre no tiene foto cargada.</div>
         <div class="desc">${s.descripcion || ''}</div>
         ${fechaHtml}
@@ -135,6 +140,7 @@ input.addEventListener('input', () => {
 
     box.innerHTML = `
       <div class="nro">#${s.numero}</div>
+      ${clienteHtml}
       ${todasLasFotos.map(f => `
         ${f.etiqueta ? `<div style="text-align:center; margin-top:10px; font-size:15px; font-weight:700; color:#7a5c00;">🏷️ ${f.etiqueta}</div>` : ''}
         <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="cursor:pointer;">
