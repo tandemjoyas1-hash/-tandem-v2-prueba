@@ -814,15 +814,41 @@ async function pantallaEditarProducto(cod) {
 
       <button class="btn btn-verde" onclick='guardarEdicionProducto(${JSON.stringify(cod)})'>Guardar cambios</button>
       <div id="ep-msg"></div>
+      <button class="btn btn-outline" style="margin-top:10px; border-color:#b23b3b; color:#b23b3b;" onclick="toggleEliminarProducto()">🗑️ Eliminar producto</button>
+      <div id="ep-eliminar-box" style="display:none; margin-top:8px; padding:10px; background:#fceceb; border-radius:8px;">
+        <div style="font-weight:700; color:#7a2118; margin-bottom:8px;">¿Seguro que querés eliminar "${(p.descripcion || '').replace(/"/g, '&quot;')}" (cód. ${p.cod})? No se puede deshacer.</div>
+        <button class="btn" style="background:#b23b3b; color:#fff;" onclick='confirmarEliminarProducto(${JSON.stringify(cod)})'>Sí, eliminar</button>
+        <div id="ep-eliminar-msg"></div>
+      </div>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
     </div>
   `);
 }
 window.pantallaEditarProducto = pantallaEditarProducto;
 
+function toggleEliminarProducto() {
+  const box = document.getElementById('ep-eliminar-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleEliminarProducto = toggleEliminarProducto;
+
+async function confirmarEliminarProducto(cod) {
+  const msgBox = document.getElementById('ep-eliminar-msg');
+  msgBox.innerHTML = `<div class="msg"><span class="spinner"></span>Eliminando...</div>`;
+  try {
+    const { error, count } = await sb.schema('public').from('products').delete({ count: 'exact' }).eq('cod', cod);
+    if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+    if (!count) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo confirmar la eliminación. Probá de nuevo.</div>`; return; }
+    pantallaCatalogo();
+  } catch (err) {
+    msgBox.innerHTML = `<div class="msg msg-error">Se cortó la conexión. Probá de nuevo. (${err.message || err})</div>`;
+  }
+}
+window.confirmarEliminarProducto = confirmarEliminarProducto;
+
 async function guardarEdicionProducto(cod) {
   const msgBox = document.getElementById('ep-msg');
-  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  msgBox.innerHTML = `<div class="msg"><span class="spinner"></span>Guardando, esperá unos segundos...</div>`;
 
   const cambios = {
     descripcion: document.getElementById('ep-descripcion').value.trim(),
@@ -837,10 +863,17 @@ async function guardarEdicionProducto(cod) {
     cambios.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
   }
 
-  const { error } = await sb.schema('public').from('products').update(cambios).eq('cod', cod);
-  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
-
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Guardado.</div>`;
+  try {
+    const { data, error } = await sb.schema('public').from('products').update(cambios).eq('cod', cod).select('cod');
+    if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+    if (!data || data.length === 0) {
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ No se pudo confirmar el guardado (puede haberse cortado la conexión). Probá de nuevo.</div>`;
+      return;
+    }
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Guardado.</div>`;
+  } catch (err) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Se cortó la conexión mientras guardaba. Probá de nuevo. (${err.message || err})</div>`;
+  }
 }
 window.guardarEdicionProducto = guardarEdicionProducto;
 
