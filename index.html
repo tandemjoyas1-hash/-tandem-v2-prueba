@@ -60,6 +60,19 @@
   .msg-error { background: #fceceb; color: #7a2118; font-weight: 600; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #c9c2b2; border-top-color: #2f6d1f; border-radius: 50%; animation: girar 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes girar { to { transform: rotate(360deg); } }
+  .spinner-grande { width: 34px; height: 34px; border-width: 4px; margin: 0 0 14px 0; }
+  .overlay-guardando {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(40,36,28,0.55);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .overlay-guardando-caja {
+    background: #fffdf8; border-radius: 16px; padding: 32px 40px;
+    display: flex; flex-direction: column; align-items: center;
+    font-size: 18px; font-weight: 700; color: #3a3226;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+    text-align: center;
+  }
   .usuario-actual {
     display: flex; justify-content: space-between; align-items: center;
     background: linear-gradient(135deg, #fff6e4, #fdefd2); border: 1px solid #eed9a3; border-radius: 12px;
@@ -152,6 +165,18 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 let usuarioActual = null; // { id, nombre, rol }
 
 const app = document.getElementById('app');
+
+// ============================================================
+// El scroll del mouse/trackpad sobre un campo numérico (precio, peso,
+// cantidad, etc.) NO debe cambiar el valor — a más de una persona se
+// le movió el número sin querer al pasar el mouse mientras scrolleaba
+// la pantalla. Se quita ese comportamiento en TODO el sistema.
+// ============================================================
+document.addEventListener('wheel', () => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') {
+    document.activeElement.blur();
+  }
+}, { passive: true });
 
 // ============================================================
 // NUEVO: cada vez que se cambia de pantalla, se guarda una "foto"
@@ -1000,10 +1025,11 @@ async function guardarProductoNuevo() {
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
 
   btn.disabled = true;
-  msgBox.innerHTML = `<div class="msg"><span class="spinner"></span>Guardando el producto, esperá unos segundos...</div>`;
+  mostrarCargandoCentro('Guardando el producto,<br>esperá unos segundos...');
 
   const { data: yaExiste } = await sb.schema('public').from('products').select('cod').eq('cod', cod).maybeSingle();
   if (yaExiste) {
+    ocultarCargandoCentro();
     msgBox.innerHTML = `<div class="msg msg-error">Ya existe un producto con el código "${cod}". Usá otro código.</div>`;
     btn.disabled = false;
     return;
@@ -1027,6 +1053,7 @@ async function guardarProductoNuevo() {
   }
 
   const { error } = await sb.schema('public').from('products').insert(nuevo);
+  ocultarCargandoCentro();
   if (error) {
     const mensaje = error.code === '23505' ? 'Ya existe un producto con ese código.' : error.message;
     msgBox.innerHTML = `<div class="msg msg-error">${mensaje}</div>`;
@@ -1278,7 +1305,15 @@ window.elegirProductoCatalogo = elegirProductoCatalogo;
 function mostrarFotoElegida(input, idDestino) {
   const box = document.getElementById(idDestino);
   if (input.files && input.files[0]) {
-    box.innerHTML = `<div class="msg msg-ok">✅ Foto lista: ${input.files[0].name}</div>`;
+    const archivo = input.files[0];
+    const lector = new FileReader();
+    lector.onload = () => {
+      box.innerHTML = `
+        <div class="msg msg-ok">✅ Foto lista: ${archivo.name}</div>
+        <img src="${lector.result}" style="max-width:100%; max-height:220px; display:block; margin-top:8px; border-radius:8px; border:1px solid #d8d2c4;">
+      `;
+    };
+    lector.readAsDataURL(archivo);
   } else {
     box.innerHTML = '';
   }
@@ -1325,6 +1360,29 @@ document.addEventListener('paste', (e) => {
     break;
   }
 });
+
+// Cartel de "guardando" centrado y grande en el medio de la pantalla, para que
+// se note bien que hay que esperar (en vez del cartelito chico pegado al botón).
+function mostrarCargandoCentro(texto) {
+  ocultarCargandoCentro();
+  const div = document.createElement('div');
+  div.id = 'overlay-cargando-global';
+  div.className = 'overlay-guardando';
+  div.innerHTML = `
+    <div class="overlay-guardando-caja">
+      <span class="spinner spinner-grande"></span>
+      ${texto}
+    </div>
+  `;
+  document.body.appendChild(div);
+}
+window.mostrarCargandoCentro = mostrarCargandoCentro;
+
+function ocultarCargandoCentro() {
+  const existente = document.getElementById('overlay-cargando-global');
+  if (existente) existente.remove();
+}
+window.ocultarCargandoCentro = ocultarCargandoCentro;
 
 function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
