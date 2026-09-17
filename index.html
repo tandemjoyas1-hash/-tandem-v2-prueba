@@ -246,7 +246,7 @@ function pintarUsuarioActual() {
 
 function cerrarSesion() {
   usuarioActual = null;
-  try { localStorage.removeItem('tandem_sesion'); } catch (e) {}
+  try { localStorage.removeItem('tandem_sesion'); localStorage.removeItem('tandem_sesion_fecha'); } catch (e) {}
   pantallaLogin();
 }
 window.cerrarSesion = cerrarSesion;
@@ -344,10 +344,27 @@ async function intentarLogin() {
 
   usuarioActual = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
   // Guarda la sesión en este dispositivo para no pedir PIN de nuevo la próxima vez que se abra la app
-  try { localStorage.setItem('tandem_sesion', JSON.stringify(usuarioActual)); } catch (e) {}
+  try { localStorage.setItem('tandem_sesion', JSON.stringify(usuarioActual)); localStorage.setItem('tandem_sesion_fecha', fechaHoyISO()); } catch (e) {}
   irAPantallaInicial();
 }
 window.intentarLogin = intentarLogin;
+
+function pantallaConfirmarUsuario(usuario) {
+  render(`
+    <div class="card" style="text-align:center; padding-top:40px;">
+      <div style="font-size:40px; margin-bottom:10px;">👋</div>
+      <h1>¿Seguís siendo ${usuario.nombre}?</h1>
+      <button class="btn btn-oro" style="margin-top:20px;" onclick="confirmarSigoSiendoYo()">Sí, soy yo — continuar</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="cerrarSesion()">No, cambiar de usuario</button>
+    </div>
+  `);
+}
+
+function confirmarSigoSiendoYo() {
+  try { localStorage.setItem('tandem_sesion_fecha', fechaHoyISO()); } catch (e) {}
+  irAPantallaInicial();
+}
+window.confirmarSigoSiendoYo = confirmarSigoSiendoYo;
 
 function irAPantallaInicial() {
   if (usuarioActual.rol === 'ORFEBRE') {
@@ -534,6 +551,13 @@ function pantallaNuevaEntrada() {
 
       <label>Seña (si paga algo ahora)</label>
       <input type="number" id="ne-sena" placeholder="0">
+
+      <label>Canal de venta</label>
+      <select id="ne-canal">
+        <option value="LOCAL">Local</option>
+        <option value="REDES_ENVIO">Redes — con envío</option>
+        <option value="REDES_RETIRO">Redes — retiro en local</option>
+      </select>
 
       <label>Medio de pago de la seña</label>
       <select id="ne-medio-pago">
@@ -1552,6 +1576,7 @@ async function guardarNuevaEntrada() {
   const trabajo = document.getElementById('ne-trabajo').value.trim();
   const paraElDia = document.getElementById('ne-para-el-dia').value || null;
   const destino = document.getElementById('ne-destino').value;
+  const canal = document.getElementById('ne-canal').value;
   const tipoProducto = document.getElementById('ne-tipo-producto').value;
   const cantidad = parseInt(document.getElementById('ne-cantidad').value) || 1;
   const proveedorId = document.getElementById('ne-proveedor').value || null;
@@ -1609,7 +1634,8 @@ async function guardarNuevaEntrada() {
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
       foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
-      para_el_dia: paraElDia
+      para_el_dia: paraElDia,
+      canal: canal
     })
     .select('id')
     .single();
@@ -1662,6 +1688,7 @@ async function guardarNuevaEntrada() {
       medio_pago: 'CUENTA CORRIENTE',
       monto: total,
       cantidad: cantidad,
+      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -1676,6 +1703,7 @@ async function guardarNuevaEntrada() {
       medio_pago: medioPago,
       monto: sena,
       cantidad: cantidad,
+      canal: canal,
       cliente_id: clienteId,
       sobre_id: sobreNuevo.id,
       codigo: tipoProducto ? parseInt(tipoProducto) : null,
@@ -4427,9 +4455,12 @@ async function cargarReportes() {
     }
   });
 
-  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES: { cantidad: 0, total: 0 } };
+  const porCanal = { LOCAL: { cantidad: 0, total: 0 }, REDES_ENVIO: { cantidad: 0, total: 0 }, REDES_RETIRO: { cantidad: 0, total: 0 } };
   (sobresDelMes || []).forEach(s => {
-    const canal = (s.canal === 'REDES') ? 'REDES' : 'LOCAL';
+    // 'REDES' es el valor viejo (antes de separar envío/retiro) — se cuenta como envío.
+    let canal = s.canal;
+    if (canal === 'REDES') canal = 'REDES_ENVIO';
+    if (canal !== 'REDES_ENVIO' && canal !== 'REDES_RETIRO') canal = 'LOCAL';
     porCanal[canal].cantidad += 1;
     porCanal[canal].total += Number(s.precio_total) || 0;
   });
@@ -4448,7 +4479,8 @@ async function cargarReportes() {
     <div class="lista-sobre" style="margin-top:10px;">
       <div style="font-weight:700; margin-bottom:6px;">📍 Por canal</div>
       <div>🏪 Local: <strong>${porCanal.LOCAL.cantidad} sobres — $${porCanal.LOCAL.total.toLocaleString('es-AR')}</strong></div>
-      <div>📱 Redes: <strong>${porCanal.REDES.cantidad} sobres — $${porCanal.REDES.total.toLocaleString('es-AR')}</strong></div>
+      <div>📦 Redes — envío: <strong>${porCanal.REDES_ENVIO.cantidad} sobres — $${porCanal.REDES_ENVIO.total.toLocaleString('es-AR')}</strong></div>
+      <div>📱 Redes — retiro en local: <strong>${porCanal.REDES_RETIRO.cantidad} sobres — $${porCanal.REDES_RETIRO.total.toLocaleString('es-AR')}</strong></div>
     </div>
   `;
 }
@@ -4667,6 +4699,20 @@ function pantallaVentaDirecta() {
       <input type="text" id="vd-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnVentaDirecta()" autocomplete="off">
       <div id="vd-cliente-sugerencias"></div>
 
+      <label>Tipo de cliente</label>
+      <select id="vd-tipo-cliente">
+        <option value="CONSUMIDOR_FINAL">Consumidor final</option>
+        <option value="MAYORISTA">Mayorista</option>
+        <option value="TALLER">Taller</option>
+      </select>
+
+      <label>Canal de venta</label>
+      <select id="vd-canal">
+        <option value="LOCAL">Local</option>
+        <option value="REDES_ENVIO">Redes — con envío</option>
+        <option value="REDES_RETIRO">Redes — retiro en local</option>
+      </select>
+
       <label>Descripción</label>
       <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
 
@@ -4714,6 +4760,7 @@ function pantallaVentaDirecta() {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
+        <option>CUENTA CORRIENTE</option>
       </select>
 
       <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
@@ -4872,9 +4919,12 @@ async function guardarVentaDirecta() {
   const cantidad = parseInt(document.getElementById('vd-cantidad').value) || 1;
   const medioPago = document.getElementById('vd-medio-pago').value;
   const nombreCliente = document.getElementById('vd-cliente').value.trim();
+  const tipoCliente = document.getElementById('vd-tipo-cliente').value;
+  const canal = document.getElementById('vd-canal').value;
 
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
   if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
+  if (medioPago === 'CUENTA CORRIENTE' && !nombreCliente) { msgBox.innerHTML = `<div class="msg msg-error">Para Cuenta Corriente hace falta elegir o escribir el cliente.</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
@@ -4882,7 +4932,7 @@ async function guardarVentaDirecta() {
   let clienteId = _clienteIdVentaDirecta;
   if (!clienteId && nombreCliente) {
     try {
-      clienteId = await buscarOCrearCliente(nombreCliente, 'CONSUMIDOR_FINAL', null);
+      clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, null);
     } catch (errCliente) {
       msgBox.innerHTML = `<div class="msg msg-error">${errCliente.message}</div>`;
       return;
@@ -4915,11 +4965,11 @@ async function guardarVentaDirecta() {
     vendedora: usuarioActual.nombre,
     descripcion: descripcion,
     ingresa_egresa: 'INGRESA',
-    tipo_cliente: 'CONSUMIDOR_FINAL',
+    tipo_cliente: tipoCliente,
     medio_pago: medioPago,
     monto: monto,
     cantidad: cantidad,
-    canal: 'LOCAL',
+    canal: canal,
     cliente_id: clienteId,
     codigo: tipoProducto ? parseInt(tipoProducto) : null,
     proveedor_id: proveedorId
@@ -4929,6 +4979,9 @@ async function guardarVentaDirecta() {
 
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Venta de $${monto.toLocaleString('es-AR')} (${cantidad} ${cantidad === 1 ? 'unidad' : 'unidades'}) registrada.</div>`;
   document.getElementById('vd-cliente').value = '';
+  document.getElementById('vd-tipo-cliente').value = 'CONSUMIDOR_FINAL';
+  document.getElementById('vd-canal').value = 'LOCAL';
+  document.getElementById('vd-medio-pago').value = 'EFECTIVO';
   document.getElementById('vd-descripcion').value = '';
   document.getElementById('vd-monto').value = '';
   document.getElementById('vd-cantidad').value = '1';
@@ -4948,7 +5001,12 @@ window.guardarVentaDirecta = guardarVentaDirecta;
     const guardada = localStorage.getItem('tandem_sesion');
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
-      irAPantallaInicial();
+      const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
+      if (fechaSesion === fechaHoyISO()) {
+        irAPantallaInicial();
+      } else {
+        pantallaConfirmarUsuario(usuarioActual);
+      }
       return;
     }
   } catch (e) {}
