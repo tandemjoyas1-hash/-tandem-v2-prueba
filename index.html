@@ -3522,15 +3522,14 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
     return exacto.id;
   }
 
-  // 2) No hubo exacta: buscamos candidatos parecidos (misma primera palabra) y comparamos
-  // ignorando tildes/mayúsculas con distanciaLevenshtein, igual que el Chequeo del día.
-  const primeraPalabra = nombreCliente.trim().split(/\s+/)[0];
+  // 2) No hubo exacta (buscando tal cual, con o sin tilde): comparamos contra TODOS los clientes,
+  // ignorando tildes/mayúsculas con distanciaLevenshtein. ANTES esto solo traía candidatos cuyo
+  // nombre coincidiera LETRA POR LETRA (con tilde y todo) con la primera palabra escrita — por eso
+  // "maria" (sin tilde) no encontraba a "María" (con tilde) y se duplicaba el cliente. Corregido
+  // el 17/09/2026: se trae la lista completa (son ~400, no pesa nada) y se compara ya sin tildes.
   const normEscrito = normalizarNombreCliente(nombreCliente);
-  let candidatos = [];
-  if (primeraPalabra.length >= 3) {
-    const { data } = await sb.from('clientes').select('id, nombre').ilike('nombre', '%' + primeraPalabra + '%').limit(30);
-    candidatos = data || [];
-  }
+  const { data: todos } = await sb.from('clientes').select('id, nombre');
+  const candidatos = todos || [];
   let parecido = null;
   for (const c of candidatos) {
     const normExistente = normalizarNombreCliente(c.nombre);
