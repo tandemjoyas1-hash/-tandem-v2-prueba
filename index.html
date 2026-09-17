@@ -3583,7 +3583,12 @@ function normalizarNombreCliente(n) {
 function limpiarNombreParaGuardar(n) {
   // Guardamos los nombres de clientes SIEMPRE sin tildes y en formato Título
   // (sin importar cómo lo haya escrito la vendedora o cómo lo haya leído la IA de la foto).
-  return normalizarNombreCliente(n).replace(/(^|\s)([a-zñ])/g, (m, esp, letra) => esp + letra.toUpperCase());
+  // OJO: la "ñ" no es una tilde — se preserva (si no, "Ordóñez" quedaría mal como "Ordonez").
+  const conEnieProtegida = (n || '').replace(/ñ/gi, m => m === m.toUpperCase() ? '\u0002' : '\u0001');
+  const sinTildes = conEnieProtegida.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0001/g, 'ñ').replace(/\u0002/g, 'Ñ');
+  return sinTildes.toLowerCase().replace(/\s+/g, ' ').trim()
+    .replace(/(^|\s)([a-zñ])/g, (m, esp, letra) => esp + letra.toUpperCase());
 }
 function distanciaLevenshtein(a, b) {
   const m = a.length, n = b.length;
