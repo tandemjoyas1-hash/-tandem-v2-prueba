@@ -174,6 +174,12 @@ function normalizarSobre(v) {
   return String(parseInt(soloDigitos, 10));
 }
 
+// Deja el teléfono solo con dígitos (sin espacios, guiones, +54, etc.) para poder
+// usarlo como forma confiable de reconocer al mismo cliente aunque el nombre varíe.
+function normalizarTelefono(v) {
+  return String(v || '').replace(/\D/g, '');
+}
+
 function render(html) {
   if (!_restaurandoHistorial) {
     _historialHTML.push(app.innerHTML);
@@ -1452,12 +1458,14 @@ function buscarClienteEnEntrada() {
   if (nombre.length < 2) { box.innerHTML = ''; return; }
 
   _timeoutBusquedaClienteEntrada = setTimeout(async () => {
-    const { data } = await sb
-      .from('clientes')
-      .select('nombre, tipo_cliente, telefono')
-      .ilike('nombre', '%' + nombre + '%')
-      .order('nombre')
-      .limit(6);
+    // Traemos todos y comparamos sin tildes/mayúsculas (igual que buscarOCrearCliente), para que
+    // "maria" también encuentre a "María" en las sugerencias mientras se escribe.
+    const normBuscado = normalizarNombreCliente(nombre);
+    const { data: todos } = await sb.from('clientes').select('nombre, tipo_cliente, telefono');
+    const data = (todos || [])
+      .filter(c => normalizarNombreCliente(c.nombre).includes(normBuscado))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre))
+      .slice(0, 6);
 
     if (!data || data.length === 0) { box.innerHTML = ''; return; }
 
@@ -3515,10 +3523,20 @@ window.pantallaChequeoDelDia = pantallaChequeoDelDia;
 // separados (pasó el 05/09/2026, generó una venta duplicada). Reutiliza normalizarNombreCliente
 // y distanciaLevenshtein, que ya existían para el Chequeo del día.
 async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
+  const telLimpio = normalizarTelefono(telefono);
+
+  // 0) Si nos dieron un teléfono, es la forma MÁS confiable de reconocer al cliente —
+  // más que el nombre, que se escribe distinto cada vez. Si ya existe alguien con ese
+  // mismo teléfono, es esa persona seguro, aunque el nombre esté escrito diferente.
+  if (telLimpio.length >= 8) {
+    const { data: porTelefono } = await sb.from('clientes').select('id, nombre').eq('telefono', telLimpio).limit(1).maybeSingle();
+    if (porTelefono) return porTelefono.id;
+  }
+
   // 1) Coincidencia exacta (sin importar mayúsc/minúsc) — camino normal, no molesta a nadie.
   const { data: exacto } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
   if (exacto) {
-    if (telefono) await sb.from('clientes').update({ telefono: telefono }).eq('id', exacto.id).is('telefono', null);
+    if (telLimpio) await sb.from('clientes').update({ telefono: telLimpio }).eq('id', exacto.id).is('telefono', null);
     return exacto.id;
   }
 
@@ -3543,7 +3561,7 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
     const esIdentico = normalizarNombreCliente(parecido.nombre) === normEscrito;
     const usarExistente = esIdentico || confirm(`Ya existe un cliente cargado como "${parecido.nombre}".\n\n¿Es la misma persona que "${nombreCliente}"?\n\nAceptar = usar "${parecido.nombre}" (recomendado)\nCancelar = crear "${nombreCliente}" como cliente nuevo y distinto`);
     if (usarExistente) {
-      if (telefono) await sb.from('clientes').update({ telefono: telefono }).eq('id', parecido.id).is('telefono', null);
+      if (telLimpio) await sb.from('clientes').update({ telefono: telLimpio }).eq('id', parecido.id).is('telefono', null);
       return parecido.id;
     }
   }
@@ -3551,7 +3569,7 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   // 3) Ningún parecido (o el usuario confirmó que es alguien distinto): se crea nuevo.
   // Se guarda siempre limpio: sin tildes y con Mayúscula Inicial, no como se haya escrito/leído.
   const nombreLimpio = limpiarNombreParaGuardar(nombreCliente);
-  const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreLimpio, tipo_cliente: tipoCliente, telefono: telefono || null }).select('id').single();
+  const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreLimpio, tipo_cliente: tipoCliente, telefono: telLimpio || null }).select('id').single();
   if (errCliente) throw errCliente;
   return nuevo.id;
 }
