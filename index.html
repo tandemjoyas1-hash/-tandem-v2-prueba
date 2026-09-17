@@ -3549,7 +3549,9 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   }
 
   // 3) Ningún parecido (o el usuario confirmó que es alguien distinto): se crea nuevo.
-  const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreCliente, tipo_cliente: tipoCliente, telefono: telefono || null }).select('id').single();
+  // Se guarda siempre limpio: sin tildes y con Mayúscula Inicial, no como se haya escrito/leído.
+  const nombreLimpio = limpiarNombreParaGuardar(nombreCliente);
+  const { data: nuevo, error: errCliente } = await sb.from('clientes').insert({ nombre: nombreLimpio, tipo_cliente: tipoCliente, telefono: telefono || null }).select('id').single();
   if (errCliente) throw errCliente;
   return nuevo.id;
 }
@@ -3559,6 +3561,11 @@ window.buscarOCrearCliente = buscarOCrearCliente;
 // (ej. "Zipiur" vs "Zipiur Joyas" vs "Zipiun Joyas" — mismo cliente cargado distinto).
 function normalizarNombreCliente(n) {
   return (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+function limpiarNombreParaGuardar(n) {
+  // Guardamos los nombres de clientes SIEMPRE sin tildes y en formato Título
+  // (sin importar cómo lo haya escrito la vendedora o cómo lo haya leído la IA de la foto).
+  return normalizarNombreCliente(n).replace(/(^|\s)([a-zñ])/g, (m, esp, letra) => esp + letra.toUpperCase());
 }
 function distanciaLevenshtein(a, b) {
   const m = a.length, n = b.length;
