@@ -1013,23 +1013,27 @@ async function sugerirCodigoNuevo() {
 
   const { data } = await sb.schema('public')
     .from('products')
-    .select('cod, orden_num')
+    .select('cod')
     .eq('cat', cat)
-    .not('cod', 'is', null)
-    .order('orden_num', { ascending: false, nullsFirst: false })
-    .limit(1);
+    .not('cod', 'is', null);
 
-  if (data && data.length > 0 && data[0].cod) {
-    const codActual = data[0].cod;
-    const match = codActual.match(/^(.*?)(\d+)(\D*)$/);
-    if (match) {
-      const prefijo = match[1];
-      const digitos = match[2];
-      const sufijo = match[3];
-      const siguienteNum = (parseInt(digitos, 10) + 1).toString().padStart(digitos.length, '0');
-      codInput.value = prefijo + siguienteNum + sufijo;
-      return;
+  // Antes se tomaba el código del producto con mayor orden_num, pero si el orden
+  // quedó desordenado eso podía sugerir un código que ya estaba en uso. Ahora se
+  // calcula el número más alto real entre TODOS los códigos de la categoría.
+  let mejor = null;
+  (data || []).forEach(row => {
+    const match = (row.cod || '').match(/^(.*?)(\d+)(\D*)$/);
+    if (!match) return;
+    const num = parseInt(match[2], 10);
+    if (!mejor || num > mejor.num) {
+      mejor = { prefijo: match[1], digitos: match[2], sufijo: match[3], num };
     }
+  });
+
+  if (mejor) {
+    const siguienteNum = (mejor.num + 1).toString().padStart(mejor.digitos.length, '0');
+    codInput.value = mejor.prefijo + siguienteNum + mejor.sufijo;
+    return;
   }
   codInput.value = '';
 }
