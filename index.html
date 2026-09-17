@@ -597,6 +597,11 @@ async function cargarPreciosMateriales() {
 
 function precioGramoDeMaterial(materialId) {
   const mapa = _preciosMaterialesActual || {};
+  // "Plata y Oro" se cobra por peso al precio de la plata (el oro se carga aparte,
+  // a mano, en el campo de Mano de obra) — así nunca se desactualiza si cambia el precio de la plata.
+  if (materialId === 'PLATA_Y_ORO') {
+    return mapa.PLATA ? mapa.PLATA.precio_gramo : (_precioGramoActual || 0);
+  }
   const m = mapa[materialId || 'PLATA'];
   return m ? m.precio_gramo : (_precioGramoActual || 0);
 }
