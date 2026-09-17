@@ -631,7 +631,7 @@ function abrirCatalogoParaConsulta() {
 }
 window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
-const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Anillos Personalizados', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
+const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Anillos Personalizados', 'Composturas', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
 
 function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
@@ -779,6 +779,7 @@ async function pantallaDetalleProducto(cod) {
   await cargarPreciosMateriales();
 
   const tienePrecioFijo = p.precio_fijo !== null && p.precio_fijo !== undefined && Number(p.precio_fijo) > 0;
+  const tieneMayorMenor = !tienePrecioFijo && ((p.precio_mayor !== null && p.precio_mayor !== undefined && Number(p.precio_mayor) > 0) || (p.precio_menor !== null && p.precio_menor !== undefined && Number(p.precio_menor) > 0));
 
   const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
   const zipiur = metal + (Number(p.labor) || 0);
@@ -806,6 +807,14 @@ async function pantallaDetalleProducto(cod) {
         </div>
         <div style="display:grid; grid-template-columns: 1fr; gap:6px;">
           ${boton('Precio', Number(p.precio_fijo))}
+        </div>
+      ` : tieneMayorMenor ? `
+        <div class="lista-sobre" style="background:#f7f7f7;">
+          <div>Compostura — precio por mayor y por menor</div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+          ${Number(p.precio_mayor) > 0 ? boton('Mayor', Number(p.precio_mayor)) : ''}
+          ${Number(p.precio_menor) > 0 ? boton('Menor', Number(p.precio_menor)) : ''}
         </div>
       ` : `
         <div class="lista-sobre" style="background:#f7f7f7;">
@@ -855,6 +864,12 @@ async function pantallaEditarProducto(cod) {
 
       <label>💲 Precio fijo (solo para productos de precio único, ej: personalizados)</label>
       <input type="number" id="ep-precio-fijo" value="${p.precio_fijo || ''}" placeholder="Dejar vacío si el precio se calcula por peso y mano de obra">
+
+      <label>💲💲 Precio por Mayor y por Menor (solo para Composturas — dejar vacíos si no aplica)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="number" id="ep-precio-mayor" value="${p.precio_mayor || ''}" placeholder="Precio mayor">
+        <input type="number" id="ep-precio-menor" value="${p.precio_menor || ''}" placeholder="Precio menor">
+      </div>
 
       <label>Peso (gramos) — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ep-peso" value="${p.peso || 0}">
@@ -914,7 +929,9 @@ async function guardarEdicionProducto(cod) {
     material: document.getElementById('ep-material').value,
     peso: parseFloat(document.getElementById('ep-peso').value) || 0,
     labor: parseFloat(document.getElementById('ep-labor').value) || 0,
-    precio_fijo: document.getElementById('ep-precio-fijo').value ? parseFloat(document.getElementById('ep-precio-fijo').value) : null
+    precio_fijo: document.getElementById('ep-precio-fijo').value ? parseFloat(document.getElementById('ep-precio-fijo').value) : null,
+    precio_mayor: document.getElementById('ep-precio-mayor').value ? parseFloat(document.getElementById('ep-precio-mayor').value) : null,
+    precio_menor: document.getElementById('ep-precio-menor').value ? parseFloat(document.getElementById('ep-precio-menor').value) : null
   };
 
   const archivoFoto = document.getElementById('ep-foto').files[0];
@@ -968,6 +985,12 @@ function pantallaAgregarProducto() {
 
       <label>💲 Precio fijo (solo para productos de precio único, sin niveles por mayor/menor — ej: personalizados)</label>
       <input type="number" id="ap-precio-fijo" placeholder="Dejar vacío si el precio se calcula por peso y mano de obra">
+
+      <label>💲💲 Precio por Mayor y por Menor (solo para Composturas — dejar vacíos si no aplica)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="number" id="ap-precio-mayor" placeholder="Precio mayor">
+        <input type="number" id="ap-precio-menor" placeholder="Precio menor">
+      </div>
 
       <label>Peso (gramos) — no hace falta si cargaste precio fijo</label>
       <input type="number" id="ap-peso" placeholder="0">
@@ -1076,7 +1099,9 @@ async function guardarProductoNuevo() {
     medidas: document.getElementById('ap-medidas').value.trim() || null,
     peso: peso,
     labor: parseFloat(document.getElementById('ap-labor').value) || 0,
-    precio_fijo: document.getElementById('ap-precio-fijo').value ? parseFloat(document.getElementById('ap-precio-fijo').value) : null
+    precio_fijo: document.getElementById('ap-precio-fijo').value ? parseFloat(document.getElementById('ap-precio-fijo').value) : null,
+    precio_mayor: document.getElementById('ap-precio-mayor').value ? parseFloat(document.getElementById('ap-precio-mayor').value) : null,
+    precio_menor: document.getElementById('ap-precio-menor').value ? parseFloat(document.getElementById('ap-precio-menor').value) : null
   };
 
   const archivoFoto = document.getElementById('ap-foto').files[0];
@@ -1245,7 +1270,7 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
 
     let consulta = sb.schema('public')
       .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo')
+      .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo, precio_mayor, precio_menor')
       .limit(80);
 
     if (categoria) consulta = consulta.eq('cat', categoria);
@@ -1273,6 +1298,7 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
       </div>
       <div class="cat-grid">` + productos.map(p => {
       const tienePrecioFijo = p.precio_fijo !== null && p.precio_fijo !== undefined && Number(p.precio_fijo) > 0;
+      const tieneMayorMenor = !tienePrecioFijo && ((p.precio_mayor !== null && p.precio_mayor !== undefined && Number(p.precio_mayor) > 0) || (p.precio_menor !== null && p.precio_menor !== undefined && Number(p.precio_menor) > 0));
       const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
       const zipiur = metal + (Number(p.labor) || 0);
       const mayor = zipiur * 1.2;
@@ -1298,10 +1324,15 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
           ` : ''}
           ${foto}
           <div class="nro" style="font-size:13px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}${tienePrecioFijo ? '' : '<br>M.Obra: $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}${(tienePrecioFijo || tieneMayorMenor) ? '' : '<br>M.Obra: $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
           ${tienePrecioFijo ? `
             <div style="display:grid; grid-template-columns: 1fr; gap:4px;">
               ${boton('Precio', Number(p.precio_fijo))}
+            </div>
+          ` : tieneMayorMenor ? `
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
+              ${Number(p.precio_mayor) > 0 ? boton('Mayor', Number(p.precio_mayor)) : ''}
+              ${Number(p.precio_menor) > 0 ? boton('Menor', Number(p.precio_menor)) : ''}
             </div>
           ` : `
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
