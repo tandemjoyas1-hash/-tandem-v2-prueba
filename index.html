@@ -543,7 +543,6 @@ function pantallaNuevaEntrada() {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
         <option>CUENTA CORRIENTE</option>
       </select>
 
@@ -2137,7 +2136,6 @@ function filaRetiro(s, pagadoPorSobre) {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
         <option>CUENTA CORRIENTE</option>
       </select>
       <button class="btn btn-verde" onclick='confirmarRetiro(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo}, ${JSON.stringify(s.tipo_cliente || 'CONSUMIDOR_FINAL')}, ${JSON.stringify(s.clientes ? s.clientes.nombre : '')}, ${JSON.stringify(s.clientes ? s.clientes.telefono : '')})'>Confirmar cobro y entregar</button>
@@ -2474,7 +2472,6 @@ async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
       </select>
       <button class="btn btn-verde" onclick="registrarPagoCC('${clienteId}', '${nombreCliente.replace(/'/g, "\\'")}')">Registrar pago</button>
       <div id="cc-pago-msg"></div>
@@ -2805,7 +2802,6 @@ async function buscarSobreDetalle() {
           <option value="MERCADO PAGO FISER">Mercado Pago Fiser</option>
           <option value="MERCADO PAGO LAUREANO">Mercado Pago Laureano</option>
           <option value="UALA CARLA">Uala Carla</option>
-          <option value="LEMON LAUREANO">Lemon Laureano</option>
           <option value="TARJETA FISER">Tarjeta Fiser</option>
         </select>
         <label>Motivo de la cancelación</label>
@@ -3161,7 +3157,6 @@ async function buscarBoletaDetalle() {
           <option>MERCADO PAGO FISER</option>
           <option>MERCADO PAGO LAUREANO</option>
           <option>UALA CARLA</option>
-          <option>LEMON LAUREANO</option>
           <option>CUENTA CORRIENTE</option>
         </select>
         <button class="btn btn-verde" onclick='marcarBoletaRetirada(${JSON.stringify(boleta.id)}, ${JSON.stringify(boleta.numero)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.id : null)}, ${JSON.stringify(boleta.clientes ? boleta.clientes.nombre : '')}, ${JSON.stringify(boleta.clientes ? boleta.clientes.telefono : (boleta.telefono || ''))}, ${Number(boleta.total) || 0})'>
@@ -3474,7 +3469,7 @@ async function pantallaEditarMovimiento(id) {
 
       <label>Medio de pago</label>
       <select id="em-medio">
-        ${['EFECTIVO','TARJETA FISER','TRANSFERENCIA SANTANDER','MERCADO PAGO FISER','MERCADO PAGO LAUREANO','UALA CARLA','LEMON LAUREANO','CUENTA CORRIENTE']
+        ${['EFECTIVO','TARJETA FISER','TRANSFERENCIA SANTANDER','MERCADO PAGO FISER','MERCADO PAGO LAUREANO','UALA CARLA','CUENTA CORRIENTE']
           .map(op => `<option ${op === m.medio_pago ? 'selected' : ''}>${op}</option>`).join('')}
       </select>
 
@@ -4117,7 +4112,6 @@ async function buscarSobreParaPagoParcial() {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
       </select>
       <button class="btn btn-verde" onclick='confirmarPagoParcial(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, ${saldo})'>Registrar pago</button>
       <div id="pp-msg"></div>
@@ -4213,7 +4207,6 @@ function pantallaEgreso() {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
       </select>
 
       <button class="btn btn-verde" onclick="guardarEgreso()">Registrar egreso</button>
@@ -4721,7 +4714,6 @@ function pantallaVentaDirecta() {
         <option>MERCADO PAGO FISER</option>
         <option>MERCADO PAGO LAUREANO</option>
         <option>UALA CARLA</option>
-        <option>LEMON LAUREANO</option>
       </select>
 
       <button class="btn btn-verde" onclick="guardarVentaDirecta()">Registrar venta</button>
