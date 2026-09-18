@@ -857,6 +857,11 @@ async function pantallaEditarProducto(cod) {
       <label>Descripción</label>
       <input type="text" id="ep-descripcion" value="${(p.descripcion || '').replace(/"/g, '&quot;')}">
 
+      <label>Categoría</label>
+      <select id="ep-cat">
+        ${CATEGORIAS_CATALOGO.map(c => `<option value="${c}" ${c === p.cat ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
+
       <label>Material</label>
       <select id="ep-material">
         ${Object.keys(mapa).map(id => `<option value="${id}" ${id === materialActual ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('')}
@@ -926,6 +931,7 @@ async function guardarEdicionProducto(cod) {
 
   const cambios = {
     descripcion: document.getElementById('ep-descripcion').value.trim(),
+    cat: document.getElementById('ep-cat').value,
     material: document.getElementById('ep-material').value,
     peso: parseFloat(document.getElementById('ep-peso').value) || 0,
     labor: parseFloat(document.getElementById('ep-labor').value) || 0,
