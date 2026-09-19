@@ -697,7 +697,7 @@ function pantallaCatalogo() {
       <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
         ${CATEGORIAS_CATALOGO.map(c => `
-          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:10px 14px; font-size:13px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1.2;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'><span id="cat-icono-${c.replace(/\s+/g, '-')}" style="font-size:22px;">${ICONO_CATEGORIA[c] || '🔹'}</span>${c}</button>
+          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:8px 12px; font-size:13px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px; line-height:1.2;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'><span id="cat-icono-${c.replace(/\s+/g, '-')}" style="font-size:32px;">${ICONO_CATEGORIA[c] || '🔹'}</span>${c}</button>
         `).join('')}
       </div>
       <div id="cat-resultado" style="margin-top:10px;"></div>
@@ -719,7 +719,7 @@ async function cargarIconosCategoria() {
   }
   Object.keys(_iconosCategoriaActual).forEach(cat => {
     const span = document.getElementById('cat-icono-' + cat.replace(/\s+/g, '-'));
-    if (span) span.innerHTML = `<img src="${_iconosCategoriaActual[cat]}" style="width:26px; height:26px; object-fit:cover; border-radius:6px;">`;
+    if (span) span.innerHTML = `<img src="${_iconosCategoriaActual[cat]}" style="width:56px; height:56px; object-fit:cover; border-radius:8px;">`;
   });
 }
 window.cargarIconosCategoria = cargarIconosCategoria;
