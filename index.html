@@ -675,9 +675,12 @@ function pantallaCatalogo() {
 
       <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
+
+      <label style="margin-top:12px; font-size:13px;">📁 Filtrar categorías</label>
+      <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
         ${CATEGORIAS_CATALOGO.map(c => `
-          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:700;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
+          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:12px 16px; font-size:14px; font-weight:700;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
         `).join('')}
       </div>
       <div id="cat-resultado" style="margin-top:10px;"></div>
@@ -688,6 +691,14 @@ function pantallaCatalogo() {
   cargarPrecioGramoActual();
 }
 window.pantallaCatalogo = pantallaCatalogo;
+
+function filtrarCategoriasCatalogo() {
+  const texto = document.getElementById('cat-filtro-categoria').value.trim().toLowerCase();
+  document.querySelectorAll('.cat-btn-categoria').forEach(btn => {
+    btn.style.display = (!texto || btn.dataset.nombre.includes(texto)) ? '' : 'none';
+  });
+}
+window.filtrarCategoriasCatalogo = filtrarCategoriasCatalogo;
 
 async function cargarPrecioGramoActual() {
   const mapa = await cargarPreciosMateriales();
