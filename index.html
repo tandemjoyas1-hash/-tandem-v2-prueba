@@ -1916,70 +1916,78 @@ function armarHtmlComprobante(c) {
   };
   const canales = { LOCAL: 'Local', REDES_ENVIO: 'Redes — con envío', REDES_RETIRO: 'Redes — retiro en local' };
   const hayTotal = Number(c.total) > 0;
+  const hayPagos = hayTotal || Number(c.sena) > 0;
   const saldo = hayTotal ? Math.max(0, Number(c.total) - (Number(c.sena) || 0)) : null;
 
   const fila = (etiqueta, valor) => valor ? `<div class="fila"><span>${etiqueta}</span><b>${esc(valor)}</b></div>` : '';
 
   const cabecera = (copia) => `
-    <div class="centro marca">JOYERÍA TÁNDEM</div>
-    <div class="centro chico">Vélez Sarsfield 156 · Córdoba</div>
-    <div class="centro"><span class="copia">${copia}</span></div>
+    <div class="encabezado">
+      <div>
+        <div class="marca">JOYERÍA TÁNDEM</div>
+        <div class="chico">Vélez Sarsfield 156 · Córdoba</div>
+      </div>
+      <span class="copia">${copia}</span>
+    </div>
     <div class="sobre">Sobre N° ${esc(c.numero)}</div>
-    ${fila('Fecha', c.fechaHora)}
-    ${fila('Atendió', c.vendedora)}
-    ${fila('Canal', canales[c.canal] || c.canal)}
   `;
 
   const trabajo = `
     <div class="trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
   `;
 
-  const copiaCliente = `
-    <div class="ticket">
+  const hojaCliente = `
+    <div class="hoja">
       ${cabecera('COPIA CLIENTE')}
-      ${fila('Cliente', c.cliente)}
+      ${fila('Fecha', c.fechaHora)}
+      ${fila('Señor/a', c.cliente)}
       ${fila('Teléfono', c.telefono)}
+      ${fila('Atendió', c.vendedora)}
       ${trabajo}
-      ${fila('Lo retirás desde el', fechaIsoALinda(c.paraElDia))}
-      ${hayTotal ? fila('Presupuesto', plata(c.total)) : ''}
-      ${hayTotal || Number(c.sena) > 0 ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
-      ${hayTotal ? `<div class="fila total"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
-      <div class="centro chico pie">Presentá este comprobante para retirar tu trabajo.<br>¡Gracias por elegirnos!</div>
+      ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
+      ${hayTotal ? fila('Total', plata(c.total)) : ''}
+      ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
+      ${hayTotal ? `<div class="fila total"><span>SALDO</span><b>${plata(saldo)}</b></div>` : ''}
+      <div class="nota"><b>NOTA:</b> Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
     </div>
   `;
 
-  const copiaTaller = `
-    <div class="ticket">
+  const hojaTaller = `
+    <div class="hoja">
       ${cabecera('COPIA TALLER')}
-      ${fila('Cliente', c.cliente)}
+      ${fila('Fecha', c.fechaHora)}
+      ${fila('Señor/a', c.cliente)}
+      ${fila('Atendió', c.vendedora)}
+      ${fila('Canal', canales[c.canal] || c.canal)}
       ${trabajo}
       ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
       ${fila('Destino', c.destino)}
-      <div class="centro chico pie">Abrochar este papel al sobre del trabajo.</div>
+      <div class="nota">Abrochar este papel al sobre del trabajo.</div>
     </div>
   `;
 
+  // Cada copia sale en su propia hoja A6 (10,5 x 14,8 cm): una para el cliente y otra para el taller.
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Comprobante sobre ${esc(c.numero)}</title>
     <style>
-      @page { margin: 4mm; }
+      @page { size: 105mm 148mm; margin: 0; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; }
-      .ticket { width: 72mm; margin: 0 auto; padding: 3mm 0; font-size: 12px; break-inside: avoid; }
-      .centro { text-align: center; }
-      .marca { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
-      .chico { font-size: 10px; }
-      .copia { display: inline-block; border: 2px solid #000; padding: 2px 10px; font-weight: 700; font-size: 12px; margin: 6px 0; }
-      .sobre { font-size: 26px; font-weight: 800; text-align: center; margin: 4px 0 6px; }
+      html, body { margin: 0; padding: 0; }
+      body { font-family: Arial, Helvetica, sans-serif; color: #000; }
+      .hoja { width: 105mm; height: 148mm; padding: 6mm 7mm; font-size: 11.5px; page-break-after: always; break-after: page; overflow: hidden; }
+      .hoja:last-child { page-break-after: auto; break-after: auto; }
+      .encabezado { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+      .marca { font-size: 15px; font-weight: 800; letter-spacing: 1px; }
+      .chico { font-size: 9px; }
+      .copia { border: 2px solid #000; padding: 2px 6px; font-weight: 700; font-size: 10px; white-space: nowrap; }
+      .sobre { font-size: 24px; font-weight: 800; text-align: center; margin: 6px 0 5px; }
       .fila { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dotted #888; }
       .fila b { text-align: right; }
-      .total { font-size: 14px; font-weight: 800; border-bottom: 2px solid #000; padding-top: 4px; }
-      .trabajo { border: 1px solid #000; padding: 6px; margin: 6px 0; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
-      .pie { margin-top: 8px; }
-      .corte { width: 72mm; margin: 6mm auto; border-top: 2px dashed #000; text-align: center; font-size: 10px; padding-top: 2px; }
+      .total { font-size: 13px; font-weight: 800; border-bottom: 2px solid #000; padding-top: 3px; }
+      .trabajo { border: 1px solid #000; padding: 5px 6px; margin: 6px 0; font-size: 12px; min-height: 22mm; max-height: 42mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
+      .nota { margin-top: 6px; font-size: 8.5px; line-height: 1.25; }
     </style></head><body>
-      ${copiaCliente}
-      <div class="corte">✂ cortar acá ✂</div>
-      ${copiaTaller}
+      ${hojaCliente}
+      ${hojaTaller}
     </body></html>`;
 }
 
