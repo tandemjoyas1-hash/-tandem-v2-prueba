@@ -1102,6 +1102,18 @@ async function sugerirCodigoNuevo() {
     }
   });
 
+  // NUEVO (21/09/2026): el chequeo de "ya existe" mira TODAS las categorías, así que el número
+  // más alto también se busca entre todos los códigos con el mismo prefijo, aunque estén en otra categoría.
+  if (mejor) {
+    const { data: mismos } = await sb.schema('public').from('products').select('cod').ilike('cod', mejor.prefijo + '%');
+    (mismos || []).forEach(row => {
+      const m = (row.cod || '').match(/^(.*?)(\d+)(\D*)$/);
+      if (!m || m[1] !== mejor.prefijo) return;
+      const n = parseInt(m[2], 10);
+      if (n > mejor.num) mejor = { prefijo: m[1], digitos: m[2], sufijo: m[3], num: n };
+    });
+  }
+
   if (mejor) {
     const siguienteNum = (mejor.num + 1).toString().padStart(mejor.digitos.length, '0');
     codInput.value = mejor.prefijo + siguienteNum + mejor.sufijo;
