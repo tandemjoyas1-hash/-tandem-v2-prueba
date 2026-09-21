@@ -371,6 +371,14 @@ function confirmarSigoSiendoYo() {
 window.confirmarSigoSiendoYo = confirmarSigoSiendoYo;
 
 function irAPantallaInicial() {
+  // Si se entró escaneando el QR de un comprobante, el equipo va directo a ese sobre.
+  if (window._sobreDeQR && usuarioActual && usuarioActual.rol !== 'ORFEBRE') {
+    const n = window._sobreDeQR;
+    window._sobreDeQR = '';
+    try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+    abrirSobreDesdeQR(n);
+    return;
+  }
   if (usuarioActual.rol === 'ORFEBRE') {
     pantallaVerFoto();
   } else {
@@ -1964,13 +1972,13 @@ function armarHtmlComprobante(c) {
     ? `<div class="fotos">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>`
     : '';
 
-  // WhatsApp del local (si está cargado) y QR de la copia cliente: sobre, WhatsApp e Instagram.
-  const waDig = String(WHATSAPP_LOCAL || '').replace(/\D/g, '');
-  const waNumero = waDig ? (waDig.indexOf('54') === 0 ? waDig : '549' + waDig) : '';
-  const qrs = [{ svg: qrSvgComprobante(String(c.numero)), et: 'Tu sobre' }];
-  if (waNumero) qrs.push({ svg: qrSvgComprobante('https://wa.me/' + waNumero + '?text=' + encodeURIComponent('Hola, consulto por mi sobre N° ' + c.numero)), et: 'WhatsApp' });
-  qrs.push({ svg: qrSvgComprobante(INSTAGRAM_LOCAL_URL), et: 'Instagram' });
-  const bloqueQr = `<div class="qrs">${qrs.filter(q => q.svg).map(q => `<div class="qr">${q.svg}<span>${q.et}</span></div>`).join('')}</div>`;
+  // QR único de la copia cliente: abre la app con el N° de sobre.
+  // Si lo lee el equipo (con sesión iniciada) lleva directo al sobre; si lo abre el cliente, ve el botón para consultar por su pedido.
+  const baseApp = (window.location.origin && window.location.origin.indexOf('http') === 0) ? window.location.origin : 'https://tandem-v2-prueba.vercel.app';
+  const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
+  const bloqueQr = qrSobreSvg
+    ? `<div class="qrfila"><div class="qr">${qrSobreSvg}</div><div class="qrtxt"><b>Consultá tu pedido</b><br>Escaneá este código con la cámara del celular y consultanos por tu sobre.</div></div>`
+    : '';
 
   // Datos del local en texto (copia taller, debajo de las fotos). Sin QR.
   const datosLocal = `<div class="local">Vélez Sarsfield 156, Córdoba<br>Instagram @${INSTAGRAM_USUARIO}${WHATSAPP_LOCAL ? ' · WhatsApp ' + esc(WHATSAPP_LOCAL) : ''}</div>`;
@@ -2037,10 +2045,9 @@ function armarHtmlComprobante(c) {
       .saldo b { font-size: 16px; }
       .fotos { display: flex; gap: 2mm; margin-top: 5px; }
       .fotos img { flex: 1; min-width: 0; height: 30mm; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
-      .qrs { display: flex; justify-content: space-around; align-items: flex-start; margin-top: 4px; }
-      .qr { text-align: center; }
-      .qr svg { width: 13.5mm; height: 13.5mm; display: block; margin: 0 auto; }
-      .qr span { display: block; margin-top: 1px; font-size: 7px; letter-spacing: 1px; text-transform: uppercase; color: #444; }
+      .qrfila { display: flex; align-items: center; gap: 4mm; margin-top: 5px; padding: 0 2mm; }
+      .qr svg { width: 14mm; height: 14mm; display: block; flex: none; }
+      .qrtxt { font-size: 8.5px; line-height: 1.35; color: #222; text-align: left; }
       .local { text-align: center; font-size: 9.5px; line-height: 1.5; margin-top: 7px; padding-top: 5px; border-top: 0.3mm solid #c8c8c8; color: #222; }
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
@@ -2490,6 +2497,7 @@ function pantallaRetiro() {
       <h1>💰 Retiro</h1>
       <div class="sub">Buscá cualquier sobre activo para entregarlo — no hace falta que haya pasado por Taller/Regreso</div>
       <input type="text" id="rt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresListosParaRetiro()" autocomplete="off">
+      <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="escanearSobre()">📷 Escanear código del comprobante</button>
       <div id="rt-resultado"></div>
 
       <div style="text-align:center; margin-top:16px;">
@@ -3011,11 +3019,57 @@ function pantallaBuscarSobre() {
 }
 window.pantallaBuscarSobre = pantallaBuscarSobre;
 
+// Abre Retiro con el sobre ya buscado, para darle salida.
+function irARetiroConSobre(numero) {
+  pantallaRetiro();
+  const input = document.getElementById('rt-buscar');
+  if (input) { input.value = String(numero); buscarSobresListosParaRetiro(); }
+}
+window.irARetiroConSobre = irARetiroConSobre;
+
+// El equipo abre un sobre (viene del QR del comprobante).
+function abrirSobreDesdeQR(numero) {
+  pantallaBuscarSobre();
+  const input = document.getElementById('bs-numero');
+  if (input) { input.value = String(numero); buscarSobreDetalle(); }
+}
+window.abrirSobreDesdeQR = abrirSobreDesdeQR;
+
+// ============================================================
+// NUEVO (21/09/2026): pantalla pública para el CLIENTE cuando escanea el QR de su comprobante.
+// No lee nada de la base de datos: solo muestra el N° de sobre y el botón para consultar por WhatsApp.
+// ============================================================
+function pantallaClienteSobre(numero) {
+  const link = linkWhatsApp(WHATSAPP_LOCAL, 'Hola, consulto por mi sobre N° ' + numero);
+  app.innerHTML = `
+    <div class="card" style="text-align:center; padding-top:34px;">
+      <div style="font-family:Georgia,'Times New Roman',serif; font-size:32px; font-weight:700; letter-spacing:2px;">TANDEM</div>
+      <div style="font-family:Georgia,'Times New Roman',serif; font-size:13px; letter-spacing:5px; border-top:1px solid #111; width:55%; margin:4px auto 0; padding-top:3px;">JOYAS</div>
+      <div style="margin-top:26px; font-size:13px; letter-spacing:2px; color:#8a8378; text-transform:uppercase;">Tu pedido</div>
+      <div style="font-family:Georgia,'Times New Roman',serif; font-size:44px; font-weight:700; margin:4px 0 22px;">Sobre N° ${numero}</div>
+      ${link ? `<a href="${link}" class="btn btn-verde" style="display:block; text-align:center; text-decoration:none;">💬 Consultar por mi pedido</a>` : ''}
+      <div style="margin-top:22px; font-size:13px; color:#555;">Vélez Sarsfield 156 · Córdoba</div>
+      <div style="margin-top:4px; font-size:13px;"><a href="${INSTAGRAM_LOCAL_URL}" style="color:#555;">Instagram @${INSTAGRAM_USUARIO}</a></div>
+      <div style="margin-top:34px;"><a href="#" onclick="pantallaLogin(); return false;" style="font-size:12px; color:#b5ac9b;">Soy del equipo — ingresar</a></div>
+    </div>`;
+}
+window.pantallaClienteSobre = pantallaClienteSobre;
+
 // ============================================================
 // NUEVO (21/09/2026): escanear con la cámara el QR del comprobante y abrir ese sobre.
 // Usa el lector nativo del celu (BarcodeDetector) si existe; si no, carga la librería jsQR.
 // Un lector de códigos USB/bluetooth también sirve: "tipea" el N° en el buscador y manda Enter.
 // ============================================================
+// Saca el N° de sobre de lo que leyó el QR: el link nuevo (…/?s=33837) o un número suelto (comprobantes anteriores).
+function numeroDesdeQR(texto) {
+  const t = String(texto || '').trim();
+  try { const s = new URL(t).searchParams.get('s'); if (s) return normalizarSobre(s); } catch (e) {}
+  const m = t.match(/[?&]s=(\d+)/);
+  if (m) return normalizarSobre(m[1]);
+  return t;
+}
+window.numeroDesdeQR = numeroDesdeQR;
+
 let _escanerStream = null;
 let _escanerActivo = false;
 
@@ -3080,8 +3134,11 @@ async function escanearSobre() {
 
   const alLeer = (texto) => {
     cerrarEscanerSobre();
+    const numero = numeroDesdeQR(texto);
     const input = document.getElementById('bs-numero');
-    if (input) { input.value = String(texto || '').trim(); buscarSobreDetalle(); }
+    if (input) { input.value = numero; buscarSobreDetalle(); return; }
+    const inputRetiro = document.getElementById('rt-buscar');
+    if (inputRetiro) { inputRetiro.value = numero; buscarSobresListosParaRetiro(); }
   };
 
   const ciclo = async () => {
@@ -3268,6 +3325,7 @@ async function buscarSobreDetalle() {
       ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
+      ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div style="font-weight:600;">${estadoDeSobre(s)}</div>
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
@@ -5450,8 +5508,15 @@ window.guardarVentaDirecta = guardarVentaDirecta;
 // Arranque
 // ============================================================
 (function iniciarApp() {
+  // Link del QR del comprobante: …/?s=NUMERO
+  try {
+    const s = new URLSearchParams(window.location.search).get('s') || '';
+    window._sobreDeQR = /^\d{1,9}$/.test(s.trim()) ? normalizarSobre(s) : '';
+  } catch (e) { window._sobreDeQR = ''; }
   try {
     const guardada = localStorage.getItem('tandem_sesion');
+    // Sin sesión del equipo en este celu = es un cliente mirando su comprobante.
+    if (!guardada && window._sobreDeQR) { pantallaClienteSobre(window._sobreDeQR); return; }
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
