@@ -1873,7 +1873,8 @@ async function guardarNuevaEntrada() {
     total: total,
     sena: sena,
     medioPago: medioPago,
-    destino: destino
+    destino: destino,
+    fotos: (window._fotosReferenciaLista || []).map(x => x && x.dataURL).filter(Boolean)
   };
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
     <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
@@ -1948,27 +1949,18 @@ function armarHtmlComprobante(c) {
     <div class="sobre"><small>SOBRE N°</small>${esc(c.numero)}</div>
   `;
 
-  // Si el trabajo es muy largo se achica la letra para que entre todo el texto en la hoja
-  const largoTrabajo = String(c.trabajo || '').length;
-  const tamTrabajo = largoTrabajo > 380 ? 9.5 : largoTrabajo > 280 ? 10.5 : largoTrabajo > 180 ? 11.5 : 12;
   const trabajo = `
     <div class="etq">Trabajo</div>
-    <div class="trabajo" style="font-size:${tamTrabajo}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+    <div class="trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
   `;
 
-  const linkWa = linkWhatsApp(WHATSAPP_LOCAL, 'Hola, consulto por mi sobre N° ' + c.numero);
-  const qrCliente = `
-    <div class="qrs">
-      <div class="qr"><div class="qrimg">${qrSvgComprobante(linkWa)}</div><div class="qrtxt"><b>WhatsApp</b><br>351 815-5066</div></div>
-      <div class="qr"><div class="qrimg">${qrSvgComprobante(INSTAGRAM_LOCAL_URL)}</div><div class="qrtxt"><b>Instagram</b><br>@tandemjoyas</div></div>
-      <div class="qr"><div class="qrimg">${qrSvgComprobante(c.numero)}</div><div class="qrtxt"><b>Sobre N° ${esc(c.numero)}</b><br>para retirar</div></div>
-    </div>
-  `;
-  const qrTaller = `
-    <div class="qrs" style="justify-content:center;">
-      <div class="qr"><div class="qrimg">${qrSvgComprobante(c.numero)}</div><div class="qrtxt"><b>Sobre N° ${esc(c.numero)}</b><br>escanear al volver del taller</div></div>
-    </div>
-  `;
+  // Fotos de referencia del cliente (en blanco y negro, baja calidad): se imprimen hasta 3 en la copia del taller.
+  const fotosLista = (c.fotos || []).filter(Boolean);
+  const fotosMostrar = fotosLista.slice(0, 3);
+  const fotosExtra = Math.max(Number(c.fotosTotal) || 0, fotosLista.length) - fotosMostrar.length;
+  const bloqueFotos = fotosMostrar.length
+    ? `<div class="fotos">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>`
+    : '';
 
   const hojaCliente = `
     <div class="hoja"><div class="marco">
@@ -1982,7 +1974,6 @@ function armarHtmlComprobante(c) {
       ${hayTotal ? fila('Total', plata(c.total)) : ''}
       ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
       ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
-      ${qrCliente}
       <div class="gracias">Gracias por confiar en Tándem Joyas</div>
       <div class="nota">Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
     </div></div>
@@ -1998,8 +1989,8 @@ function armarHtmlComprobante(c) {
       ${trabajo}
       ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
       ${fila('Destino', c.destino)}
-      ${qrTaller}
-      <div class="nota" style="text-align:center; margin-top:6px;">Abrochar este papel al sobre del trabajo.</div>
+      ${bloqueFotos}
+      <div class="nota" style="text-align:center; margin-top:6px;">Abrochar este papel al sobre del trabajo.${fotosExtra > 0 ? ' (+' + fotosExtra + ' foto' + (fotosExtra > 1 ? 's' : '') + ' más en el sistema)' : ''}</div>
     </div></div>
   `;
 
@@ -2012,7 +2003,7 @@ function armarHtmlComprobante(c) {
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
       .hoja { width: 105mm; height: 148mm; padding: 5mm; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
-      .marco { height: 100%; border: 0.4mm solid #111; border-radius: 3mm; padding: 3.5mm 6mm; overflow: hidden; }
+      .marco { height: 100%; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
       .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
       .l2 { margin: 3px auto 0; width: 62%; border-top: 1px solid #111; padding-top: 2px; }
@@ -2022,20 +2013,17 @@ function armarHtmlComprobante(c) {
       .copia { display: inline-block; margin-left: 6px; border: 1px solid #111; border-radius: 8px; padding: 1px 7px; letter-spacing: 0.5px; color: #111; }
       .sobre { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; margin: 4px 0 5px; line-height: 1.1; }
       .sobre small { font-family: Arial, Helvetica, sans-serif; font-size: 9px; letter-spacing: 2px; font-weight: 700; margin-right: 6px; color: #444; vertical-align: middle; }
-      .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 2px 0; border-bottom: 0.3mm solid #c8c8c8; font-size: 11.5px; }
+      .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 2.5px 0; border-bottom: 0.3mm solid #c8c8c8; font-size: 11.5px; }
       .fila span { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #555; }
       .fila b { text-align: right; font-weight: 700; }
       .etq { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #555; margin-top: 5px; }
-      .trabajo { border: 0.3mm solid #111; border-radius: 2mm; padding: 5px 7px; margin: 2px 0 4px; font-size: 12px; line-height: 1.3; min-height: 12mm; white-space: pre-wrap; word-break: break-word; }
-      .saldo { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding: 4px 8px; border: 0.5mm solid #111; border-radius: 2mm; font-size: 14px; }
+      .trabajo { border: 0.3mm solid #111; border-radius: 2mm; padding: 5px 7px; margin: 2px 0 5px; font-size: 12px; line-height: 1.3; min-height: 19mm; max-height: 36mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
+      .saldo { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; padding: 5px 8px; border: 0.5mm solid #111; border-radius: 2mm; font-size: 14px; }
       .saldo span { font-size: 9.5px; letter-spacing: 1.5px; font-weight: 700; }
       .saldo b { font-size: 16px; }
+      .fotos { display: flex; gap: 2mm; margin-top: 5px; }
+      .fotos img { flex: 1; min-width: 0; height: 30mm; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
-      .qrs { display: flex; justify-content: space-between; align-items: flex-start; gap: 3mm; margin-top: 5px; }
-      .qr { width: 30mm; text-align: center; }
-      .qrimg { width: 17mm; height: 17mm; margin: 0 auto; }
-      .qrimg svg { width: 100%; height: 100%; display: block; }
-      .qrtxt { font-size: 7.5px; line-height: 1.2; margin-top: 1px; color: #222; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
     </style></head><body>
       ${hojaCliente}
@@ -2043,9 +2031,44 @@ function armarHtmlComprobante(c) {
     </body></html>`;
 }
 
-function imprimirComprobante() {
+// Achica las fotos y las pasa a blanco y negro con un poco más de contraste, para que la impresora
+// láser las imprima livianas y rápido (baja calidad, solo de referencia para el taller).
+function prepararFotosComprobante(fotos) {
+  const procesar = (dataURL) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const maxLado = 500;
+        const esc = Math.min(1, maxLado / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * esc));
+        const h = Math.max(1, Math.round(img.height * esc));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const datos = ctx.getImageData(0, 0, w, h);
+        const px = datos.data;
+        for (let i = 0; i < px.length; i += 4) {
+          let g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          g = Math.max(0, Math.min(255, (g - 128) * 1.25 + 128));
+          px[i] = px[i + 1] = px[i + 2] = g;
+        }
+        ctx.putImageData(datos, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      } catch (e) { resolve(dataURL); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataURL;
+  });
+  return Promise.all((fotos || []).slice(0, 3).map(procesar));
+}
+
+async function imprimirComprobante() {
   const c = window._ultimoComprobante;
   if (!c) { alert('No hay ningún comprobante para imprimir.'); return; }
+  let fotos = [];
+  try { fotos = await prepararFotosComprobante(c.fotos); } catch (e) { fotos = []; }
   const anterior = document.getElementById('iframe-comprobante');
   if (anterior) anterior.remove();
   const iframe = document.createElement('iframe');
@@ -2054,9 +2077,15 @@ function imprimirComprobante() {
   document.body.appendChild(iframe);
   const doc = iframe.contentWindow.document;
   doc.open();
-  doc.write(armarHtmlComprobante(c));
+  doc.write(armarHtmlComprobante({ ...c, fotos: fotos.filter(Boolean), fotosTotal: (c.fotos || []).length }));
   doc.close();
-  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 300);
+  // Espera a que carguen las fotos (si hay) antes de abrir la ventana de impresión
+  const imgs = [...doc.images];
+  await Promise.race([
+    Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise(r => { im.onload = im.onerror = r; }))),
+    new Promise(r => setTimeout(r, 2500))
+  ]);
+  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 200);
 }
 window.imprimirComprobante = imprimirComprobante;
 
