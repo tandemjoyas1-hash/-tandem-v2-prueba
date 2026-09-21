@@ -1855,7 +1855,24 @@ async function guardarNuevaEntrada() {
     });
   }
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>`;
+  // Datos para el comprobante impreso (se guardan acá porque el formulario se limpia enseguida)
+  window._ultimoComprobante = {
+    numero: numeroSobre,
+    fechaHora: new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    vendedora: usuarioActual.nombre,
+    canal: canal,
+    cliente: nombreCliente,
+    telefono: telefono,
+    trabajo: trabajo,
+    cantidad: cantidad,
+    paraElDia: paraElDia,
+    total: total,
+    sena: sena,
+    medioPago: medioPago,
+    destino: destino
+  };
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
+    <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
@@ -1879,6 +1896,109 @@ async function guardarNuevaEntrada() {
   }
 }
 window.guardarNuevaEntrada = guardarNuevaEntrada;
+
+// ============================================================
+// NUEVO (21/09/2026): Comprobante de entrada para imprimir (2 copias: cliente + taller)
+// Se arma con los datos que se acaban de guardar (window._ultimoComprobante) y se imprime
+// desde el navegador (compu o celu). No guarda nada en la base.
+// ============================================================
+function escaparHtmlComprobante(txt) {
+  return String(txt == null ? '' : txt)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function armarHtmlComprobante(c) {
+  const esc = escaparHtmlComprobante;
+  const plata = n => '$' + (Number(n) || 0).toLocaleString('es-AR');
+  const fechaIsoALinda = iso => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+    return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
+  };
+  const canales = { LOCAL: 'Local', REDES_ENVIO: 'Redes — con envío', REDES_RETIRO: 'Redes — retiro en local' };
+  const hayTotal = Number(c.total) > 0;
+  const saldo = hayTotal ? Math.max(0, Number(c.total) - (Number(c.sena) || 0)) : null;
+
+  const fila = (etiqueta, valor) => valor ? `<div class="fila"><span>${etiqueta}</span><b>${esc(valor)}</b></div>` : '';
+
+  const cabecera = (copia) => `
+    <div class="centro marca">JOYERÍA TÁNDEM</div>
+    <div class="centro chico">Vélez Sarsfield 156 · Córdoba</div>
+    <div class="centro"><span class="copia">${copia}</span></div>
+    <div class="sobre">Sobre N° ${esc(c.numero)}</div>
+    ${fila('Fecha', c.fechaHora)}
+    ${fila('Atendió', c.vendedora)}
+    ${fila('Canal', canales[c.canal] || c.canal)}
+  `;
+
+  const trabajo = `
+    <div class="trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+  `;
+
+  const copiaCliente = `
+    <div class="ticket">
+      ${cabecera('COPIA CLIENTE')}
+      ${fila('Cliente', c.cliente)}
+      ${fila('Teléfono', c.telefono)}
+      ${trabajo}
+      ${fila('Lo retirás desde el', fechaIsoALinda(c.paraElDia))}
+      ${hayTotal ? fila('Presupuesto', plata(c.total)) : ''}
+      ${hayTotal || Number(c.sena) > 0 ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
+      ${hayTotal ? `<div class="fila total"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
+      <div class="centro chico pie">Presentá este comprobante para retirar tu trabajo.<br>¡Gracias por elegirnos!</div>
+    </div>
+  `;
+
+  const copiaTaller = `
+    <div class="ticket">
+      ${cabecera('COPIA TALLER')}
+      ${fila('Cliente', c.cliente)}
+      ${trabajo}
+      ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
+      ${fila('Destino', c.destino)}
+      <div class="centro chico pie">Abrochar este papel al sobre del trabajo.</div>
+    </div>
+  `;
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Comprobante sobre ${esc(c.numero)}</title>
+    <style>
+      @page { margin: 4mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+      .ticket { width: 72mm; margin: 0 auto; padding: 3mm 0; font-size: 12px; break-inside: avoid; }
+      .centro { text-align: center; }
+      .marca { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+      .chico { font-size: 10px; }
+      .copia { display: inline-block; border: 2px solid #000; padding: 2px 10px; font-weight: 700; font-size: 12px; margin: 6px 0; }
+      .sobre { font-size: 26px; font-weight: 800; text-align: center; margin: 4px 0 6px; }
+      .fila { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dotted #888; }
+      .fila b { text-align: right; }
+      .total { font-size: 14px; font-weight: 800; border-bottom: 2px solid #000; padding-top: 4px; }
+      .trabajo { border: 1px solid #000; padding: 6px; margin: 6px 0; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+      .pie { margin-top: 8px; }
+      .corte { width: 72mm; margin: 6mm auto; border-top: 2px dashed #000; text-align: center; font-size: 10px; padding-top: 2px; }
+    </style></head><body>
+      ${copiaCliente}
+      <div class="corte">✂ cortar acá ✂</div>
+      ${copiaTaller}
+    </body></html>`;
+}
+
+function imprimirComprobante() {
+  const c = window._ultimoComprobante;
+  if (!c) { alert('No hay ningún comprobante para imprimir.'); return; }
+  const anterior = document.getElementById('iframe-comprobante');
+  if (anterior) anterior.remove();
+  const iframe = document.createElement('iframe');
+  iframe.id = 'iframe-comprobante';
+  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(armarHtmlComprobante(c));
+  doc.close();
+  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 300);
+}
+window.imprimirComprobante = imprimirComprobante;
 
 // ============================================================
 // PANTALLA 3: Taller — sobres que todavía no bajaron a un orfebre
