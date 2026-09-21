@@ -651,6 +651,10 @@ const ICONO_CATEGORIA = {
 };
 
 function pantallaCatalogo() {
+  // NUEVO (21/09/2026): al volver a armar la pantalla, los botones de categoría quedan apagados,
+  // así que también se borra la categoría activa (antes quedaba "pegada" y la búsqueda por código
+  // no encontraba nada porque seguía filtrando por la categoría de la vez anterior).
+  _categoriaActivaCatalogo = null;
   const esConsulta = !_borradorEntrada;
   render(`
     ${pintarUsuarioActual()}
