@@ -1922,23 +1922,23 @@ function armarHtmlComprobante(c) {
   const fila = (etiqueta, valor) => valor ? `<div class="fila"><span>${etiqueta}</span><b>${esc(valor)}</b></div>` : '';
 
   const cabecera = (copia) => `
-    <div class="encabezado">
-      <div>
-        <div class="marca">JOYERÍA TÁNDEM</div>
-        <div class="chico">Vélez Sarsfield 156 · Córdoba</div>
-      </div>
-      <span class="copia">${copia}</span>
+    <div class="logo">
+      <div class="l1">TANDEM</div>
+      <div class="l2"><span>JOYAS</span></div>
     </div>
-    <div class="sobre">Sobre N° ${esc(c.numero)}</div>
+    <div class="dir">Vélez Sarsfield 156 · Córdoba</div>
+    <div class="titulo">COMPROBANTE DE ENTRADA<span class="copia">${copia}</span></div>
+    <div class="sobre"><small>SOBRE N°</small>${esc(c.numero)}</div>
   `;
 
   const trabajo = `
+    <div class="etq">Trabajo</div>
     <div class="trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
   `;
 
   const hojaCliente = `
-    <div class="hoja">
-      ${cabecera('COPIA CLIENTE')}
+    <div class="hoja"><div class="marco">
+      ${cabecera('Copia cliente')}
       ${fila('Fecha', c.fechaHora)}
       ${fila('Señor/a', c.cliente)}
       ${fila('Teléfono', c.telefono)}
@@ -1947,14 +1947,15 @@ function armarHtmlComprobante(c) {
       ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
       ${hayTotal ? fila('Total', plata(c.total)) : ''}
       ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
-      ${hayTotal ? `<div class="fila total"><span>SALDO</span><b>${plata(saldo)}</b></div>` : ''}
-      <div class="nota"><b>NOTA:</b> Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
-    </div>
+      ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
+      <div class="gracias">Gracias por confiar en Tándem Joyas</div>
+      <div class="nota">Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
+    </div></div>
   `;
 
   const hojaTaller = `
-    <div class="hoja">
-      ${cabecera('COPIA TALLER')}
+    <div class="hoja"><div class="marco">
+      ${cabecera('Copia taller')}
       ${fila('Fecha', c.fechaHora)}
       ${fila('Señor/a', c.cliente)}
       ${fila('Atendió', c.vendedora)}
@@ -1962,8 +1963,8 @@ function armarHtmlComprobante(c) {
       ${trabajo}
       ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
       ${fila('Destino', c.destino)}
-      <div class="nota">Abrochar este papel al sobre del trabajo.</div>
-    </div>
+      <div class="nota" style="text-align:center; margin-top:8px;">Abrochar este papel al sobre del trabajo.</div>
+    </div></div>
   `;
 
   // Cada copia sale en su propia hoja A6 (10,5 x 14,8 cm): una para el cliente y otra para el taller.
@@ -1972,19 +1973,29 @@ function armarHtmlComprobante(c) {
       @page { size: 105mm 148mm; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
-      body { font-family: Arial, Helvetica, sans-serif; color: #000; }
-      .hoja { width: 105mm; height: 148mm; padding: 6mm 7mm; font-size: 11.5px; page-break-after: always; break-after: page; overflow: hidden; }
+      body { font-family: Arial, Helvetica, sans-serif; color: #111; }
+      .hoja { width: 105mm; height: 148mm; padding: 5mm; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
-      .encabezado { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-      .marca { font-size: 15px; font-weight: 800; letter-spacing: 1px; }
-      .chico { font-size: 9px; }
-      .copia { border: 2px solid #000; padding: 2px 6px; font-weight: 700; font-size: 10px; white-space: nowrap; }
-      .sobre { font-size: 24px; font-weight: 800; text-align: center; margin: 6px 0 5px; }
-      .fila { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dotted #888; }
-      .fila b { text-align: right; }
-      .total { font-size: 13px; font-weight: 800; border-bottom: 2px solid #000; padding-top: 3px; }
-      .trabajo { border: 1px solid #000; padding: 5px 6px; margin: 6px 0; font-size: 12px; min-height: 22mm; max-height: 42mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
-      .nota { margin-top: 6px; font-size: 8.5px; line-height: 1.25; }
+      .marco { height: 100%; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
+      .logo { text-align: center; }
+      .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
+      .l2 { margin: 3px auto 0; width: 62%; border-top: 1px solid #111; padding-top: 2px; }
+      .l2 span { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; letter-spacing: 4px; padding-left: 4px; }
+      .dir { text-align: center; font-size: 8.5px; color: #444; margin-top: 3px; letter-spacing: 0.5px; }
+      .titulo { text-align: center; font-size: 8.5px; letter-spacing: 1.5px; font-weight: 700; margin-top: 7px; color: #333; }
+      .copia { display: inline-block; margin-left: 6px; border: 1px solid #111; border-radius: 8px; padding: 1px 7px; letter-spacing: 0.5px; color: #111; }
+      .sobre { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; margin: 4px 0 5px; line-height: 1.1; }
+      .sobre small { font-family: Arial, Helvetica, sans-serif; font-size: 9px; letter-spacing: 2px; font-weight: 700; margin-right: 6px; color: #444; vertical-align: middle; }
+      .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 2.5px 0; border-bottom: 0.3mm solid #c8c8c8; font-size: 11.5px; }
+      .fila span { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #555; }
+      .fila b { text-align: right; font-weight: 700; }
+      .etq { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #555; margin-top: 5px; }
+      .trabajo { border: 0.3mm solid #111; border-radius: 2mm; padding: 5px 7px; margin: 2px 0 5px; font-size: 12px; line-height: 1.3; min-height: 19mm; max-height: 36mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
+      .saldo { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; padding: 5px 8px; border: 0.5mm solid #111; border-radius: 2mm; font-size: 14px; }
+      .saldo span { font-size: 9.5px; letter-spacing: 1.5px; font-weight: 700; }
+      .saldo b { font-size: 16px; }
+      .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
+      .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
     </style></head><body>
       ${hojaCliente}
       ${hojaTaller}
