@@ -1977,7 +1977,7 @@ function armarHtmlComprobante(c) {
   const baseApp = (window.location.origin && window.location.origin.indexOf('http') === 0) ? window.location.origin : 'https://tandem-v2-prueba.vercel.app';
   const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
   const bloqueQr = qrSobreSvg
-    ? `<div class="qrfila"><div class="qr">${qrSobreSvg}</div><div class="qrtxt"><b>Consultá tu pedido</b><br>Escaneá este código con la cámara del celular y consultanos por tu sobre.</div></div>`
+    ? `<div class="qrbox">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>`
     : '';
 
   // Datos del local en texto (copia taller, debajo de las fotos). Sin QR.
@@ -1991,11 +1991,15 @@ function armarHtmlComprobante(c) {
       ${fila('Teléfono', c.telefono)}
       ${fila('Atendió', c.vendedora)}
       ${trabajo}
-      ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
-      ${hayTotal ? fila('Total', plata(c.total)) : ''}
-      ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
-      ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
-      ${bloqueQr}
+      <div class="pagoqr">
+        <div class="pagos">
+          ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
+          ${hayTotal ? fila('Total', plata(c.total)) : ''}
+          ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
+          ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
+        </div>
+        ${bloqueQr}
+      </div>
       <div class="gracias">Gracias por confiar en Tándem Joyas</div>
       <div class="nota">Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
     </div></div>
@@ -2045,9 +2049,14 @@ function armarHtmlComprobante(c) {
       .saldo b { font-size: 16px; }
       .fotos { display: flex; gap: 2mm; margin-top: 5px; }
       .fotos img { flex: 1; min-width: 0; height: 30mm; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
-      .qrfila { display: flex; align-items: center; gap: 4mm; margin-top: 5px; padding: 0 2mm; }
-      .qr svg { width: 14mm; height: 14mm; display: block; flex: none; }
-      .qrtxt { font-size: 8.5px; line-height: 1.35; color: #222; text-align: left; }
+      .pagoqr { display: flex; align-items: flex-start; gap: 3mm; }
+      .pagos { flex: 1; min-width: 0; }
+      .qrbox { flex: none; width: 27mm; text-align: center; padding-top: 2px; }
+      .qrbox svg { width: 27mm; height: 27mm; display: block; }
+      .qrbox span { display: block; margin-top: 1px; font-size: 6.5px; line-height: 1.2; color: #333; }
+      .pagos .saldo { padding: 4px 6px; }
+      .pagos .saldo span { font-size: 8px; letter-spacing: 1px; }
+      .pagos .saldo b { font-size: 15px; }
       .local { text-align: center; font-size: 9.5px; line-height: 1.5; margin-top: 7px; padding-top: 5px; border-top: 0.3mm solid #c8c8c8; color: #222; }
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
