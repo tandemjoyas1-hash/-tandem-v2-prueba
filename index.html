@@ -1922,7 +1922,9 @@ function qrSvgComprobante(texto) {
   } catch (e) { return ''; }
 }
 
-const WHATSAPP_LOCAL = '3518155066';
+// WhatsApp del local, con característica y sin 0 ni 15 (se puede escribir con espacios o guiones. Ej: '351 555-1234'). Si queda vacío, no se imprime.
+const WHATSAPP_LOCAL = '';
+const INSTAGRAM_USUARIO = 'tandemjoyas';
 const INSTAGRAM_LOCAL_URL = 'https://www.instagram.com/tandemjoyas/';
 
 function armarHtmlComprobante(c) {
@@ -1962,6 +1964,17 @@ function armarHtmlComprobante(c) {
     ? `<div class="fotos">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>`
     : '';
 
+  // WhatsApp del local (si está cargado) y QR de la copia cliente: sobre, WhatsApp e Instagram.
+  const waDig = String(WHATSAPP_LOCAL || '').replace(/\D/g, '');
+  const waNumero = waDig ? (waDig.indexOf('54') === 0 ? waDig : '549' + waDig) : '';
+  const qrs = [{ svg: qrSvgComprobante(String(c.numero)), et: 'Tu sobre' }];
+  if (waNumero) qrs.push({ svg: qrSvgComprobante('https://wa.me/' + waNumero + '?text=' + encodeURIComponent('Hola, consulto por mi sobre N° ' + c.numero)), et: 'WhatsApp' });
+  qrs.push({ svg: qrSvgComprobante(INSTAGRAM_LOCAL_URL), et: 'Instagram' });
+  const bloqueQr = `<div class="qrs">${qrs.filter(q => q.svg).map(q => `<div class="qr">${q.svg}<span>${q.et}</span></div>`).join('')}</div>`;
+
+  // Datos del local en texto (copia taller, debajo de las fotos). Sin QR.
+  const datosLocal = `<div class="local">Vélez Sarsfield 156, Córdoba<br>Instagram @${INSTAGRAM_USUARIO}${WHATSAPP_LOCAL ? ' · WhatsApp ' + esc(WHATSAPP_LOCAL) : ''}</div>`;
+
   const hojaCliente = `
     <div class="hoja"><div class="marco">
       ${cabecera('Copia cliente')}
@@ -1974,6 +1987,7 @@ function armarHtmlComprobante(c) {
       ${hayTotal ? fila('Total', plata(c.total)) : ''}
       ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
       ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
+      ${bloqueQr}
       <div class="gracias">Gracias por confiar en Tándem Joyas</div>
       <div class="nota">Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
     </div></div>
@@ -1988,8 +2002,8 @@ function armarHtmlComprobante(c) {
       ${fila('Canal', canales[c.canal] || c.canal)}
       ${trabajo}
       ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
-      ${fila('Destino', c.destino)}
       ${bloqueFotos}
+      ${datosLocal}
       <div class="nota" style="text-align:center; margin-top:6px;">Abrochar este papel al sobre del trabajo.${fotosExtra > 0 ? ' (+' + fotosExtra + ' foto' + (fotosExtra > 1 ? 's' : '') + ' más en el sistema)' : ''}</div>
     </div></div>
   `;
@@ -2023,6 +2037,11 @@ function armarHtmlComprobante(c) {
       .saldo b { font-size: 16px; }
       .fotos { display: flex; gap: 2mm; margin-top: 5px; }
       .fotos img { flex: 1; min-width: 0; height: 30mm; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
+      .qrs { display: flex; justify-content: space-around; align-items: flex-start; margin-top: 4px; }
+      .qr { text-align: center; }
+      .qr svg { width: 13.5mm; height: 13.5mm; display: block; margin: 0 auto; }
+      .qr span { display: block; margin-top: 1px; font-size: 7px; letter-spacing: 1px; text-transform: uppercase; color: #444; }
+      .local { text-align: center; font-size: 9.5px; line-height: 1.5; margin-top: 7px; padding-top: 5px; border-top: 0.3mm solid #c8c8c8; color: #222; }
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
     </style></head><body>
