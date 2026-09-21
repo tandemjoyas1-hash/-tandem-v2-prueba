@@ -1327,6 +1327,16 @@ function buscarEnCatalogo() {
 }
 window.buscarEnCatalogo = buscarEnCatalogo;
 
+// Convierte una palabra a un patrón de búsqueda que ignora tildes: se sacan las tildes y cada vocal
+// pasa a ser comodín de 1 letra ("gendarmería" -> "g_nd_rm_r__"), así encuentra con o sin tilde.
+function patronBusquedaCatalogo(palabra) {
+  const limpia = (palabra || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[,()%*\\_"]/g, '');
+  // Si trae números es un código (ej. AI.01): se busca tal cual, sin comodines.
+  return /\d/.test(limpia) ? limpia : limpia.replace(/[aeiouAEIOU]/g, '_');
+}
+
 async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
   const resBox = document.getElementById('cat-resultado');
 
@@ -1339,7 +1349,13 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
       .limit(80);
 
     if (categoria) consulta = consulta.eq('cat', categoria);
-    if (termino) consulta = consulta.or('descripcion.ilike.%' + termino + '%,cod.ilike.%' + termino + '%');
+    // NUEVO (21/09/2026): cada palabra se busca por separado (en cualquier orden) y sin importar
+    // las tildes, para que "gendarme", "gendarmería" o "armero gendarmeria" encuentren el producto.
+    if (termino) {
+      termino.split(/\s+/).map(patronBusquedaCatalogo).filter(Boolean).forEach(patron => {
+        consulta = consulta.or('descripcion.ilike.%' + patron + '%,cod.ilike.%' + patron + '%');
+      });
+    }
 
     // Orden: alfabético por descripción — así el orden es siempre el mismo y previsible,
     // en vez de saltar según qué producto tenga o no una foto cargada.
@@ -1352,7 +1368,13 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
     if (error) throw error;
 
     if (!productos || productos.length === 0) {
-      resBox.innerHTML = `<div class="vacio">Sin resultados para "${categoria || termino}"</div>`;
+      const terminoSeguro = termino.replace(/[<>"']/g, '');
+      const enCategoria = categoria ? ` en la categoría "${categoria}"` : '';
+      // Si hay una categoría activa, se ofrece buscar en todas (un toque) por si el filtro es lo que no deja ver el producto.
+      const botonTodas = (categoria && termino)
+        ? `<button type="button" class="btn btn-outline" style="margin-top:10px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(categoria)})'>🔎 Buscar "${terminoSeguro}" en todas las categorías</button>`
+        : '';
+      resBox.innerHTML = `<div class="vacio">Sin resultados para ${terminoSeguro ? '"' + terminoSeguro + '"' : ''}${enCategoria}</div>${botonTodas}`;
       return;
     }
 
