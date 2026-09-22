@@ -281,10 +281,8 @@ function botonWhatsApp(telefono, mensaje) {
 async function pantallaLogin() {
   render(`<div class="card"><p>Cargando usuarios...</p></div>`);
   const { data, error } = await sb
-    .from('usuarios')
-    .select('id, nombre, rol')
-    .eq('activo', true)
-    .order('nombre');
+    .from('usuarios_publico')
+    .select('id, nombre');
 
   if (error) {
     render(`<div class="card"><p class="msg msg-error">No se pudo conectar: ${error.message}</p></div>`);
@@ -307,6 +305,10 @@ async function pantallaLogin() {
   `);
 }
 
+// NUEVO (22/09/2026): el PIN ya no se compara en el navegador — se manda a una función del
+// servidor (login-pin) que lo verifica y, si es correcto, entrega una sesión real de acceso
+// (antes, toda la app leía y escribía con la misma llave pública, estuviera alguien logueado
+// o no; ahora recién acá se obtiene una credencial de verdad).
 async function intentarLogin() {
   const usuarioId = document.getElementById('sel-usuario').value;
   const pin = document.getElementById('pin-input').value.trim();
@@ -317,37 +319,36 @@ async function intentarLogin() {
     return;
   }
 
-  const { data: usuario, error } = await sb
-    .from('usuarios')
-    .select('id, nombre, rol, pin')
-    .eq('id', usuarioId)
-    .single();
-
-  if (error || !usuario) {
-    msgBox.innerHTML = `<div class="msg msg-error">No se encontró el usuario.</div>`;
+  msgBox.innerHTML = `<p>Verificando...</p>`;
+  let resp, cuerpo;
+  try {
+    resp = await fetch(SUPABASE_FUNCIONES_URL + '/login-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario_id: usuarioId, pin: pin })
+    });
+    cuerpo = await resp.json();
+  } catch (e) {
+    msgBox.innerHTML = `<div class="msg msg-error">No se pudo conectar. Probá de nuevo.</div>`;
     return;
   }
 
-  if (!usuario.pin) {
-    // Primera vez: se guarda el PIN que acaba de escribir
-    const { error: errUpdate } = await sb
-      .from('usuarios')
-      .update({ pin: pin })
-      .eq('id', usuarioId);
-    if (errUpdate) {
-      msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar el PIN: ${errUpdate.message}</div>`;
-      return;
-    }
-    usuario.pin = pin;
-  }
-
-  if (usuario.pin !== pin) {
-    msgBox.innerHTML = `<div class="msg msg-error">PIN incorrecto.</div>`;
+  if (!resp.ok) {
+    msgBox.innerHTML = `<div class="msg msg-error">${cuerpo.error || 'PIN incorrecto.'}</div>`;
     return;
   }
 
-  usuarioActual = { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol };
-  // Guarda la sesión en este dispositivo para no pedir PIN de nuevo la próxima vez que se abra la app
+  const { error: errSesion } = await sb.auth.setSession({
+    access_token: cuerpo.access_token,
+    refresh_token: cuerpo.refresh_token
+  });
+  if (errSesion) {
+    msgBox.innerHTML = `<div class="msg msg-error">No se pudo iniciar sesión: ${errSesion.message}</div>`;
+    return;
+  }
+
+  usuarioActual = { id: cuerpo.usuario.id, nombre: cuerpo.usuario.nombre, rol: cuerpo.usuario.rol };
+  // Guarda quién es (solo para mostrar el nombre) — la sesión de acceso real la guarda Supabase sola
   try { localStorage.setItem('tandem_sesion', JSON.stringify(usuarioActual)); localStorage.setItem('tandem_sesion_fecha', fechaHoyISO()); } catch (e) {}
   irAPantallaInicial();
 }
@@ -3098,37 +3099,33 @@ async function pantallaClienteSobre(numero) {
 
   app.innerHTML = `<div class="card" style="text-align:center; padding-top:34px;">${cabecera}<p style="color:#8a8378;">Buscando tu pedido…</p>${pie}</div>`;
 
-  let sobre = null, haber = 0;
+  // NUEVO (22/09/2026): se consulta a través de estado_sobre_publico (una función acotada,
+  // pensada para que cualquiera pueda consultar SU sobre por número sin poder leer el resto
+  // de la base — ya no se leen las tablas de sobres/movimientos_caja directo desde afuera).
+  let fila = null;
   try {
-    const { data } = await sb.from('sobres')
-      .select('id, precio_total, fecha_entrada, para_el_dia, baja_taller, listo, fecha_salida')
-      .eq('numero', numero).maybeSingle();
-    sobre = data;
-    if (sobre) {
-      const { data: pagos } = await sb.from('movimientos_caja')
-        .select('monto')
-        .eq('sobre_id', sobre.id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
-      haber = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
-    }
-  } catch (e) { sobre = null; }
+    const { data } = await sb.rpc('estado_sobre_publico', { p_numero: numero });
+    fila = (data && data[0]) || null;
+  } catch (e) { fila = null; }
 
   let bloqueEstado = '';
-  if (sobre) {
-    let estado, color;
-    if (sobre.fecha_salida) { estado = '✅ Retirado'; color = '#4a7c59'; }
-    else if (sobre.listo) { estado = '📦 Listo para retirar'; color = '#4a7c59'; }
-    else if (sobre.baja_taller) { estado = '🔧 En el taller'; color = '#a67c3d'; }
-    else { estado = '📋 En proceso'; color = '#a67c3d'; }
-
-    const total = Number(sobre.precio_total) || 0;
-    const saldo = total - haber;
+  if (fila) {
+    const ETIQUETAS = {
+      retirado: ['✅ Retirado', '#4a7c59'],
+      listo: ['📦 Listo para retirar', '#4a7c59'],
+      en_taller: ['🔧 En el taller', '#a67c3d'],
+      en_proceso: ['📋 En proceso', '#a67c3d'],
+    };
+    const [estado, color] = ETIQUETAS[fila.estado] || ['', '#555'];
+    const total = Number(fila.total) || 0;
+    const saldo = Number(fila.saldo) || 0;
     const filaSaldo = total > 0
       ? (saldo > 0
           ? `<div style="margin-top:14px; padding:12px; background:#fbeeea; border-radius:8px;"><div style="font-size:12px; color:#8a5a3d;">SALDO A PAGAR</div><div style="font-size:26px; font-weight:700; color:#8a3d1f;">$${saldo.toLocaleString('es-AR')}</div></div>`
           : `<div style="margin-top:14px; padding:12px; background:#eaf5ec; border-radius:8px; color:#2f5c3d; font-size:14px;">Sin saldo pendiente</div>`)
       : '';
-    const filaFecha = (!sobre.fecha_salida && sobre.para_el_dia)
-      ? `<div style="margin-top:10px; font-size:13px; color:#555;">Fecha estimada: ${new Date(sobre.para_el_dia + 'T00:00:00').toLocaleDateString('es-AR')}</div>`
+    const filaFecha = (fila.estado !== 'retirado' && fila.para_el_dia)
+      ? `<div style="margin-top:10px; font-size:13px; color:#555;">Fecha estimada: ${new Date(fila.para_el_dia + 'T00:00:00').toLocaleDateString('es-AR')}</div>`
       : '';
 
     bloqueEstado = `
