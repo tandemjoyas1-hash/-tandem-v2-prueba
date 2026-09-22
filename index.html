@@ -2063,11 +2063,11 @@ function armarHtmlComprobante(c) {
          real cortada (103 x 148mm aprox). Se ajusta el tamaño de página de la app para que
          coincida justo con "4x6 in", así imprime bien eligiendo esa opción en el
          cartel de impresión, sin tener que correr ni agrandar nada a mano cada vez. */
-      @page { size: 111.6mm 167.4mm; margin: 0; }
+      @page { size: 125.6mm 175.4mm; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
-      .hoja { width: 111.6mm; height: 167.4mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
+      .hoja { width: 125.6mm; height: 175.4mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
       .marco { height: 100%; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
