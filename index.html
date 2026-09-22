@@ -3081,18 +3081,70 @@ window.abrirSobreDesdeQR = abrirSobreDesdeQR;
 // NUEVO (21/09/2026): pantalla pública para el CLIENTE cuando escanea el QR de su comprobante.
 // No lee nada de la base de datos: solo muestra el N° de sobre y el botón para consultar por WhatsApp.
 // ============================================================
-function pantallaClienteSobre(numero) {
+// NUEVO (21/09/2026): además del botón de WhatsApp, esta pantalla ahora muestra el
+// estado real del sobre (en proceso / en taller / listo / retirado) y, si tiene saldo
+// pendiente, cuánto es — así el cliente lo ve al toque, sin tener que escribir.
+async function pantallaClienteSobre(numero) {
   const link = linkWhatsApp(WHATSAPP_LOCAL, 'Hola, consulto por mi sobre N° ' + numero);
-  app.innerHTML = `
-    <div class="card" style="text-align:center; padding-top:34px;">
+  const cabecera = `
       <div style="font-family:Georgia,'Times New Roman',serif; font-size:32px; font-weight:700; letter-spacing:2px;">TANDEM</div>
       <div style="font-family:Georgia,'Times New Roman',serif; font-size:13px; letter-spacing:5px; border-top:1px solid #111; width:55%; margin:4px auto 0; padding-top:3px;">JOYAS</div>
       <div style="margin-top:26px; font-size:13px; letter-spacing:2px; color:#8a8378; text-transform:uppercase;">Tu pedido</div>
-      <div style="font-family:Georgia,'Times New Roman',serif; font-size:44px; font-weight:700; margin:4px 0 22px;">Sobre N° ${numero}</div>
-      ${link ? `<a href="${link}" class="btn btn-verde" style="display:block; text-align:center; text-decoration:none;">💬 Consultar por mi pedido</a>` : ''}
+      <div style="font-family:Georgia,'Times New Roman',serif; font-size:44px; font-weight:700; margin:4px 0 22px;">Sobre N° ${numero}</div>`;
+  const pie = `
       <div style="margin-top:22px; font-size:13px; color:#555;">Vélez Sarsfield 156 · Córdoba</div>
       <div style="margin-top:4px; font-size:13px;"><a href="${INSTAGRAM_LOCAL_URL}" style="color:#555;">Instagram @${INSTAGRAM_USUARIO}</a></div>
-      <div style="margin-top:34px;"><a href="#" onclick="pantallaLogin(); return false;" style="font-size:12px; color:#b5ac9b;">Soy del equipo — ingresar</a></div>
+      <div style="margin-top:34px;"><a href="#" onclick="pantallaLogin(); return false;" style="font-size:12px; color:#b5ac9b;">Soy del equipo — ingresar</a></div>`;
+
+  app.innerHTML = `<div class="card" style="text-align:center; padding-top:34px;">${cabecera}<p style="color:#8a8378;">Buscando tu pedido…</p>${pie}</div>`;
+
+  let sobre = null, haber = 0;
+  try {
+    const { data } = await sb.from('sobres')
+      .select('id, precio_total, fecha_entrada, para_el_dia, baja_taller, listo, fecha_salida')
+      .eq('numero', numero).maybeSingle();
+    sobre = data;
+    if (sobre) {
+      const { data: pagos } = await sb.from('movimientos_caja')
+        .select('monto')
+        .eq('sobre_id', sobre.id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
+      haber = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
+    }
+  } catch (e) { sobre = null; }
+
+  let bloqueEstado = '';
+  if (sobre) {
+    let estado, color;
+    if (sobre.fecha_salida) { estado = '✅ Retirado'; color = '#4a7c59'; }
+    else if (sobre.listo) { estado = '📦 Listo para retirar'; color = '#4a7c59'; }
+    else if (sobre.baja_taller) { estado = '🔧 En el taller'; color = '#a67c3d'; }
+    else { estado = '📋 En proceso'; color = '#a67c3d'; }
+
+    const total = Number(sobre.precio_total) || 0;
+    const saldo = total - haber;
+    const filaSaldo = total > 0
+      ? (saldo > 0
+          ? `<div style="margin-top:14px; padding:12px; background:#fbeeea; border-radius:8px;"><div style="font-size:12px; color:#8a5a3d;">SALDO A PAGAR</div><div style="font-size:26px; font-weight:700; color:#8a3d1f;">$${saldo.toLocaleString('es-AR')}</div></div>`
+          : `<div style="margin-top:14px; padding:12px; background:#eaf5ec; border-radius:8px; color:#2f5c3d; font-size:14px;">Sin saldo pendiente</div>`)
+      : '';
+    const filaFecha = (!sobre.fecha_salida && sobre.para_el_dia)
+      ? `<div style="margin-top:10px; font-size:13px; color:#555;">Fecha estimada: ${new Date(sobre.para_el_dia + 'T00:00:00').toLocaleDateString('es-AR')}</div>`
+      : '';
+
+    bloqueEstado = `
+      <div style="font-size:20px; font-weight:700; color:${color};">${estado}</div>
+      ${filaFecha}
+      ${filaSaldo}`;
+  } else {
+    bloqueEstado = `<div style="font-size:14px; color:#8a8378;">No encontramos el estado en el sistema — consultanos por WhatsApp.</div>`;
+  }
+
+  app.innerHTML = `
+    <div class="card" style="text-align:center; padding-top:34px;">
+      ${cabecera}
+      ${bloqueEstado}
+      ${link ? `<a href="${link}" class="btn btn-verde" style="display:block; text-align:center; text-decoration:none; margin-top:22px;">💬 Consultar por mi pedido</a>` : ''}
+      ${pie}
     </div>`;
 }
 window.pantallaClienteSobre = pantallaClienteSobre;
