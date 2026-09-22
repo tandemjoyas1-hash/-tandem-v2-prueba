@@ -2139,9 +2139,7 @@ function prepararFotosComprobante(fotos) {
   return Promise.all((fotos || []).slice(0, 3).map(procesar));
 }
 
-async function imprimirComprobante() {
-  const c = window._ultimoComprobante;
-  if (!c) { alert('No hay ningún comprobante para imprimir.'); return; }
+async function imprimirComprobanteObjeto(c) {
   let fotos = [];
   try { fotos = await prepararFotosComprobante(c.fotos); } catch (e) { fotos = []; }
   const anterior = document.getElementById('iframe-comprobante');
@@ -2162,7 +2160,53 @@ async function imprimirComprobante() {
   ]);
   setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 200);
 }
+window.imprimirComprobanteObjeto = imprimirComprobanteObjeto;
+
+async function imprimirComprobante() {
+  const c = window._ultimoComprobante;
+  if (!c) { alert('No hay ningún comprobante para imprimir.'); return; }
+  await imprimirComprobanteObjeto(c);
+}
 window.imprimirComprobante = imprimirComprobante;
+
+// NUEVO (22/09/2026): reimprimir el comprobante de un sobre YA cargado (para pruebas de
+// impresión, o si se rompió/perdió la hoja original) — arma los datos desde lo que quedó
+// guardado en el sobre en vez de depender de la memoria de la pantalla de Nueva Entrada.
+async function reimprimirComprobante(sobreId) {
+  const { data: s, error } = await sb
+    .from('sobres')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, clientes(nombre, telefono)')
+    .eq('id', sobreId).single();
+  if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
+
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('monto, medio_pago, vendedora, fecha')
+    .eq('sobre_id', sobreId).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE')
+    .order('fecha');
+  const sena = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
+
+  const { data: fotosExtra } = await sb
+    .from('fotos_sobre').select('url').eq('sobre_id', sobreId).order('created_at').limit(3);
+
+  await imprimirComprobanteObjeto({
+    numero: s.numero,
+    fechaHora: new Date(s.fecha_entrada + 'T00:00:00').toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    vendedora: (pagos && pagos[0] && pagos[0].vendedora) || '',
+    canal: s.canal,
+    cliente: s.clientes ? s.clientes.nombre : '',
+    telefono: s.clientes ? s.clientes.telefono : '',
+    trabajo: s.descripcion,
+    cantidad: 1,
+    paraElDia: s.para_el_dia,
+    total: s.precio_total,
+    sena: sena,
+    medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
+    destino: s.orfebre,
+    fotos: (fotosExtra || []).map(f => f.url)
+  });
+}
+window.reimprimirComprobante = reimprimirComprobante;
 
 // ============================================================
 // PANTALLA 3: Taller — sobres que todavía no bajaron a un orfebre
@@ -3439,6 +3483,7 @@ async function buscarSobreDetalle() {
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
       ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
+      <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div style="font-weight:600;">${estadoDeSobre(s)}</div>
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
