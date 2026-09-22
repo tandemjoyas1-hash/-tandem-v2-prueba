@@ -1001,7 +1001,7 @@ async function guardarEdicionProducto(cod) {
 
   const archivoFoto = document.getElementById('ep-foto').files[0];
   if (archivoFoto) {
-    cambios.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+    cambios.foto = await archivoAFotoComprimida(archivoFoto);
   }
 
   try {
@@ -1183,7 +1183,7 @@ async function guardarProductoNuevo() {
 
   const archivoFoto = document.getElementById('ap-foto').files[0];
   if (archivoFoto) {
-    nuevo.foto = 'data:' + archivoFoto.type + ';base64,' + (await archivoABase64(archivoFoto));
+    nuevo.foto = await archivoAFotoComprimida(archivoFoto);
   }
 
   const { error } = await sb.schema('public').from('products').insert(nuevo);
@@ -1550,6 +1550,39 @@ function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
     const lector = new FileReader();
     lector.onload = () => resolve(lector.result.split(',')[1]);
+    lector.onerror = reject;
+    lector.readAsDataURL(archivo);
+  });
+}
+
+// NUEVO (21/09/2026): fotos de PRODUCTO (catálogo) se achican solas antes de guardar, para que
+// nunca vuelvan a pesar cientos de KB o varios MB adentro de la base de datos (eso hacía que
+// buscar en el catálogo se cortara con "timeout" cuando había muchas fotos pesadas juntas).
+// Se reduce a un máximo de 900px de lado más largo y se comprime a JPG calidad ~0.78 — en la
+// gran mayoría de los casos queda entre 40 y 150 KB, sin que Sofi/Romi/Dami/Cele tengan que
+// acordarse de hacer nada distinto al subir la foto.
+function archivoAFotoComprimida(archivo) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_LADO = 900;
+        let { width, height } = img;
+        if (width > MAX_LADO || height > MAX_LADO) {
+          if (width >= height) { height = Math.round(height * MAX_LADO / width); width = MAX_LADO; }
+          else { width = Math.round(width * MAX_LADO / height); height = MAX_LADO; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height); // fondo blanco (por si el PNG tenía transparencia)
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.src = lector.result;
+    };
     lector.onerror = reject;
     lector.readAsDataURL(archivo);
   });
