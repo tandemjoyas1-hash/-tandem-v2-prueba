@@ -2029,7 +2029,7 @@ function armarHtmlComprobante(c) {
         <div class="pagos">
           ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
           ${hayTotal ? fila('Total', plata(c.total)) : ''}
-          ${hayPagos ? fila('Seña' + (Number(c.sena) > 0 && c.medioPago ? ' (' + c.medioPago.toLowerCase() + ')' : ''), plata(c.sena)) : ''}
+          ${hayPagos ? fila('Seña', plata(c.sena)) : ''}
           ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
         </div>
         ${bloqueQr}
