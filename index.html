@@ -717,6 +717,8 @@ function pantallaCatalogo() {
       <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
 
+      <div id="cat-resultado" style="margin-top:10px;"></div>
+      <div id="cat-bloque-categorias">
       <label style="margin-top:12px; font-size:13px;">📁 Filtrar categorías</label>
       <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
@@ -724,7 +726,7 @@ function pantallaCatalogo() {
           <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:8px 12px; font-size:13px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px; line-height:1.2;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'><span id="cat-icono-${c.replace(/\s+/g, '-')}" style="font-size:32px;">${ICONO_CATEGORIA[c] || '🔹'}</span>${c}</button>
         `).join('')}
       </div>
-      <div id="cat-resultado" style="margin-top:10px;"></div>
+      </div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
@@ -1344,8 +1346,16 @@ let _catalogoTimeout = null;
 function buscarEnCatalogo() {
   clearTimeout(_catalogoTimeout);
   const termino = document.getElementById('cat-buscar').value.trim();
+  // Al escribir se busca en TODO el catálogo (se suelta la categoría que estuviera elegida).
+  if (termino && _categoriaActivaCatalogo) {
+    _categoriaActivaCatalogo = null;
+    document.querySelectorAll('[id^="cat-btn-"]').forEach(btn => { btn.classList.remove('btn-verde'); btn.classList.add('btn-outline'); });
+  }
   const categoria = _categoriaActivaCatalogo;
   const resBox = document.getElementById('cat-resultado');
+  // Mientras se escribe en el buscador se ocultan las categorías: los resultados quedan justo abajo.
+  const bloqueCat = document.getElementById('cat-bloque-categorias');
+  if (bloqueCat) bloqueCat.style.display = termino ? 'none' : '';
   if (!termino && !categoria) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
@@ -1364,7 +1374,10 @@ function patronBusquedaCatalogo(palabra) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[,()%*\\_"]/g, '');
   // Si trae números es un código (ej. AI.01): se busca tal cual, sin comodines.
-  return /\d/.test(limpia) ? limpia : limpia.replace(/[aeiouAEIOU]/g, '_');
+  if (/\d/.test(limpia)) return limpia;
+  // Verbos: se saca la terminación (soldar -> sold) para que encuentre soldadura, soldar, soldado, etc.
+  const raiz = (limpia.length >= 5) ? limpia.replace(/(ar|er|ir)$/i, '') : limpia;
+  return raiz.replace(/[aeiouAEIOU]/g, '_');
 }
 
 async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
