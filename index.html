@@ -701,9 +701,16 @@ function pantallaCatalogo() {
       </div>
 
       <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
-        <label>Aumentar la mano de obra de TODOS los productos en (%)</label>
-        <input type="number" id="cat-ajuste-porcentaje" placeholder="Ej: 10">
-        <button class="btn btn-verde" onclick="aplicarAjusteGeneralManoObra()">Aplicar a los 693 productos</button>
+        <label>1. ¿A qué categoría?</label>
+        <select id="cat-ajuste-categoria">
+          <option value="">— Elegí una categoría —</option>
+          ${CATEGORIAS_CATALOGO.map(c => `<option value="${c}">${c}</option>`).join('')}
+          <option value="__TODAS__">⚠️ TODAS las categorías</option>
+        </select>
+        <label>2. Aumentar la mano de obra en (%)</label>
+        <input type="number" id="cat-ajuste-porcentaje" placeholder="Ej: 15">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:8px;"><input type="checkbox" id="cat-ajuste-redondeo" checked style="width:auto;"> Redondear de a $500 para arriba</label>
+        <button class="btn btn-verde" onclick="aplicarAjusteGeneralManoObra()">Aplicar aumento</button>
         <div id="cat-ajuste-msg"></div>
       </div>
 
@@ -804,25 +811,35 @@ window.toggleAjusteGeneral = toggleAjusteGeneral;
 
 async function aplicarAjusteGeneralManoObra() {
   const msgBox = document.getElementById('cat-ajuste-msg');
+  const categoria = document.getElementById('cat-ajuste-categoria').value;
   const porcentaje = parseFloat(document.getElementById('cat-ajuste-porcentaje').value);
+  const redondear = document.getElementById('cat-ajuste-redondeo').checked;
+  if (!categoria) { msgBox.innerHTML = `<div class="msg msg-error">Elegí una categoría.</div>`; return; }
   if (!porcentaje) { msgBox.innerHTML = `<div class="msg msg-error">Poné un porcentaje.</div>`; return; }
 
-  if (!confirm('¿Seguro que querés aumentar la mano de obra de TODOS los productos (693) en ' + porcentaje + '%? No se puede deshacer con un botón.')) return;
-
-  msgBox.innerHTML = `<div class="msg">Aplicando a todos los productos, un momento...</div>`;
-
-  const { data: productos, error: errLeer } = await sb.schema('public').from('products').select('cod, labor');
+  let consulta = sb.schema('public').from('products').select('id, labor');
+  if (categoria !== '__TODAS__') consulta = consulta.eq('cat', categoria);
+  const { data: productos, error: errLeer } = await consulta;
   if (errLeer) { msgBox.innerHTML = `<div class="msg msg-error">${errLeer.message}</div>`; return; }
+  if (!productos.length) { msgBox.innerHTML = `<div class="msg msg-error">No hay productos en esa categoría.</div>`; return; }
 
+  const nombreCat = categoria === '__TODAS__' ? 'TODAS las categorías' : categoria;
+  if (!confirm('¿Aumentar ' + porcentaje + '% la mano de obra de ' + productos.length + ' productos de ' + nombreCat + '?' + (redondear ? ' (redondeado de a $500 para arriba)' : '') + '\n\nNo se puede deshacer con un botón.')) return;
+
+  msgBox.innerHTML = `<div class="msg">Aplicando a ${productos.length} productos, un momento...</div>`;
   let actualizados = 0;
   for (const p of productos) {
-    const laborNueva = Math.round((Number(p.labor) || 0) * (1 + porcentaje / 100));
-    const { error } = await sb.schema('public').from('products').update({ labor: laborNueva }).eq('cod', p.cod);
+    const actual = Number(p.labor) || 0;
+    if (actual <= 0) { actualizados++; continue; }
+    let laborNueva = actual * (1 + porcentaje / 100);
+    laborNueva = redondear ? Math.ceil(laborNueva / 500) * 500 : Math.round(laborNueva);
+    const { error } = await sb.schema('public').from('products').update({ labor: laborNueva }).eq('id', p.id);
     if (!error) actualizados++;
   }
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Mano de obra actualizada en ${actualizados} de ${productos.length} productos.</div>`;
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Mano de obra actualizada en ${actualizados} de ${productos.length} productos de ${nombreCat}.</div>`;
   document.getElementById('cat-ajuste-porcentaje').value = '';
+  document.getElementById('cat-ajuste-categoria').value = '';
 }
 window.aplicarAjusteGeneralManoObra = aplicarAjusteGeneralManoObra;
 
