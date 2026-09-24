@@ -719,6 +719,10 @@ function pantallaCatalogo() {
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
 
+      <div style="display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:13px; color:#8a8378; border-color:#e6ddc9;" onclick="const o=document.getElementById('cat-opciones'); o.style.display = o.style.display === 'none' ? '' : 'none';">⚙️ Opciones</button>
+      </div>
+      <div id="cat-opciones" style="display:none; margin-top:10px;">
       <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
         <div>
           <div style="font-size:10px; color:#8a8378;">Precio del gramo por material</div>
@@ -756,6 +760,7 @@ function pantallaCatalogo() {
         <label style="display:flex; align-items:center; gap:8px; margin-top:8px;"><input type="checkbox" id="cat-ajuste-redondeo" checked style="width:auto;"> Redondear de a $500 para arriba</label>
         <button class="btn btn-verde" onclick="aplicarAjusteGeneralManoObra()">Aplicar aumento</button>
         <div id="cat-ajuste-msg"></div>
+      </div>
       </div>
 
       <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
