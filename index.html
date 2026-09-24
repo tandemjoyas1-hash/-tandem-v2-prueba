@@ -121,7 +121,24 @@
   .lista-sobre .desc { color: #8a8378; font-size: 13px; margin-bottom: 8px; }
   .lista-sobre select, .lista-sobre input { margin-bottom: 8px; }
   .vacio { text-align: center; color: #a39c8d; padding: 24px 10px; font-size: 14px; }
-  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .card.card-ancha { max-width: 1100px; }
+  /* Catálogo estilo Odoo: categorías como mosaicos de color y productos con foto grande */
+  .cat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
+  .cat-tile { margin-top: 0 !important; width: 100% !important; min-height: 62px; padding: 8px 6px !important; border: none !important; border-radius: 8px !important;
+    font-size: 12.5px !important; font-weight: 700; text-transform: uppercase; line-height: 1.25; color: #3a3530 !important; display: flex; align-items: center; justify-content: center; text-align: center; box-shadow: none !important; }
+  .cat-tile.btn-verde { box-shadow: inset 0 0 0 3px #2c2c2a !important; }
+  .prod-tile { background: #fff; border: 1px solid #ece5d6; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .prod-tile .prod-foto { position: relative; aspect-ratio: 1 / 1; background: #f4efe4; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+  .prod-tile .prod-foto img { width: 100%; height: 100%; object-fit: cover; }
+  .prod-tile .prod-chk { position: absolute; top: 6px; left: 6px; width: 20px !important; height: 20px; accent-color: #2f6d1f; }
+  .prod-tile .prod-edit { position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border: none; border-radius: 6px; padding: 3px 6px; font-size: 13px; cursor: pointer; }
+  .prod-tile .prod-info { padding: 7px 8px 8px; border-bottom: 4px solid #f2c94c; flex: 1; display: flex; flex-direction: column; }
+  .prod-tile .prod-nombre { font-size: 13px; font-weight: 700; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+  .prod-tile .prod-cod { font-size: 11px; color: #8a8378; margin: 2px 0 4px; }
+  .prod-tile .prod-precios { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+  .prod-tile .prod-precio { flex: 1 0 45%; margin: 0 !important; padding: 5px 3px !important; font-size: 11.5px !important; border-radius: 7px !important; border: 1px solid #d8cfbc !important; color: #2c2c2a !important; background: #fdfcf9 !important; box-shadow: none !important; }
+  .prod-tile .prod-precio.principal { flex-basis: 100%; font-size: 13px !important; background: #eef6e8 !important; border-color: #b9d6a8 !important; color: #234d0e !important; }
   .cat-grid .lista-sobre { margin-bottom: 0; padding: 10px; }
 
   /* ===== Tabla estilo Excel para Caja del Día en pantallas grandes ===== */
@@ -653,6 +670,7 @@ window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
 const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Anillos Personalizados', 'Anillos Acero Personalizados', 'Anillos Grabados Varios', 'Composturas', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
 
+const COLORES_CATEGORIA = ['#b4bdf5', '#fbe7a1', '#f9d2c6', '#f6d2b3', '#f9b3b3', '#e6dcf5', '#fbe49a', '#c9dff5', '#e0bcd9', '#c9ecd0', '#fab8d6', '#f8e6a0'];
 const ICONO_CATEGORIA = {
   'Dijes': '🔶',
   'Anillos Fundición': '💍',
@@ -697,7 +715,7 @@ function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
   render(`
     ${pintarUsuarioActual()}
-    <div class="card">
+    <div class="card card-ancha">
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
 
@@ -743,16 +761,16 @@ function pantallaCatalogo() {
       <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
 
-      <div id="cat-resultado" style="margin-top:10px;"></div>
       <div id="cat-bloque-categorias">
       <label style="margin-top:12px; font-size:13px;">📁 Filtrar categorías</label>
       <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
-        ${CATEGORIAS_CATALOGO.map(c => `
-          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:8px 12px; font-size:13px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px; line-height:1.2;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'><span id="cat-icono-${c.replace(/\s+/g, '-')}" style="font-size:32px;">${ICONO_CATEGORIA[c] || '🔹'}</span>${c}</button>
+      <div class="cat-tiles">
+        ${CATEGORIAS_CATALOGO.map((c, i) => `
+          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria cat-tile" data-nombre="${c.toLowerCase()}" style="background:${COLORES_CATEGORIA[i % COLORES_CATEGORIA.length]};" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
         `).join('')}
       </div>
       </div>
+      <div id="cat-resultado" style="margin-top:14px;"></div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
@@ -1471,37 +1489,26 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
         </button>
       `;
 
-      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; max-height:130px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:8px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>` : '';
+      const codJ = JSON.stringify(p.cod);
+      const chip = (etiqueta, precio, principal) => `<button type="button" class="btn prod-precio${principal ? ' principal' : ''}"
+          onclick='elegirProductoCatalogo(${codJ}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>${etiqueta} $${Math.round(precio).toLocaleString('es-AR')}</button>`;
+      let precios;
+      if (tienePrecioFijo) precios = chip('Precio', Number(p.precio_fijo), true);
+      else if (tieneMayorMenor) precios = (Number(p.precio_menor) > 0 ? chip('Menor', Number(p.precio_menor), true) : '') + (Number(p.precio_mayor) > 0 ? chip('Mayor', Number(p.precio_mayor)) : '');
+      else precios = chip('Menor', menor, true) + chip('Redes', redes) + chip('Mayor', mayor) + chip('Zipiur', zipiur);
 
       return `
-        <div class="lista-sobre">
-          ${p.foto ? `
-            <label style="display:flex; align-items:center; gap:6px; font-weight:400; font-size:12px; margin-bottom:4px;">
-              <input type="checkbox" class="cat-chk-compartir" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onchange="actualizarBarraCompartir()" style="width:auto;">
-              Elegir para enviar
-            </label>
-          ` : ''}
-          ${foto}
-          <div class="nro" style="font-size:13px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}${(tienePrecioFijo || tieneMayorMenor) ? '' : '<br>M.Obra: $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
-          ${tienePrecioFijo ? `
-            <div style="display:grid; grid-template-columns: 1fr; gap:4px;">
-              ${boton('Precio', Number(p.precio_fijo))}
-            </div>
-          ` : tieneMayorMenor ? `
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-              ${Number(p.precio_mayor) > 0 ? boton('Mayor', Number(p.precio_mayor)) : ''}
-              ${Number(p.precio_menor) > 0 ? boton('Menor', Number(p.precio_menor)) : ''}
-            </div>
-          ` : `
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-            ${boton('Zipiur', zipiur)}
-            ${boton('Mayor', mayor)}
-            ${boton('Redes', redes)}
-            ${boton('Menor', menor)}
+        <div class="prod-tile">
+          <div class="prod-foto" onclick='pantallaDetalleProducto(${codJ})'>
+            ${p.foto ? `<img src="${p.foto}" loading="lazy" alt="">` : (ICONO_CATEGORIA[p.cat] || '💍')}
+            ${p.foto ? `<input type="checkbox" class="prod-chk cat-chk-compartir" title="Elegir para enviar" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onclick="event.stopPropagation()" onchange="actualizarBarraCompartir()">` : ''}
+            <button type="button" class="prod-edit" title="Editar" onclick='event.stopPropagation(); pantallaEditarProducto(${codJ})'>✏️</button>
           </div>
-          `}
-          <button type="button" class="btn btn-outline" style="margin-top:6px; padding:6px; font-size:11.5px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar</button>
+          <div class="prod-info">
+            <div class="prod-nombre" onclick='pantallaDetalleProducto(${codJ})'>${p.descripcion}${p.medidas ? ' (' + p.medidas + ')' : ''}</div>
+            <div class="prod-cod">${p.cod}${(tienePrecioFijo || tieneMayorMenor) ? '' : ' · M.O. $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+            <div class="prod-precios">${precios}</div>
+          </div>
         </div>
       `;
     }).join('') + `</div>`;
