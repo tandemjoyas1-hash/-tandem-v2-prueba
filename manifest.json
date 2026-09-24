@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Punto de Venta Tándem",
-  "short_name": "Tándem PdV",
+  "name": "Punto de venta Tandem",
+  "short_name": "Punto de venta Tandem",
   "start_url": ".",
   "scope": "/",
   "display": "standalone",
