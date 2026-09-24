@@ -667,10 +667,29 @@ const ICONO_CATEGORIA = {
   'Pines-Prendedores': '📌',
   'Alianzas Plata y Oro': '🥇',
   'Pulseras Esclavas': '⛓️',
-  'Dijes Fundición': '🔶'
+  'Dijes Fundición': '🔶',
+  'Aros': '💎'
 };
 
+// NUEVO (24/09/2026): las categorías que crean las chicas desde "➕ Nueva categoría" se agregan
+// solas a la lista (antes la lista era fija y una categoría nueva, como "Aros", no aparecía).
+async function sincronizarCategoriasCatalogo() {
+  try {
+    const { data } = await sb.schema('public').from('products').select('cat').limit(5000);
+    const nuevas = [...new Set((data || []).map(p => p.cat).filter(Boolean))].filter(c => !CATEGORIAS_CATALOGO.includes(c));
+    nuevas.forEach(c => CATEGORIAS_CATALOGO.push(c));
+    return nuevas.length;
+  } catch (e) { return 0; }
+}
+
 function pantallaCatalogo() {
+  if (!window._catsSincronizadas) {
+    window._catsSincronizadas = true;
+    sincronizarCategoriasCatalogo().then(n => {
+      const b = document.getElementById('cat-buscar');
+      if (n && b && !b.value) pantallaCatalogo();
+    });
+  }
   // NUEVO (21/09/2026): al volver a armar la pantalla, los botones de categoría quedan apagados,
   // así que también se borra la categoría activa (antes quedaba "pegada" y la búsqueda por código
   // no encontraba nada porque seguía filtrando por la categoría de la vez anterior).
@@ -1178,6 +1197,7 @@ async function guardarProductoNuevo() {
   if (cat === '__nueva__') {
     cat = document.getElementById('ap-nueva-cat-nombre').value.trim();
     if (!cat) { msgBox.innerHTML = `<div class="msg msg-error">Escribí el nombre de la nueva categoría.</div>`; return; }
+    if (!CATEGORIAS_CATALOGO.includes(cat)) CATEGORIAS_CATALOGO.push(cat);
   }
 
   if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
