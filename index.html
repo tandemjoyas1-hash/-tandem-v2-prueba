@@ -245,6 +245,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
     </div>`;
 }
 
@@ -2087,7 +2088,7 @@ function armarHtmlComprobante(c) {
   // QR único de la copia cliente: abre la app con el N° de sobre.
   // Si lo lee el equipo (con sesión iniciada) lleva directo al sobre; si lo abre el cliente, ve el botón para consultar por su pedido.
   const baseApp = 'https://pedidos.tandemjoyas.com'; // link público para clientes (QR y WhatsApp)
-  const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
+  const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero) + (c.codigo ? '-' + c.codigo : '')));
   const bloqueQr = qrSobreSvg
     ? `<div class="qrbox">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>`
     : '';
@@ -2219,6 +2220,12 @@ function prepararFotosComprobante(fotos) {
 }
 
 async function imprimirComprobanteObjeto(c) {
+  if (!c.codigo) {
+    try {
+      const { data: cod } = await sb.from('sobres').select('codigo_publico').eq('numero', normalizarSobre(c.numero)).maybeSingle();
+      c.codigo = cod ? cod.codigo_publico : '';
+    } catch (e) { c.codigo = ''; }
+  }
   let fotos = [];
   try { fotos = await prepararFotosComprobante(c.fotos); } catch (e) { fotos = []; }
   const anterior = document.getElementById('iframe-comprobante');
@@ -3214,7 +3221,7 @@ window.abrirSobreDesdeQR = abrirSobreDesdeQR;
 // NUEVO (21/09/2026): además del botón de WhatsApp, esta pantalla ahora muestra el
 // estado real del sobre (en proceso / en taller / listo / retirado) y, si tiene saldo
 // pendiente, cuánto es — así el cliente lo ve al toque, sin tener que escribir.
-async function pantallaClienteSobre(numero) {
+async function pantallaClienteSobre(numero, codigo) {
   const link = linkWhatsApp(WHATSAPP_LOCAL, 'Hola, consulto por mi sobre N° ' + numero);
   const cabecera = `
       <div style="font-family:Georgia,'Times New Roman',serif; font-size:32px; font-weight:700; letter-spacing:2px;">TANDEM</div>
@@ -3233,7 +3240,7 @@ async function pantallaClienteSobre(numero) {
   // de la base — ya no se leen las tablas de sobres/movimientos_caja directo desde afuera).
   let fila = null;
   try {
-    const { data } = await sb.rpc('estado_sobre_publico', { p_numero: numero });
+    const { data } = await sb.rpc('estado_sobre_publico', { p_numero: numero, p_codigo: codigo || '' });
     fila = (data && data[0]) || null;
   } catch (e) { fila = null; }
 
@@ -3283,7 +3290,7 @@ window.pantallaClienteSobre = pantallaClienteSobre;
 // Saca el N° de sobre de lo que leyó el QR: el link nuevo (…/?s=33837) o un número suelto (comprobantes anteriores).
 function numeroDesdeQR(texto) {
   const t = String(texto || '').trim();
-  try { const s = new URL(t).searchParams.get('s'); if (s) return normalizarSobre(s); } catch (e) {}
+  try { const s = new URL(t).searchParams.get('s'); if (s) return normalizarSobre(s.split('-')[0]); } catch (e) {}
   const m = t.match(/[?&]s=(\d+)/);
   if (m) return normalizarSobre(m[1]);
   return t;
@@ -5101,6 +5108,50 @@ function mesActualISO() {
   return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
 }
 
+// ============================================================
+// NUEVO (24/09/2026): bandeja de salida de WhatsApp. La base anota sola (trigger) qué aviso
+// corresponde a cada sobre de cliente por menor: al cargarlo, al marcarlo listo y al despachar
+// un envío. Mientras Meta no apruebe las plantillas, NO se manda nada: acá se ve qué saldría.
+// ============================================================
+const LINK_PEDIDOS = 'https://pedidos.tandemjoyas.com/?s=';
+function textoPlantillaWhatsapp(m) {
+  const nombre = m.nombre_corto || 'cliente';
+  const plata = n => '$' + Number(n || 0).toLocaleString('es-AR');
+  if (m.plantilla === 'sobre_ingresado') {
+    return `Hola ${nombre}, recibimos tu trabajo en Tándem Joyas 💍\n\n📦 Sobre N° ${m.numero}\n🛠️ Trabajo: ${m.trabajo_corto}\n📅 Fecha estimada: ${m.para_el_dia ? fechaCortaAR(m.para_el_dia) : '—'}\n\nGuardá este número para consultar el estado de tu pedido. Te avisamos por acá cuando esté listo.`;
+  }
+  if (m.plantilla === 'trabajo_listo') {
+    return `[foto del trabajo]\nHola ${nombre}, ¡tu trabajo ya está listo! ✨\n\n📦 Sobre N° ${m.numero}\n💰 Saldo a abonar: ${plata(m.saldo)}\n\nPodés retirarlo en Vélez Sarsfield 156, Córdoba. Cualquier consulta, respondé este mensaje.`;
+  }
+  return `[foto del trabajo]\nHola ${nombre}, tu pedido ya salió 🚚\n\n📦 Sobre N° ${m.numero}\nEnviado por Correo Argentino.\n\nTe llega en los próximos días. Cualquier consulta, respondé este mensaje.`;
+}
+
+async function pantallaWhatsappSalida() {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  render(`
+    <div class="card">
+      <h2>📤 WhatsApp — mensajes que saldrían</h2>
+      <div class="sub">Todavía NO se envían: están esperando que Meta apruebe las plantillas.</div>
+      <div id="ws-resumen" style="margin-top:10px;"></div>
+      <div id="ws-lista" style="margin-top:10px;">Cargando...</div>
+    </div>`);
+  const { data, error } = await sb.from('whatsapp_salida_vista').select('*').order('created_at', { ascending: false }).limit(60);
+  const box = document.getElementById('ws-lista');
+  if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!data || !data.length) { box.innerHTML = '<div class="vacio">Todavía no hay mensajes. Se van a ir sumando con cada sobre nuevo.</div>'; return; }
+  const sinTel = data.filter(m => !m.tiene_telefono).length;
+  const etiquetas = { sobre_ingresado: '📥 Sobre ingresado', trabajo_listo: '✨ Trabajo listo', envio_despachado: '🚚 Envío despachado' };
+  document.getElementById('ws-resumen').innerHTML = `<div class="msg">${data.length} mensajes · ${sinTel ? '⚠️ ' + sinTel + ' sin teléfono (no llegarían)' : '✅ todos con teléfono'}</div>`;
+  box.innerHTML = data.map(m => `
+    <div style="border:1px solid #e5dfd3; border-radius:10px; padding:10px; margin-bottom:10px; ${m.tiene_telefono ? '' : 'background:#fbeeea;'}">
+      <div style="display:flex; justify-content:space-between; font-size:13px;"><b>${etiquetas[m.plantilla] || m.plantilla}</b><span>${new Date(m.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div style="font-size:13px; color:#555; margin:4px 0;">${escaparHtmlComprobante(m.cliente || '')} · ${m.tiene_telefono ? '📱 ' + m.telefono : '⚠️ SIN TELÉFONO'}</div>
+      <div style="white-space:pre-wrap; background:#e7f6e0; border-radius:8px; padding:8px; font-size:13px;">${escaparHtmlComprobante(textoPlantillaWhatsapp(m))}</div>
+      <div style="font-size:12px; margin-top:6px;">🔗 Botón "Ver mi pedido": <a href="${LINK_PEDIDOS + m.link_param}" target="_blank">${LINK_PEDIDOS + m.link_param}</a></div>
+    </div>`).join('');
+}
+window.pantallaWhatsappSalida = pantallaWhatsappSalida;
+
 function pantallaReportes() {
   if (!usuarioActual || usuarioActual.rol !== 'ADMIN') {
     render(`
@@ -5769,13 +5820,15 @@ window.guardarVentaDirecta = guardarVentaDirecta;
 (function iniciarApp() {
   // Link del QR del comprobante: …/?s=NUMERO
   try {
-    const s = new URLSearchParams(window.location.search).get('s') || '';
-    window._sobreDeQR = /^\d{1,9}$/.test(s.trim()) ? normalizarSobre(s) : '';
-  } catch (e) { window._sobreDeQR = ''; }
+    const s = (new URLSearchParams(window.location.search).get('s') || '').trim();
+    const partes = s.split('-');
+    window._sobreDeQR = /^\d{1,9}$/.test(partes[0]) ? normalizarSobre(partes[0]) : '';
+    window._codigoDeQR = (partes[1] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  } catch (e) { window._sobreDeQR = ''; window._codigoDeQR = ''; }
   try {
     const guardada = localStorage.getItem('tandem_sesion');
     // Sin sesión del equipo en este celu = es un cliente mirando su comprobante.
-    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR); return; }
+    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR, window._codigoDeQR); return; }
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
