@@ -1819,15 +1819,27 @@ async function guardarNuevaEntrada() {
     return;
   }
   // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
-  const sinTelefono = document.getElementById('ne-sin-telefono').checked;
-  const telNormalizado = sinTelefono ? '' : normalizarTelefonoAR(telefono);
+  // Mayoristas y talleres: NUNCA se carga el teléfono de SU cliente final (ellos son los dueños de ese
+  // cliente). El sobre queda con el teléfono del mayorista y no sale ningún aviso automático.
+  const esMayoristaOTaller = tipoCliente === 'MAYORISTA' || tipoCliente === 'TALLER';
+  if (esMayoristaOTaller && normalizarTelefonoAR(telefono)) {
+    const { data: cliMay } = await sb.from('clientes').select('telefono').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    const telMay = cliMay ? normalizarTelefonoAR(cliMay.telefono) : '';
+    if (telMay !== normalizarTelefonoAR(telefono)) {
+      alert('⚠️ SOBRE DE MAYORISTA / TALLER\n\nNo cargues el teléfono del cliente final: ese cliente es del mayorista, no nuestro.\n\nBorrá el teléfono (o dejá el del mayorista) y, si hace falta, poné el nombre del cliente final en la descripción del trabajo.');
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ En sobres de mayorista/taller no se carga el teléfono del cliente final.</div>`;
+      return;
+    }
+  }
+  const sinTelefono = document.getElementById('ne-sin-telefono').checked || esMayoristaOTaller;
+  const telNormalizado = normalizarTelefonoAR(telefono);
   if (!sinTelefono && !telNormalizado) {
     alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
     return;
   }
   document.getElementById('ne-telefono').value = telNormalizado;
-  if (sinTelefono && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
+  if (sinTelefono && !esMayoristaOTaller && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
   if (!paraElDia) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
     return;
