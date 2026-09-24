@@ -2086,7 +2086,7 @@ function armarHtmlComprobante(c) {
 
   // QR único de la copia cliente: abre la app con el N° de sobre.
   // Si lo lee el equipo (con sesión iniciada) lleva directo al sobre; si lo abre el cliente, ve el botón para consultar por su pedido.
-  const baseApp = (window.location.origin && window.location.origin.indexOf('http') === 0) ? window.location.origin : 'https://tandem-v2-prueba.vercel.app';
+  const baseApp = 'https://pedidos.tandemjoyas.com'; // link público para clientes (QR y WhatsApp)
   const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
   const bloqueQr = qrSobreSvg
     ? `<div class="qrbox">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>`
@@ -5775,7 +5775,7 @@ window.guardarVentaDirecta = guardarVentaDirecta;
   try {
     const guardada = localStorage.getItem('tandem_sesion');
     // Sin sesión del equipo en este celu = es un cliente mirando su comprobante.
-    if (!guardada && window._sobreDeQR) { pantallaClienteSobre(window._sobreDeQR); return; }
+    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR); return; }
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
