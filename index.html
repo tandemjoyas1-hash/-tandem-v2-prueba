@@ -430,7 +430,7 @@ function buscarFotoSobre() {
     if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
 
     const fechaEntregaHtml = s.para_el_dia
-      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
+      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">🔧 Tener listo el ${fechaCortaAR(fechaTaller(s.para_el_dia))}</div><div style="text-align:center; font-size:13px; color:#777;">Cliente retira el ${fechaCortaAR(s.para_el_dia)}</div>`
       : '';
 
     // NUEVO (05/09/2026): además de foto_referencia (la primera, vieja), se buscan TODAS las
@@ -512,8 +512,9 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
-      <label>¿Para qué día tiene que estar listo? (se calcula solo: 3 días hábiles desde hoy — se puede cambiar)</label>
-      <input type="date" id="ne-para-el-dia">
+      <label>📅 Fecha de entrega AL CLIENTE (se puede cambiar)</label>
+      <input type="date" id="ne-para-el-dia" onchange="mostrarFechaTaller()">
+      <div id="ne-fecha-taller" style="font-size:13px; color:#7a5c00; margin-top:4px;"></div>
 
       <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
       <select id="ne-destino">
@@ -589,7 +590,8 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
-  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
+  mostrarFechaTaller();
   cargarTiposProducto('ne');
   cargarProveedores('ne');
 }
@@ -1277,7 +1279,7 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
-  if (_borradorEntrada.paraElDia) document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia;
+  if (_borradorEntrada.paraElDia) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
@@ -1997,7 +1999,8 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
   document.getElementById('ne-destino').value = '';
-  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
+  mostrarFechaTaller();
   document.getElementById('ne-canal').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
@@ -2122,7 +2125,8 @@ function armarHtmlComprobante(c) {
       ${fila('Atendió', c.vendedora)}
       ${fila('Canal', canales[c.canal] || c.canal)}
       ${trabajo}
-      ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
+      ${fila('Taller: listo el', fechaIsoALinda(fechaTaller(c.paraElDia)))}
+      ${fila('Cliente retira', fechaIsoALinda(c.paraElDia))}
       ${bloqueFotos}
       ${datosLocal}
       <div class="nota" style="text-align:center; margin-top:6px;">Abrochar este papel al sobre del trabajo.${fotosExtra > 0 ? ' (+' + fotosExtra + ' foto' + (fotosExtra > 1 ? 's' : '') + ' más en el sistema)' : ''}</div>
@@ -4019,6 +4023,28 @@ function fechaHoyISO() {
 // Suma "dias" días hábiles (de lunes a viernes, sin contar sábados ni domingos)
 // a partir de una fecha ISO ("2026-09-04"). Se usa para calcular sola la fecha
 // que se le pide al taller que tenga listo el sobre (5 días hábiles de margen).
+// El taller tiene que tener el trabajo listo 2 días hábiles ANTES de la fecha que se le da al cliente.
+function fechaTaller(fechaClienteISO) {
+  if (!fechaClienteISO) return null;
+  const p = fechaClienteISO.split('-').map(Number);
+  const f = new Date(p[0], p[1] - 1, p[2]);
+  let restados = 0;
+  while (restados < 2) {
+    f.setDate(f.getDate() - 1);
+    const dia = f.getDay();
+    if (dia !== 0 && dia !== 6) restados++;
+  }
+  const hoy = fechaHoyISO();
+  const iso = f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+  return iso < hoy ? hoy : iso;
+}
+function mostrarFechaTaller() {
+  const box = document.getElementById('ne-fecha-taller');
+  const v = document.getElementById('ne-para-el-dia').value;
+  if (box) box.innerHTML = v ? '🔧 El taller lo tiene que tener listo el <b>' + fechaCortaAR(fechaTaller(v)) + '</b> (2 días hábiles antes, automático)' : '';
+}
+window.mostrarFechaTaller = mostrarFechaTaller;
+
 function sumarDiasHabiles(fechaISO, dias) {
   const partes = fechaISO.split('-').map(Number);
   const fecha = new Date(partes[0], partes[1] - 1, partes[2]);
