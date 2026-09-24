@@ -500,6 +500,7 @@ function pantallaNuevaEntrada() {
 
       <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;"> 📵 El cliente no quiere dejar teléfono</label>
 
       <label>Tipo de cliente</label>
       <select id="ne-tipo-cliente">
@@ -1815,13 +1816,15 @@ async function guardarNuevaEntrada() {
     return;
   }
   // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
-  const telNormalizado = normalizarTelefonoAR(telefono);
-  if (!telNormalizado) {
+  const sinTelefono = document.getElementById('ne-sin-telefono').checked;
+  const telNormalizado = sinTelefono ? '' : normalizarTelefonoAR(telefono);
+  if (!sinTelefono && !telNormalizado) {
     alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
     return;
   }
   document.getElementById('ne-telefono').value = telNormalizado;
+  if (sinTelefono && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
   if (!paraElDia) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
     return;
@@ -1999,6 +2002,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
+  document.getElementById('ne-sin-telefono').checked = false;
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-tipo-producto-busqueda').value = '';
   document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
