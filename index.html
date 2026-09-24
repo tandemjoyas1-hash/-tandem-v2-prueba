@@ -498,7 +498,7 @@ function pantallaNuevaEntrada() {
       <input type="text" id="ne-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnEntrada()" autocomplete="off">
       <div id="ne-cliente-sugerencias"></div>
 
-      <label>Teléfono (para WhatsApp, opcional)</label>
+      <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
 
       <label>Tipo de cliente</label>
@@ -567,6 +567,7 @@ function pantallaNuevaEntrada() {
 
       <label>Canal de venta</label>
       <select id="ne-canal">
+        <option value="">— Elegí el canal —</option>
         <option value="LOCAL">Local</option>
         <option value="REDES_ENVIO">Redes — con envío</option>
         <option value="REDES_RETIRO">Redes — retiro en local</option>
@@ -631,7 +632,9 @@ function irAlCatalogoDesdeEntrada() {
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
-    medioPago: document.getElementById('ne-medio-pago').value
+    medioPago: document.getElementById('ne-medio-pago').value,
+    canal: document.getElementById('ne-canal').value,
+    paraElDia: document.getElementById('ne-para-el-dia').value
   };
   pantallaCatalogo();
 }
@@ -1272,6 +1275,8 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
+  if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
+  if (_borradorEntrada.paraElDia) document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia;
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
@@ -1771,6 +1776,19 @@ function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
 }
 window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
+// Deja el teléfono como 10 números (código de área sin 0 + número sin 15). Devuelve '' si no se puede.
+function normalizarTelefonoAR(tel) {
+  let d = String(tel || '').replace(/\D/g, '');
+  if (d.startsWith('549')) d = d.slice(3);
+  else if (d.startsWith('54')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 12) {
+    // Saca el "15" que va después del código de área (2, 3 o 4 dígitos)
+    for (const n of [2, 3, 4]) { if (d.substr(n, 2) === '15') { d = d.slice(0, n) + d.slice(n + 2); break; } }
+  }
+  return d.length === 10 ? d : '';
+}
+
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
@@ -1796,6 +1814,28 @@ async function guardarNuevaEntrada() {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre del cliente.</div>`;
     return;
   }
+  // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
+  const telNormalizado = normalizarTelefonoAR(telefono);
+  if (!telNormalizado) {
+    alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
+    return;
+  }
+  document.getElementById('ne-telefono').value = telNormalizado;
+  if (!paraElDia) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
+    return;
+  }
+  if (!canal) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Elegí el canal de venta (Local / Redes con envío / Redes retiro).</div>`;
+    return;
+  }
+  if (canal === 'LOCAL' && /(env[ií]o|enviar|correo|andreani|encomienda)/i.test(trabajo)) {
+    if (!confirm('El trabajo menciona un ENVÍO pero el canal dice LOCAL.\n\n¿Seguro que es LOCAL?\n(Cancelar para corregirlo)')) {
+      msgBox.innerHTML = `<div class="msg msg-error">Revisá el canal: si va por correo, elegí "Redes — con envío".</div>`;
+      return;
+    }
+  }
 
   // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes,
   // incluso con errores de tipeo tipo "mustra" o "wasap"), es obligatorio
@@ -1819,7 +1859,7 @@ async function guardarNuevaEntrada() {
   // 1) Buscar o crear el cliente (con aviso si hay uno muy parecido ya cargado)
   let clienteId;
   try {
-    clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, telefono);
+    clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, telNormalizado);
   } catch (errCliente) {
     msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
     return;
@@ -1954,7 +1994,8 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
   document.getElementById('ne-destino').value = '';
-  document.getElementById('ne-para-el-dia').value = '';
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
+  document.getElementById('ne-canal').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
