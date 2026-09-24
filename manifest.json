@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Tándem Joyas",
-  "short_name": "Tándem",
+  "name": "Punto de Venta Tándem",
+  "short_name": "Tándem PdV",
   "start_url": ".",
   "scope": "/",
   "display": "standalone",
