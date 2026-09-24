@@ -121,11 +121,11 @@
   .lista-sobre .desc { color: #8a8378; font-size: 13px; margin-bottom: 8px; }
   .lista-sobre select, .lista-sobre input { margin-bottom: 8px; }
   .vacio { text-align: center; color: #a39c8d; padding: 24px 10px; font-size: 14px; }
-  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 9px; }
   .card.card-ancha { max-width: 1100px; }
   /* Catálogo estilo Odoo: categorías como mosaicos de color y productos con foto grande */
-  .cat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
-  .cat-tile { margin-top: 0 !important; width: 100% !important; min-height: 62px; padding: 8px 6px !important; border: none !important; border-radius: 8px !important;
+  .cat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 7px; margin-top: 10px; }
+  .cat-tile { margin-top: 0 !important; width: 100% !important; min-height: 54px; padding: 6px 5px !important; border: none !important; border-radius: 8px !important;
     font-size: 12.5px !important; font-weight: 700; text-transform: uppercase; line-height: 1.25; color: #3a3530 !important; display: flex; align-items: center; justify-content: center; text-align: center; box-shadow: none !important; }
   .cat-tile.btn-verde { box-shadow: inset 0 0 0 3px #2c2c2a !important; }
   .prod-tile { background: #fff; border: 1px solid #ece5d6; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
@@ -716,12 +716,11 @@ function pantallaCatalogo() {
   render(`
     ${pintarUsuarioActual()}
     <div class="card card-ancha">
-      <h1>💍 Catálogo</h1>
-      <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
-
-      <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:13px;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:13px; color:#8a8378; border-color:#e6ddc9;" onclick="const o=document.getElementById('cat-opciones'); o.style.display = o.style.display === 'none' ? '' : 'none';">⚙️ Opciones</button>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <h1 style="margin:0; font-size:17px; white-space:nowrap;">💍 Catálogo</h1>
+        <input type="text" id="cat-buscar" placeholder="🔎 Buscar producto o código..." oninput="buscarEnCatalogo()" style="flex:1 1 200px; min-width:0; padding:9px 12px; font-size:15px;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 12px; font-size:13px; white-space:nowrap;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
+        <button type="button" class="btn btn-outline" title="Precio del gramo y ajuste de mano de obra" style="width:auto; margin-top:0; padding:8px 11px; font-size:13px; color:#8a8378; border-color:#e6ddc9;" onclick="const o=document.getElementById('cat-opciones'); o.style.display = o.style.display === 'none' ? '' : 'none';">⚙️</button>
       </div>
       <div id="cat-opciones" style="display:none; margin-top:10px;">
       <div class="lista-sobre" style="background:#f7f7f7; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;">
@@ -763,12 +762,7 @@ function pantallaCatalogo() {
       </div>
       </div>
 
-      <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
-      <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
-
       <div id="cat-bloque-categorias">
-      <label style="margin-top:12px; font-size:13px;">📁 Filtrar categorías</label>
-      <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
       <div class="cat-tiles">
         ${CATEGORIAS_CATALOGO.map((c, i) => `
           <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria cat-tile" data-nombre="${c.toLowerCase()}" style="background:${COLORES_CATEGORIA[i % COLORES_CATEGORIA.length]};" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
@@ -1407,7 +1401,7 @@ function buscarEnCatalogo() {
   const resBox = document.getElementById('cat-resultado');
   // Mientras se escribe en el buscador se ocultan las categorías: los resultados quedan justo abajo.
   const bloqueCat = document.getElementById('cat-bloque-categorias');
-  if (bloqueCat) bloqueCat.style.display = termino ? 'none' : '';
+  // (24/09/2026) Las categorías quedan siempre a la vista, como en Odoo.
   if (!termino && !categoria) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
