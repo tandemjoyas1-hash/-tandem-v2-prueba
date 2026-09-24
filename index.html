@@ -719,7 +719,8 @@ function pantallaCatalogo() {
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
 
-      <div style="display:flex; justify-content:flex-end;">
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:13px;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:6px 12px; font-size:13px; color:#8a8378; border-color:#e6ddc9;" onclick="const o=document.getElementById('cat-opciones'); o.style.display = o.style.display === 'none' ? '' : 'none';">⚙️ Opciones</button>
       </div>
       <div id="cat-opciones" style="display:none; margin-top:10px;">
@@ -745,7 +746,6 @@ function pantallaCatalogo() {
 
       <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
         <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="toggleAjusteGeneral()">📈 Ajuste M.Obra</button>
-        <button type="button" class="btn btn-outline" style="width:auto; margin-top:0; padding:8px 13px; font-size:14px; color:#a39c8d; border-color:#e6ddc9;" onclick="pantallaAgregarProducto()">➕ Producto nuevo</button>
       </div>
 
       <div id="cat-ajuste-general-form" style="display:none; margin-top:10px; padding:10px; background:#fafafa; border-radius:8px;">
