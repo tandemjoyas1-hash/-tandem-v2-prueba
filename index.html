@@ -2355,7 +2355,10 @@ function pantallaFichaCatalogo(sobreId, numero, modo, extra) {
       </select>
 
       <label>Nombre del modelo</label>
-      <input type="text" id="fc-nombre" placeholder="Ej: Escudo Policía Córdoba">
+      <input type="text" id="fc-nombre" placeholder="Ej: Escudo Policía Córdoba" oninput="buscarModeloExistente()" autocomplete="off">
+      <div id="fc-nombre-sugerencias"></div>
+      <input type="hidden" id="fc-cod-existente" value="">
+      <div id="fc-existente-msg"></div>
 
       <label>Material</label>
       <select id="fc-material">
@@ -2383,6 +2386,37 @@ function previsualizarFotoFicha() {
 }
 window.previsualizarFotoFicha = previsualizarFotoFicha;
 
+// NUEVO (25/09/2026): si el modelo ya existe en el catálogo (ej. "Armada Plata y Oro" que
+// ya se hizo antes), lo reutiliza en vez de crear una ficha duplicada cada vez.
+let _timeoutBusquedaModeloFC = null;
+function buscarModeloExistente() {
+  clearTimeout(_timeoutBusquedaModeloFC);
+  document.getElementById('fc-cod-existente').value = '';
+  document.getElementById('fc-existente-msg').innerHTML = '';
+  const nombre = document.getElementById('fc-nombre').value.trim();
+  const box = document.getElementById('fc-nombre-sugerencias');
+  if (nombre.length < 3) { box.innerHTML = ''; return; }
+  _timeoutBusquedaModeloFC = setTimeout(async () => {
+    const { data } = await sb.schema('public').from('products').select('cod, descripcion, material, precio_fijo').ilike('descripcion', '%' + nombre + '%').limit(6);
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div style="font-size:12px; color:#8a8378; margin-top:4px;">¿Ya está cargado? Tocá si es el mismo:</div>` + data.map(p => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirModeloExistente(${JSON.stringify(p.cod)}, ${JSON.stringify(p.descripcion)})'>
+        <div class="nro" style="font-size:14px;">${esc(p.descripcion)}</div>
+        <div class="cli" style="font-size:12px;">${esc(p.material || '')}${p.precio_fijo ? ' · $' + Number(p.precio_fijo).toLocaleString('es-AR') : ''}</div>
+      </div>
+    `).join('');
+  }, 300);
+}
+window.buscarModeloExistente = buscarModeloExistente;
+
+function elegirModeloExistente(cod, descripcion) {
+  document.getElementById('fc-cod-existente').value = cod;
+  document.getElementById('fc-nombre').value = descripcion;
+  document.getElementById('fc-nombre-sugerencias').innerHTML = '';
+  document.getElementById('fc-existente-msg').innerHTML = `<div class="msg msg-ok">✅ Se va a usar el modelo ya cargado — no se crea uno nuevo.</div>`;
+}
+window.elegirModeloExistente = elegirModeloExistente;
+
 async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
   const msgBox = document.getElementById('fc-msg');
   const archivoFoto = document.getElementById('fc-foto').files[0];
@@ -2390,27 +2424,34 @@ async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
   const precio = parseFloat(document.getElementById('fc-precio').value) || null;
   const material = document.getElementById('fc-material').value;
   const categoria = document.getElementById('fc-categoria').value;
+  const codExistente = document.getElementById('fc-cod-existente').value;
 
-  if (!archivoFoto) { msgBox.innerHTML = `<div class="msg msg-error">Falta sacar la foto.</div>`; return; }
   if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre del modelo.</div>`; return; }
-  if (!precio) { msgBox.innerHTML = `<div class="msg msg-error">Falta el precio.</div>`; return; }
 
-  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  if (codExistente) {
+    // Ya existe este modelo en el catálogo — no se crea uno nuevo, solo queda resuelta la foto del sobre.
+    msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  } else {
+    if (!archivoFoto) { msgBox.innerHTML = `<div class="msg msg-error">Falta sacar la foto (o elegir un modelo ya cargado de la lista).</div>`; return; }
+    if (!precio) { msgBox.innerHTML = `<div class="msg msg-error">Falta el precio.</div>`; return; }
 
-  const foto = await archivoAFotoComprimida(archivoFoto);
-  const { error: errProd } = await sb.schema('public').from('products').insert({
-    id: 'P' + Date.now(),
-    cod: 'S' + numero,
-    cat: categoria,
-    descripcion: nombre,
-    material: material,
-    precio_fijo: precio,
-    foto: foto
-  });
-  if (errProd) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar en el catálogo: ${errProd.message}</div>`; return; }
+    msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+    const foto = await archivoAFotoComprimida(archivoFoto);
+    const { error: errProd } = await sb.schema('public').from('products').insert({
+      id: 'P' + Date.now(),
+      cod: 'S' + numero,
+      cat: categoria,
+      descripcion: nombre,
+      material: material,
+      precio_fijo: precio,
+      foto: foto
+    });
+    if (errProd) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar en el catálogo: ${errProd.message}</div>`; return; }
+  }
 
   await sb.from('sobres').update({ foto_catalogo_ok: true }).eq('id', sobreId);
-  await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'FOTO CATALOGO', detalle: 'Cargada por ' + usuarioActual.nombre + ' — "' + nombre + '"' });
+  await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'FOTO CATALOGO', detalle: (codExistente ? 'Vinculado a modelo ya cargado' : 'Cargada nueva foto') + ' por ' + usuarioActual.nombre + ' — "' + nombre + '"' });
 
   // Ahora sí, se completa lo que había quedado frenado (Listo, o Retiro/cobro).
   if (modo === 'listo') {
