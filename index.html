@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tándem — Sistema nuevo (prueba)</title>
+<title>Punto de Venta Tándem</title>
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
@@ -293,7 +293,7 @@ async function pantallaLogin() {
   render(`
     <div class="card">
       <h1>Joyería Tándem</h1>
-      <div class="sub">Sistema nuevo — versión de prueba</div>
+      <div class="sub">Punto de Venta</div>
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
       <label>Tu PIN (2 números)</label>
@@ -442,7 +442,7 @@ function buscarFotoSobre() {
     if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
 
     const fechaEntregaHtml = s.para_el_dia
-      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
+      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">🔧 Tener listo el ${fechaCortaAR(fechaTaller(s.para_el_dia))}</div><div style="text-align:center; font-size:13px; color:#777;">Cliente retira el ${fechaCortaAR(s.para_el_dia)}</div>`
       : '';
 
     // NUEVO (05/09/2026): además de foto_referencia (la primera, vieja), se buscan TODAS las
@@ -510,8 +510,9 @@ function pantallaNuevaEntrada() {
       <input type="text" id="ne-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnEntrada()" autocomplete="off">
       <div id="ne-cliente-sugerencias"></div>
 
-      <label>Teléfono (para WhatsApp, opcional)</label>
+      <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;"> 📵 El cliente no quiere dejar teléfono</label>
 
       <label>Tipo de cliente</label>
       <select id="ne-tipo-cliente">
@@ -523,8 +524,9 @@ function pantallaNuevaEntrada() {
       <label>Trabajo / descripción</label>
       <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
 
-      <label>¿Para qué día tiene que estar listo? (se calcula solo: 3 días hábiles desde hoy — se puede cambiar)</label>
-      <input type="date" id="ne-para-el-dia">
+      <label>📅 Fecha de entrega AL CLIENTE (se puede cambiar)</label>
+      <input type="date" id="ne-para-el-dia" onchange="mostrarFechaTaller()">
+      <div id="ne-fecha-taller" style="font-size:13px; color:#7a5c00; margin-top:4px;"></div>
 
       <label>¿A dónde va? (opcional — si no sabés todavía, dejalo en "No va a taller" y lo derivás después desde Taller)</label>
       <select id="ne-destino">
@@ -579,6 +581,7 @@ function pantallaNuevaEntrada() {
 
       <label>Canal de venta</label>
       <select id="ne-canal">
+        <option value="">— Elegí el canal —</option>
         <option value="LOCAL">Local</option>
         <option value="REDES_ENVIO">Redes — con envío</option>
         <option value="REDES_RETIRO">Redes — retiro en local</option>
@@ -599,7 +602,8 @@ function pantallaNuevaEntrada() {
       <div id="ne-msg"></div>
     </div>
   `);
-  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 3);
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
+  mostrarFechaTaller();
   cargarTiposProducto('ne');
   cargarProveedores('ne');
 }
@@ -643,7 +647,9 @@ function irAlCatalogoDesdeEntrada() {
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
     sena: document.getElementById('ne-sena').value,
-    medioPago: document.getElementById('ne-medio-pago').value
+    medioPago: document.getElementById('ne-medio-pago').value,
+    canal: document.getElementById('ne-canal').value,
+    paraElDia: document.getElementById('ne-para-el-dia').value
   };
   pantallaCatalogo();
 }
@@ -1265,6 +1271,8 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
+  if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
+  if (_borradorEntrada.paraElDia) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
@@ -1753,6 +1761,19 @@ function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
 }
 window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
+// Deja el teléfono como 10 números (código de área sin 0 + número sin 15). Devuelve '' si no se puede.
+function normalizarTelefonoAR(tel) {
+  let d = String(tel || '').replace(/\D/g, '');
+  if (d.startsWith('549')) d = d.slice(3);
+  else if (d.startsWith('54')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 12) {
+    // Saca el "15" que va después del código de área (2, 3 o 4 dígitos)
+    for (const n of [2, 3, 4]) { if (d.substr(n, 2) === '15') { d = d.slice(0, n) + d.slice(n + 2); break; } }
+  }
+  return d.length === 10 ? d : '';
+}
+
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
@@ -1778,6 +1799,30 @@ async function guardarNuevaEntrada() {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre del cliente.</div>`;
     return;
   }
+  // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
+  const sinTelefono = document.getElementById('ne-sin-telefono').checked;
+  const telNormalizado = sinTelefono ? '' : normalizarTelefonoAR(telefono);
+  if (!sinTelefono && !telNormalizado) {
+    alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
+    return;
+  }
+  document.getElementById('ne-telefono').value = telNormalizado;
+  if (sinTelefono && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
+  if (!paraElDia) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
+    return;
+  }
+  if (!canal) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Elegí el canal de venta (Local / Redes con envío / Redes retiro).</div>`;
+    return;
+  }
+  if (canal === 'LOCAL' && /(env[ií]o|enviar|correo|andreani|encomienda)/i.test(trabajo)) {
+    if (!confirm('El trabajo menciona un ENVÍO pero el canal dice LOCAL.\n\n¿Seguro que es LOCAL?\n(Cancelar para corregirlo)')) {
+      msgBox.innerHTML = `<div class="msg msg-error">Revisá el canal: si va por correo, elegí "Redes — con envío".</div>`;
+      return;
+    }
+  }
 
   // Si el trabajo dice "igual que la muestra" / "foto whatsapp" (o variantes,
   // incluso con errores de tipeo tipo "mustra" o "wasap"), es obligatorio
@@ -1801,7 +1846,7 @@ async function guardarNuevaEntrada() {
   // 1) Buscar o crear el cliente (con aviso si hay uno muy parecido ya cargado)
   let clienteId;
   try {
-    clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, telefono);
+    clienteId = await buscarOCrearCliente(nombreCliente, tipoCliente, telNormalizado);
   } catch (errCliente) {
     msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
     return;
@@ -1936,10 +1981,13 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
   document.getElementById('ne-destino').value = '';
-  document.getElementById('ne-para-el-dia').value = '';
+  document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
+  mostrarFechaTaller();
+  document.getElementById('ne-canal').value = '';
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
+  document.getElementById('ne-sin-telefono').checked = false;
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-tipo-producto-busqueda').value = '';
   document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
@@ -2020,7 +2068,7 @@ function armarHtmlComprobante(c) {
 
   // QR único de la copia cliente: abre la app con el N° de sobre.
   // Si lo lee el equipo (con sesión iniciada) lleva directo al sobre; si lo abre el cliente, ve el botón para consultar por su pedido.
-  const baseApp = (window.location.origin && window.location.origin.indexOf('http') === 0) ? window.location.origin : 'https://tandem-v2-prueba.vercel.app';
+  const baseApp = 'https://pedidos.tandemjoyas.com'; // link público para clientes (QR y WhatsApp)
   const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
   const bloqueQr = qrSobreSvg
     ? `<div class="qrbox">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>`
@@ -2059,7 +2107,8 @@ function armarHtmlComprobante(c) {
       ${fila('Atendió', c.vendedora)}
       ${fila('Canal', canales[c.canal] || c.canal)}
       ${trabajo}
-      ${fila('Entregar el', fechaIsoALinda(c.paraElDia))}
+      ${fila('Taller: listo el', fechaIsoALinda(fechaTaller(c.paraElDia)))}
+      ${fila('Cliente retira', fechaIsoALinda(c.paraElDia))}
       ${bloqueFotos}
       ${datosLocal}
       <div class="nota" style="text-align:center; margin-top:6px;">Abrochar este papel al sobre del trabajo.${fotosExtra > 0 ? ' (+' + fotosExtra + ' foto' + (fotosExtra > 1 ? 's' : '') + ' más en el sistema)' : ''}</div>
@@ -3956,6 +4005,28 @@ function fechaHoyISO() {
 // Suma "dias" días hábiles (de lunes a viernes, sin contar sábados ni domingos)
 // a partir de una fecha ISO ("2026-09-04"). Se usa para calcular sola la fecha
 // que se le pide al taller que tenga listo el sobre (5 días hábiles de margen).
+// El taller tiene que tener el trabajo listo 2 días hábiles ANTES de la fecha que se le da al cliente.
+function fechaTaller(fechaClienteISO) {
+  if (!fechaClienteISO) return null;
+  const p = fechaClienteISO.split('-').map(Number);
+  const f = new Date(p[0], p[1] - 1, p[2]);
+  let restados = 0;
+  while (restados < 2) {
+    f.setDate(f.getDate() - 1);
+    const dia = f.getDay();
+    if (dia !== 0 && dia !== 6) restados++;
+  }
+  const hoy = fechaHoyISO();
+  const iso = f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+  return iso < hoy ? hoy : iso;
+}
+function mostrarFechaTaller() {
+  const box = document.getElementById('ne-fecha-taller');
+  const v = document.getElementById('ne-para-el-dia').value;
+  if (box) box.innerHTML = v ? '🔧 El taller lo tiene que tener listo el <b>' + fechaCortaAR(fechaTaller(v)) + '</b> (2 días hábiles antes, automático)' : '';
+}
+window.mostrarFechaTaller = mostrarFechaTaller;
+
 function sumarDiasHabiles(fechaISO, dias) {
   const partes = fechaISO.split('-').map(Number);
   const fecha = new Date(partes[0], partes[1] - 1, partes[2]);
@@ -5686,7 +5757,7 @@ window.guardarVentaDirecta = guardarVentaDirecta;
   try {
     const guardada = localStorage.getItem('tandem_sesion');
     // Sin sesión del equipo en este celu = es un cliente mirando su comprobante.
-    if (!guardada && window._sobreDeQR) { pantallaClienteSobre(window._sobreDeQR); return; }
+    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR); return; }
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
