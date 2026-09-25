@@ -3626,7 +3626,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -3748,6 +3748,7 @@ async function buscarSobreDetalle() {
       ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
+      ${s.diseno_unico ? `<div style="margin:6px 0; font-size:13px; font-weight:600; color:${s.foto_catalogo_ok ? '#2f5c3d' : '#a05a1f'};">✨ Diseño único — ${s.foto_catalogo_ok ? '✅ foto ya cargada al catálogo' : '⚠️ falta foto en el catálogo'}</div>` : ''}
       ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="pantallaEditarSobre('${s.id}')">✏️ Editar sobre</button>
