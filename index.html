@@ -2317,6 +2317,102 @@ async function reimprimirComprobante(sobreId) {
 }
 window.reimprimirComprobante = reimprimirComprobante;
 
+// NUEVO (25/09/2026): edición básica de un sobre ya cargado — cambiar el cliente (para
+// casos como nombres duplicados/mal escritos, ej. "Zipiun Joyas" en vez de "Zipiur Joyas")
+// y el total. Mauricio lo puede hacer solo, sin pedir estos cambios por chat.
+async function pantallaEditarSobre(sobreId) {
+  render(`<div class="card"><p>Cargando...</p></div>`);
+  const { data: s, error } = await sb.from('sobres')
+    .select('numero, precio_total, cliente_id, clientes(nombre)')
+    .eq('id', sobreId).single();
+  if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
+
+  render(`
+    <div class="card">
+      <h2>✏️ Editar sobre N° ${esc(s.numero)}</h2>
+
+      <label>Cliente</label>
+      <input type="hidden" id="es-cliente-id" value="${esc(s.cliente_id || '')}">
+      <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
+      <div id="es-cliente-sugerencias"></div>
+
+      <label style="margin-top:12px;">Total del sobre</label>
+      <input type="number" id="es-total" value="${s.precio_total != null ? s.precio_total : ''}" inputmode="decimal">
+
+      <div id="es-msg"></div>
+
+      <button type="button" class="btn btn-verde" style="margin-top:14px;" onclick="guardarEdicionSobre('${sobreId}', '${esc(s.numero)}')">💾 Guardar cambios</button>
+      <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="volverADetalleSobre('${esc(s.numero)}')">← Volver sin guardar</button>
+    </div>
+  `);
+}
+window.pantallaEditarSobre = pantallaEditarSobre;
+
+let _timeoutBusquedaClienteES = null;
+function buscarClienteEditarSobre() {
+  clearTimeout(_timeoutBusquedaClienteES);
+  document.getElementById('es-cliente-id').value = '';
+  const nombre = document.getElementById('es-cliente-nombre').value.trim();
+  const box = document.getElementById('es-cliente-sugerencias');
+  if (nombre.length < 2) { box.innerHTML = ''; return; }
+  _timeoutBusquedaClienteES = setTimeout(async () => {
+    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(8);
+    if (!data || data.length === 0) { box.innerHTML = '<div class="msg">Sin resultados — se puede escribir el nombre igual, pero conviene elegir uno de la lista para no crear un duplicado.</div>'; return; }
+    box.innerHTML = data.map(c => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEditarSobre(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
+        <div class="nro" style="font-size:14px;">${esc(c.nombre)}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+      </div>
+    `).join('');
+  }, 250);
+}
+window.buscarClienteEditarSobre = buscarClienteEditarSobre;
+
+function elegirClienteEditarSobre(id, nombre) {
+  document.getElementById('es-cliente-id').value = id;
+  document.getElementById('es-cliente-nombre').value = nombre;
+  document.getElementById('es-cliente-sugerencias').innerHTML = '';
+}
+window.elegirClienteEditarSobre = elegirClienteEditarSobre;
+
+async function guardarEdicionSobre(sobreId, numero) {
+  const msgBox = document.getElementById('es-msg');
+  const clienteId = document.getElementById('es-cliente-id').value || null;
+  const totalTxt = document.getElementById('es-total').value.trim();
+  const total = totalTxt === '' ? null : Number(totalTxt);
+
+  if (document.getElementById('es-cliente-nombre').value.trim() && !clienteId) {
+    msgBox.innerHTML = `<div class="msg msg-error">Elegí el cliente de la lista (tocalo) para que quede bien vinculado.</div>`;
+    return;
+  }
+
+  const cambios = { precio_total: total };
+  if (clienteId) cambios.cliente_id = clienteId;
+
+  const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${error.message}</div>`; return; }
+
+  // Mantiene los movimientos de caja de este sobre apuntando al mismo cliente
+  if (clienteId) await sb.from('movimientos_caja').update({ cliente_id: clienteId }).eq('sobre_id', sobreId);
+
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId, evento: 'EDICION',
+    detalle: 'Editado por ' + (usuarioActual ? usuarioActual.nombre : '') + (clienteId ? ' — cliente actualizado' : '') + (total != null ? ' — total: $' + total : '')
+  });
+
+  volverADetalleSobre(numero);
+}
+window.guardarEdicionSobre = guardarEdicionSobre;
+
+function volverADetalleSobre(numero) {
+  pantallaBuscarSobre();
+  setTimeout(() => {
+    const inp = document.getElementById('bs-numero');
+    if (inp) { inp.value = numero; buscarSobreDetalle(); }
+  }, 50);
+}
+window.volverADetalleSobre = volverADetalleSobre;
+
 // ============================================================
 // PANTALLA 3: Taller — sobres que todavía no bajaron a un orfebre
 // ============================================================
@@ -3593,6 +3689,7 @@ async function buscarSobreDetalle() {
       <div class="desc">${s.descripcion || ''}</div>
       ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
+      <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="pantallaEditarSobre('${s.id}')">✏️ Editar sobre</button>
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div style="font-weight:600;">${estadoDeSobre(s)}</div>
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
