@@ -365,7 +365,19 @@ function pantallaConfirmarUsuario(usuario) {
   `);
 }
 
-function confirmarSigoSiendoYo() {
+// NUEVO (25/09/2026): antes de entrar (acá o al abrir la app en el mismo día), se chequea
+// que la sesión real siga viva. Si venció durante la noche, manda a pedir el PIN de nuevo
+// en vez de mostrar el error técnico "JWT expired" recién al primer dato que se intenta leer.
+async function sesionRealValida() {
+  try {
+    const { data } = await sb.auth.getSession();
+    return !!data.session;
+  } catch (e) { return false; }
+}
+window.sesionRealValida = sesionRealValida;
+
+async function confirmarSigoSiendoYo() {
+  if (!(await sesionRealValida())) { cerrarSesion(); return; }
   try { localStorage.setItem('tandem_sesion_fecha', fechaHoyISO()); } catch (e) {}
   irAPantallaInicial();
 }
@@ -5679,7 +5691,7 @@ window.guardarVentaDirecta = guardarVentaDirecta;
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
       if (fechaSesion === fechaHoyISO()) {
-        irAPantallaInicial();
+        sesionRealValida().then(ok => ok ? irAPantallaInicial() : cerrarSesion());
       } else {
         pantallaConfirmarUsuario(usuarioActual);
       }
