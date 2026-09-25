@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Punto de Venta Tándem</title>
+<title>Punto de venta Tandem</title>
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
@@ -121,7 +121,24 @@
   .lista-sobre .desc { color: #8a8378; font-size: 13px; margin-bottom: 8px; }
   .lista-sobre select, .lista-sobre input { margin-bottom: 8px; }
   .vacio { text-align: center; color: #a39c8d; padding: 24px 10px; font-size: 14px; }
-  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .card.card-ancha { max-width: 1100px; }
+  /* Catálogo estilo Odoo: categorías como mosaicos de color y productos con foto grande */
+  .cat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
+  .cat-tile { margin-top: 0 !important; width: 100% !important; min-height: 62px; padding: 8px 6px !important; border: none !important; border-radius: 8px !important;
+    font-size: 12.5px !important; font-weight: 700; text-transform: uppercase; line-height: 1.25; color: #3a3530 !important; display: flex; align-items: center; justify-content: center; text-align: center; box-shadow: none !important; }
+  .cat-tile.btn-verde { box-shadow: inset 0 0 0 3px #2c2c2a !important; }
+  .prod-tile { background: #fff; border: 1px solid #ece5d6; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .prod-tile .prod-foto { position: relative; aspect-ratio: 1 / 1; background: #f4efe4; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+  .prod-tile .prod-foto img { width: 100%; height: 100%; object-fit: cover; }
+  .prod-tile .prod-chk { position: absolute; top: 6px; left: 6px; width: 20px !important; height: 20px; accent-color: #2f6d1f; }
+  .prod-tile .prod-edit { position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border: none; border-radius: 6px; padding: 3px 6px; font-size: 13px; cursor: pointer; }
+  .prod-tile .prod-info { padding: 7px 8px 8px; border-bottom: 4px solid #f2c94c; flex: 1; display: flex; flex-direction: column; }
+  .prod-tile .prod-nombre { font-size: 13px; font-weight: 700; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+  .prod-tile .prod-cod { font-size: 11px; color: #8a8378; margin: 2px 0 4px; }
+  .prod-tile .prod-precios { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+  .prod-tile .prod-precio { flex: 1 0 45%; margin: 0 !important; padding: 5px 3px !important; font-size: 11.5px !important; border-radius: 7px !important; border: 1px solid #d8cfbc !important; color: #2c2c2a !important; background: #fdfcf9 !important; box-shadow: none !important; }
+  .prod-tile .prod-precio.principal { flex-basis: 100%; font-size: 13px !important; background: #eef6e8 !important; border-color: #b9d6a8 !important; color: #234d0e !important; }
   .cat-grid .lista-sobre { margin-bottom: 0; padding: 10px; }
 
   /* ===== Tabla estilo Excel para Caja del Día en pantallas grandes ===== */
@@ -245,6 +262,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
     </div>`;
 }
 
@@ -293,7 +311,7 @@ async function pantallaLogin() {
   render(`
     <div class="card">
       <h1>Joyería Tándem</h1>
-      <div class="sub">Punto de Venta</div>
+      <div class="sub">Punto de venta Tandem</div>
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
       <label>Tu PIN (2 números)</label>
@@ -664,6 +682,7 @@ window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
 
 const CATEGORIAS_CATALOGO = ['Dijes', 'Anillos Fundición', 'Anillos Iniciales', 'Anillos Personalizados', 'Anillos Acero Personalizados', 'Anillos Grabados Varios', 'Composturas', 'Pulseras', 'Alianzas', 'Anillos Sellos Hombre', 'Pines-Prendedores', 'Alianzas Plata y Oro', 'Pulseras Esclavas', 'Dijes Fundición'];
 
+const COLORES_CATEGORIA = ['#b4bdf5', '#fbe7a1', '#f9d2c6', '#f6d2b3', '#f9b3b3', '#e6dcf5', '#fbe49a', '#c9dff5', '#e0bcd9', '#c9ecd0', '#fab8d6', '#f8e6a0'];
 const ICONO_CATEGORIA = {
   'Dijes': '🔶',
   'Anillos Fundición': '💍',
@@ -678,10 +697,29 @@ const ICONO_CATEGORIA = {
   'Pines-Prendedores': '📌',
   'Alianzas Plata y Oro': '🥇',
   'Pulseras Esclavas': '⛓️',
-  'Dijes Fundición': '🔶'
+  'Dijes Fundición': '🔶',
+  'Aros': '💎'
 };
 
+// NUEVO (24/09/2026): las categorías que crean las chicas desde "➕ Nueva categoría" se agregan
+// solas a la lista (antes la lista era fija y una categoría nueva, como "Aros", no aparecía).
+async function sincronizarCategoriasCatalogo() {
+  try {
+    const { data } = await sb.schema('public').from('products').select('cat').limit(5000);
+    const nuevas = [...new Set((data || []).map(p => p.cat).filter(Boolean))].filter(c => !CATEGORIAS_CATALOGO.includes(c));
+    nuevas.forEach(c => CATEGORIAS_CATALOGO.push(c));
+    return nuevas.length;
+  } catch (e) { return 0; }
+}
+
 function pantallaCatalogo() {
+  if (!window._catsSincronizadas) {
+    window._catsSincronizadas = true;
+    sincronizarCategoriasCatalogo().then(n => {
+      const b = document.getElementById('cat-buscar');
+      if (n && b && !b.value) pantallaCatalogo();
+    });
+  }
   // NUEVO (21/09/2026): al volver a armar la pantalla, los botones de categoría quedan apagados,
   // así que también se borra la categoría activa (antes quedaba "pegada" y la búsqueda por código
   // no encontraba nada porque seguía filtrando por la categoría de la vez anterior).
@@ -689,7 +727,7 @@ function pantallaCatalogo() {
   const esConsulta = !_borradorEntrada;
   render(`
     ${pintarUsuarioActual()}
-    <div class="card">
+    <div class="card card-ancha">
       <h1>💍 Catálogo</h1>
       <div class="sub">${esConsulta ? 'Consulta de precios — no carga nada a caja, sirve para pasar presupuestos' : 'Buscá por nombre o código — el precio se calcula solo con el valor del metal de hoy'}</div>
 
@@ -728,14 +766,16 @@ function pantallaCatalogo() {
       <label style="margin-top:18px; font-size:15px;">🔎 Buscar producto</label>
       <input type="text" id="cat-buscar" placeholder="Ej: anillo, dije, AI.01" oninput="buscarEnCatalogo()" style="font-size:18px; padding:16px;">
 
+      <div id="cat-bloque-categorias">
       <label style="margin-top:12px; font-size:13px;">📁 Filtrar categorías</label>
       <input type="text" id="cat-filtro-categoria" placeholder="Escribí para achicar la lista..." oninput="filtrarCategoriasCatalogo()" style="padding:10px;">
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
-        ${CATEGORIAS_CATALOGO.map(c => `
-          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria" data-nombre="${c.toLowerCase()}" style="width:auto; margin-top:0; padding:8px 12px; font-size:13px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px; line-height:1.2;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'><span id="cat-icono-${c.replace(/\s+/g, '-')}" style="font-size:32px;">${ICONO_CATEGORIA[c] || '🔹'}</span>${c}</button>
+      <div class="cat-tiles">
+        ${CATEGORIAS_CATALOGO.map((c, i) => `
+          <button type="button" id="cat-btn-${c.replace(/\s+/g, '-')}" class="btn btn-outline cat-btn-categoria cat-tile" data-nombre="${c.toLowerCase()}" style="background:${COLORES_CATEGORIA[i % COLORES_CATEGORIA.length]};" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(c)})'>${c}</button>
         `).join('')}
       </div>
-      <div id="cat-resultado" style="margin-top:10px;"></div>
+      </div>
+      <div id="cat-resultado" style="margin-top:14px;"></div>
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
@@ -1170,6 +1210,7 @@ async function guardarProductoNuevo() {
   if (cat === '__nueva__') {
     cat = document.getElementById('ap-nueva-cat-nombre').value.trim();
     if (!cat) { msgBox.innerHTML = `<div class="msg msg-error">Escribí el nombre de la nueva categoría.</div>`; return; }
+    if (!CATEGORIAS_CATALOGO.includes(cat)) CATEGORIAS_CATALOGO.push(cat);
   }
 
   if (!cod) { msgBox.innerHTML = `<div class="msg msg-error">Falta el código.</div>`; return; }
@@ -1432,37 +1473,26 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
         </button>
       `;
 
-      const foto = p.foto ? `<img src="${p.foto}" style="width:100%; max-height:130px; object-fit:contain; border-radius:8px; background:#fff; margin-bottom:8px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>` : '';
+      const codJ = JSON.stringify(p.cod);
+      const chip = (etiqueta, precio, principal) => `<button type="button" class="btn prod-precio${principal ? ' principal' : ''}"
+          onclick='elegirProductoCatalogo(${codJ}, ${JSON.stringify(p.cat)}, ${JSON.stringify(p.descripcion)}, ${Math.round(precio)}, ${JSON.stringify(etiqueta)})'>${etiqueta} $${Math.round(precio).toLocaleString('es-AR')}</button>`;
+      let precios;
+      if (tienePrecioFijo) precios = chip('Precio', Number(p.precio_fijo), true);
+      else if (tieneMayorMenor) precios = (Number(p.precio_menor) > 0 ? chip('Menor', Number(p.precio_menor), true) : '') + (Number(p.precio_mayor) > 0 ? chip('Mayor', Number(p.precio_mayor)) : '');
+      else precios = chip('Menor', menor, true) + chip('Redes', redes) + chip('Mayor', mayor) + chip('Zipiur', zipiur);
 
       return `
-        <div class="lista-sobre">
-          ${p.foto ? `
-            <label style="display:flex; align-items:center; gap:6px; font-weight:400; font-size:12px; margin-bottom:4px;">
-              <input type="checkbox" class="cat-chk-compartir" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onchange="actualizarBarraCompartir()" style="width:auto;">
-              Elegir para enviar
-            </label>
-          ` : ''}
-          ${foto}
-          <div class="nro" style="font-size:13px; cursor:pointer;" onclick='pantallaDetalleProducto(${JSON.stringify(p.cod)})'>${p.descripcion} ${p.medidas ? '(' + p.medidas + ')' : ''}</div>
-          <div class="cli" style="font-size:11.5px;">${p.cat} · cód. ${p.cod}${(tienePrecioFijo || tieneMayorMenor) ? '' : '<br>M.Obra: $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
-          ${tienePrecioFijo ? `
-            <div style="display:grid; grid-template-columns: 1fr; gap:4px;">
-              ${boton('Precio', Number(p.precio_fijo))}
-            </div>
-          ` : tieneMayorMenor ? `
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-              ${Number(p.precio_mayor) > 0 ? boton('Mayor', Number(p.precio_mayor)) : ''}
-              ${Number(p.precio_menor) > 0 ? boton('Menor', Number(p.precio_menor)) : ''}
-            </div>
-          ` : `
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-            ${boton('Zipiur', zipiur)}
-            ${boton('Mayor', mayor)}
-            ${boton('Redes', redes)}
-            ${boton('Menor', menor)}
+        <div class="prod-tile">
+          <div class="prod-foto" onclick='pantallaDetalleProducto(${codJ})'>
+            ${p.foto ? `<img src="${p.foto}" loading="lazy" alt="">` : (ICONO_CATEGORIA[p.cat] || '💍')}
+            ${p.foto ? `<input type="checkbox" class="prod-chk cat-chk-compartir" title="Elegir para enviar" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onclick="event.stopPropagation()" onchange="actualizarBarraCompartir()">` : ''}
+            <button type="button" class="prod-edit" title="Editar" onclick='event.stopPropagation(); pantallaEditarProducto(${codJ})'>✏️</button>
           </div>
-          `}
-          <button type="button" class="btn btn-outline" style="margin-top:6px; padding:6px; font-size:11.5px;" onclick='pantallaEditarProducto(${JSON.stringify(p.cod)})'>✏️ Editar</button>
+          <div class="prod-info">
+            <div class="prod-nombre" onclick='pantallaDetalleProducto(${codJ})'>${p.descripcion}${p.medidas ? ' (' + p.medidas + ')' : ''}</div>
+            <div class="prod-cod">${p.cod}${(tienePrecioFijo || tieneMayorMenor) ? '' : ' · M.O. $' + (Number(p.labor) || 0).toLocaleString('es-AR')}</div>
+            <div class="prod-precios">${precios}</div>
+          </div>
         </div>
       `;
     }).join('') + `</div>`;
@@ -1800,15 +1830,27 @@ async function guardarNuevaEntrada() {
     return;
   }
   // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
-  const sinTelefono = document.getElementById('ne-sin-telefono').checked;
-  const telNormalizado = sinTelefono ? '' : normalizarTelefonoAR(telefono);
+  // Mayoristas y talleres: NUNCA se carga el teléfono de SU cliente final (ellos son los dueños de ese
+  // cliente). El sobre queda con el teléfono del mayorista y no sale ningún aviso automático.
+  const esMayoristaOTaller = tipoCliente === 'MAYORISTA' || tipoCliente === 'TALLER';
+  if (esMayoristaOTaller && normalizarTelefonoAR(telefono)) {
+    const { data: cliMay } = await sb.from('clientes').select('telefono').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    const telMay = cliMay ? normalizarTelefonoAR(cliMay.telefono) : '';
+    if (telMay !== normalizarTelefonoAR(telefono)) {
+      alert('⚠️ SOBRE DE MAYORISTA / TALLER\n\nNo cargues el teléfono del cliente final: ese cliente es del mayorista, no nuestro.\n\nBorrá el teléfono (o dejá el del mayorista) y, si hace falta, poné el nombre del cliente final en la descripción del trabajo.');
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ En sobres de mayorista/taller no se carga el teléfono del cliente final.</div>`;
+      return;
+    }
+  }
+  const sinTelefono = document.getElementById('ne-sin-telefono').checked || esMayoristaOTaller;
+  const telNormalizado = normalizarTelefonoAR(telefono);
   if (!sinTelefono && !telNormalizado) {
     alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
     return;
   }
   document.getElementById('ne-telefono').value = telNormalizado;
-  if (sinTelefono && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
+  if (sinTelefono && !esMayoristaOTaller && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
   if (!paraElDia) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
     return;
@@ -2069,7 +2111,7 @@ function armarHtmlComprobante(c) {
   // QR único de la copia cliente: abre la app con el N° de sobre.
   // Si lo lee el equipo (con sesión iniciada) lleva directo al sobre; si lo abre el cliente, ve el botón para consultar por su pedido.
   const baseApp = 'https://pedidos.tandemjoyas.com'; // link público para clientes (QR y WhatsApp)
-  const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero)));
+  const qrSobreSvg = qrSvgComprobante(baseApp + '/?s=' + encodeURIComponent(String(c.numero) + (c.codigo ? '-' + c.codigo : '')));
   const bloqueQr = qrSobreSvg
     ? `<div class="qrbox">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>`
     : '';
@@ -2201,6 +2243,12 @@ function prepararFotosComprobante(fotos) {
 }
 
 async function imprimirComprobanteObjeto(c) {
+  if (!c.codigo) {
+    try {
+      const { data: cod } = await sb.from('sobres').select('codigo_publico').eq('numero', normalizarSobre(c.numero)).maybeSingle();
+      c.codigo = cod ? cod.codigo_publico : '';
+    } catch (e) { c.codigo = ''; }
+  }
   let fotos = [];
   try { fotos = await prepararFotosComprobante(c.fotos); } catch (e) { fotos = []; }
   const anterior = document.getElementById('iframe-comprobante');
@@ -3196,7 +3244,7 @@ window.abrirSobreDesdeQR = abrirSobreDesdeQR;
 // NUEVO (21/09/2026): además del botón de WhatsApp, esta pantalla ahora muestra el
 // estado real del sobre (en proceso / en taller / listo / retirado) y, si tiene saldo
 // pendiente, cuánto es — así el cliente lo ve al toque, sin tener que escribir.
-async function pantallaClienteSobre(numero) {
+async function pantallaClienteSobre(numero, codigo) {
   const link = linkWhatsApp(WHATSAPP_LOCAL, 'Hola, consulto por mi sobre N° ' + numero);
   const cabecera = `
       <div style="font-family:Georgia,'Times New Roman',serif; font-size:32px; font-weight:700; letter-spacing:2px;">TANDEM</div>
@@ -3215,7 +3263,7 @@ async function pantallaClienteSobre(numero) {
   // de la base — ya no se leen las tablas de sobres/movimientos_caja directo desde afuera).
   let fila = null;
   try {
-    const { data } = await sb.rpc('estado_sobre_publico', { p_numero: numero });
+    const { data } = await sb.rpc('estado_sobre_publico', { p_numero: numero, p_codigo: codigo || '' });
     fila = (data && data[0]) || null;
   } catch (e) { fila = null; }
 
@@ -3265,7 +3313,7 @@ window.pantallaClienteSobre = pantallaClienteSobre;
 // Saca el N° de sobre de lo que leyó el QR: el link nuevo (…/?s=33837) o un número suelto (comprobantes anteriores).
 function numeroDesdeQR(texto) {
   const t = String(texto || '').trim();
-  try { const s = new URL(t).searchParams.get('s'); if (s) return normalizarSobre(s); } catch (e) {}
+  try { const s = new URL(t).searchParams.get('s'); if (s) return normalizarSobre(s.split('-')[0]); } catch (e) {}
   const m = t.match(/[?&]s=(\d+)/);
   if (m) return normalizarSobre(m[1]);
   return t;
@@ -5083,6 +5131,50 @@ function mesActualISO() {
   return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
 }
 
+// ============================================================
+// NUEVO (24/09/2026): bandeja de salida de WhatsApp. La base anota sola (trigger) qué aviso
+// corresponde a cada sobre de cliente por menor: al cargarlo, al marcarlo listo y al despachar
+// un envío. Mientras Meta no apruebe las plantillas, NO se manda nada: acá se ve qué saldría.
+// ============================================================
+const LINK_PEDIDOS = 'https://pedidos.tandemjoyas.com/?s=';
+function textoPlantillaWhatsapp(m) {
+  const nombre = m.nombre_corto || 'cliente';
+  const plata = n => '$' + Number(n || 0).toLocaleString('es-AR');
+  if (m.plantilla === 'sobre_ingresado') {
+    return `Hola ${nombre}, recibimos tu trabajo en Tándem Joyas 💍\n\n📦 Sobre N° ${m.numero}\n🛠️ Trabajo: ${m.trabajo_corto}\n📅 Fecha estimada: ${m.para_el_dia ? fechaCortaAR(m.para_el_dia) : '—'}\n\nGuardá este número para consultar el estado de tu pedido. Te avisamos por acá cuando esté listo.`;
+  }
+  if (m.plantilla === 'trabajo_listo') {
+    return `[foto del trabajo]\nHola ${nombre}, ¡tu trabajo ya está listo! ✨\n\n📦 Sobre N° ${m.numero}\n💰 Saldo a abonar: ${plata(m.saldo)}\n\nPodés retirarlo en Vélez Sarsfield 156, Córdoba. Cualquier consulta, respondé este mensaje.`;
+  }
+  return `[foto del trabajo]\nHola ${nombre}, tu pedido ya salió 🚚\n\n📦 Sobre N° ${m.numero}\nEnviado por Correo Argentino.\n\nTe llega en los próximos días. Cualquier consulta, respondé este mensaje.`;
+}
+
+async function pantallaWhatsappSalida() {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  render(`
+    <div class="card">
+      <h2>📤 WhatsApp — mensajes que saldrían</h2>
+      <div class="sub">Todavía NO se envían: están esperando que Meta apruebe las plantillas.</div>
+      <div id="ws-resumen" style="margin-top:10px;"></div>
+      <div id="ws-lista" style="margin-top:10px;">Cargando...</div>
+    </div>`);
+  const { data, error } = await sb.from('whatsapp_salida_vista').select('*').order('created_at', { ascending: false }).limit(60);
+  const box = document.getElementById('ws-lista');
+  if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  if (!data || !data.length) { box.innerHTML = '<div class="vacio">Todavía no hay mensajes. Se van a ir sumando con cada sobre nuevo.</div>'; return; }
+  const sinTel = data.filter(m => !m.tiene_telefono).length;
+  const etiquetas = { sobre_ingresado: '📥 Sobre ingresado', trabajo_listo: '✨ Trabajo listo', envio_despachado: '🚚 Envío despachado' };
+  document.getElementById('ws-resumen').innerHTML = `<div class="msg">${data.length} mensajes · ${sinTel ? '⚠️ ' + sinTel + ' sin teléfono (no llegarían)' : '✅ todos con teléfono'}</div>`;
+  box.innerHTML = data.map(m => `
+    <div style="border:1px solid #e5dfd3; border-radius:10px; padding:10px; margin-bottom:10px; ${m.tiene_telefono ? '' : 'background:#fbeeea;'}">
+      <div style="display:flex; justify-content:space-between; font-size:13px;"><b>${etiquetas[m.plantilla] || m.plantilla}</b><span>${new Date(m.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div style="font-size:13px; color:#555; margin:4px 0;">${escaparHtmlComprobante(m.cliente || '')} · ${m.tiene_telefono ? '📱 ' + m.telefono : '⚠️ SIN TELÉFONO'}</div>
+      <div style="white-space:pre-wrap; background:#e7f6e0; border-radius:8px; padding:8px; font-size:13px;">${escaparHtmlComprobante(textoPlantillaWhatsapp(m))}</div>
+      <div style="font-size:12px; margin-top:6px;">🔗 Botón "Ver mi pedido": <a href="${LINK_PEDIDOS + m.link_param}" target="_blank">${LINK_PEDIDOS + m.link_param}</a></div>
+    </div>`).join('');
+}
+window.pantallaWhatsappSalida = pantallaWhatsappSalida;
+
 function pantallaReportes() {
   if (!usuarioActual || usuarioActual.rol !== 'ADMIN') {
     render(`
@@ -5751,13 +5843,15 @@ window.guardarVentaDirecta = guardarVentaDirecta;
 (function iniciarApp() {
   // Link del QR del comprobante: …/?s=NUMERO
   try {
-    const s = new URLSearchParams(window.location.search).get('s') || '';
-    window._sobreDeQR = /^\d{1,9}$/.test(s.trim()) ? normalizarSobre(s) : '';
-  } catch (e) { window._sobreDeQR = ''; }
+    const s = (new URLSearchParams(window.location.search).get('s') || '').trim();
+    const partes = s.split('-');
+    window._sobreDeQR = /^\d{1,9}$/.test(partes[0]) ? normalizarSobre(partes[0]) : '';
+    window._codigoDeQR = (partes[1] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  } catch (e) { window._sobreDeQR = ''; window._codigoDeQR = ''; }
   try {
     const guardada = localStorage.getItem('tandem_sesion');
     // Sin sesión del equipo en este celu = es un cliente mirando su comprobante.
-    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR); return; }
+    if (!guardada && window._sobreDeQR) { document.title = 'Tándem Joyas — Tu pedido'; pantallaClienteSobre(window._sobreDeQR, window._codigoDeQR); return; }
     if (guardada) {
       usuarioActual = JSON.parse(guardada);
       const fechaSesion = localStorage.getItem('tandem_sesion_fecha');
