@@ -540,7 +540,12 @@ function pantallaNuevaEntrada() {
       </select>
 
       <label>Trabajo / descripción</label>
-      <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena">
+      <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena" oninput="detectarDisenoUnico()">
+
+      <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+        <input type="checkbox" id="ne-diseno-unico" style="width:auto; margin:0;">
+        ✨ Diseño único / personalizado (no sale sin foto para el catálogo)
+      </label>
 
       <label>📅 Fecha de entrega AL CLIENTE (se puede cambiar)</label>
       <input type="date" id="ne-para-el-dia" onchange="mostrarFechaTaller()">
@@ -1791,6 +1796,15 @@ function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
 }
 window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
+// NUEVO (25/09/2026): tilda solo "Diseño único" si el trabajo menciona sello, escudo,
+// logo, personalizado, etc. — la vendedora puede sacarlo o ponerlo a mano después igual.
+const PALABRAS_DISENO_UNICO = /sello|escudo|logo|personalizad|instituci|policía|policia|gendarme|prefectura|ejercito|ejército|marina|bomberos|club|escuela|colegio/i;
+function detectarDisenoUnico() {
+  const trabajo = document.getElementById('ne-trabajo').value;
+  document.getElementById('ne-diseno-unico').checked = PALABRAS_DISENO_UNICO.test(trabajo);
+}
+window.detectarDisenoUnico = detectarDisenoUnico;
+
 // Deja el teléfono como 10 números (código de área sin 0 + número sin 15). Devuelve '' si no se puede.
 function normalizarTelefonoAR(tel) {
   let d = String(tel || '').replace(/\D/g, '');
@@ -1907,7 +1921,8 @@ async function guardarNuevaEntrada() {
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
       foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
       para_el_dia: paraElDia,
-      canal: canal
+      canal: canal,
+      diseno_unico: document.getElementById('ne-diseno-unico').checked
     })
     .select('id')
     .single();
@@ -2414,6 +2429,167 @@ function volverADetalleSobre(numero) {
 window.volverADetalleSobre = volverADetalleSobre;
 
 // ============================================================
+// NUEVO (25/09/2026): ficha corta para cargar al catálogo la foto de un diseño único,
+// paso obligatorio antes de marcar "Listo" o de cobrar/entregar (Retiro). Se abre la
+// cámara directo (un toque), y la ficha que sigue es corta a propósito: nombre, precio
+// y material se completan a mano (varían mucho de un diseño a otro), no se auto-completan.
+// ============================================================
+function pantallaFichaCatalogo(sobreId, numero, modo, extra) {
+  render(`
+    <div class="card">
+      <h1>📸 Foto para el catálogo</h1>
+      <div class="sub">Sobre N° ${esc(numero)} — diseño único. Esto es obligatorio antes de ${modo === 'listo' ? 'marcarlo como Listo' : 'cobrarlo/entregarlo'}.</div>
+
+      <input type="file" id="fc-foto" accept="image/*" capture="environment" style="display:none;" onchange="previsualizarFotoFicha()">
+      <button type="button" class="btn btn-oro" onclick="document.getElementById('fc-foto').click()">📷 Sacar foto</button>
+      <div id="fc-foto-preview"></div>
+
+      <label>Categoría</label>
+      <select id="fc-categoria">
+        <option value="Anillos Personalizados">Anillos Personalizados (plata / plata y oro)</option>
+        <option value="Anillos Acero Personalizados">Anillos Acero Personalizados</option>
+        <option value="Pines-Prendedores">Pines-Prendedores</option>
+      </select>
+
+      <label>Nombre del modelo</label>
+      <input type="text" id="fc-nombre" placeholder="Ej: Escudo Policía Córdoba" oninput="buscarModeloExistente()" autocomplete="off">
+      <div id="fc-nombre-sugerencias"></div>
+      <input type="hidden" id="fc-cod-existente" value="">
+      <div id="fc-existente-msg"></div>
+
+      <label>Material</label>
+      <select id="fc-material">
+        <option value="PLATA">Plata</option>
+        <option value="PLATA Y ORO">Plata y oro</option>
+        <option value="ACERO">Acero</option>
+      </select>
+
+      <label>Precio</label>
+      <input type="number" id="fc-precio" placeholder="0">
+
+      <div id="fc-msg"></div>
+      <button type="button" class="btn btn-verde" style="margin-top:10px;" onclick='guardarFichaCatalogo(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${JSON.stringify(modo)}, ${JSON.stringify(extra || {})})'>💾 Guardar y continuar</button>
+    </div>
+  `);
+}
+window.pantallaFichaCatalogo = pantallaFichaCatalogo;
+
+function previsualizarFotoFicha() {
+  const archivo = document.getElementById('fc-foto').files[0];
+  const box = document.getElementById('fc-foto-preview');
+  if (!archivo) { box.innerHTML = ''; return; }
+  const url = URL.createObjectURL(archivo);
+  box.innerHTML = `<img src="${url}" style="max-width:180px; border-radius:8px; margin-top:8px;">`;
+}
+window.previsualizarFotoFicha = previsualizarFotoFicha;
+
+// NUEVO (25/09/2026): si el modelo ya existe en el catálogo (ej. "Armada Plata y Oro" que
+// ya se hizo antes), lo reutiliza en vez de crear una ficha duplicada cada vez.
+let _timeoutBusquedaModeloFC = null;
+function buscarModeloExistente() {
+  clearTimeout(_timeoutBusquedaModeloFC);
+  document.getElementById('fc-cod-existente').value = '';
+  document.getElementById('fc-existente-msg').innerHTML = '';
+  const nombre = document.getElementById('fc-nombre').value.trim();
+  const box = document.getElementById('fc-nombre-sugerencias');
+  if (nombre.length < 3) { box.innerHTML = ''; return; }
+  _timeoutBusquedaModeloFC = setTimeout(async () => {
+    const { data } = await sb.schema('public').from('products').select('cod, descripcion, material, precio_fijo').ilike('descripcion', '%' + nombre + '%').limit(6);
+    if (!data || data.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div style="font-size:12px; color:#8a8378; margin-top:4px;">¿Ya está cargado? Tocá si es el mismo:</div>` + data.map(p => `
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirModeloExistente(${JSON.stringify(p.cod)}, ${JSON.stringify(p.descripcion)})'>
+        <div class="nro" style="font-size:14px;">${esc(p.descripcion)}</div>
+        <div class="cli" style="font-size:12px;">${esc(p.material || '')}${p.precio_fijo ? ' · $' + Number(p.precio_fijo).toLocaleString('es-AR') : ''}</div>
+      </div>
+    `).join('');
+  }, 300);
+}
+window.buscarModeloExistente = buscarModeloExistente;
+
+function elegirModeloExistente(cod, descripcion) {
+  document.getElementById('fc-cod-existente').value = cod;
+  document.getElementById('fc-nombre').value = descripcion;
+  document.getElementById('fc-nombre-sugerencias').innerHTML = '';
+  document.getElementById('fc-existente-msg').innerHTML = `<div class="msg msg-ok">✅ Se va a usar el modelo ya cargado — no se crea uno nuevo.</div>`;
+}
+window.elegirModeloExistente = elegirModeloExistente;
+
+async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
+  const msgBox = document.getElementById('fc-msg');
+  const archivoFoto = document.getElementById('fc-foto').files[0];
+  const nombre = document.getElementById('fc-nombre').value.trim();
+  const precio = parseFloat(document.getElementById('fc-precio').value) || null;
+  const material = document.getElementById('fc-material').value;
+  const categoria = document.getElementById('fc-categoria').value;
+  const codExistente = document.getElementById('fc-cod-existente').value;
+
+  if (!nombre) { msgBox.innerHTML = `<div class="msg msg-error">Falta el nombre del modelo.</div>`; return; }
+
+  if (codExistente) {
+    msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  } else {
+    if (!archivoFoto) { msgBox.innerHTML = `<div class="msg msg-error">Falta sacar la foto (o elegir un modelo ya cargado de la lista).</div>`; return; }
+    if (!precio) { msgBox.innerHTML = `<div class="msg msg-error">Falta el precio.</div>`; return; }
+
+    msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+
+    const foto = await archivoAFotoComprimida(archivoFoto);
+    const { error: errProd } = await sb.schema('public').from('products').insert({
+      id: 'P' + Date.now(),
+      cod: 'S' + numero,
+      cat: categoria,
+      descripcion: nombre,
+      material: material,
+      precio_fijo: precio,
+      foto: foto
+    });
+    if (errProd) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar en el catálogo: ${errProd.message}</div>`; return; }
+  }
+
+  await sb.from('sobres').update({ foto_catalogo_ok: true }).eq('id', sobreId);
+  await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'FOTO CATALOGO', detalle: (codExistente ? 'Vinculado a modelo ya cargado' : 'Cargada nueva foto') + ' por ' + usuarioActual.nombre + ' — "' + nombre + '"' });
+
+  // Ahora sí, se completa lo que había quedado frenado (Listo, o Retiro/cobro).
+  if (modo === 'listo') {
+    const cambios = { listo: new Date().toISOString(), controlado_por: usuarioActual.nombre };
+    if (extra && extra.precio) cambios.precio_total = extra.precio;
+    await sb.from('sobres').update(cambios).eq('id', sobreId);
+    await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'LISTO PARA RETIRAR', detalle: 'Controlado por ' + usuarioActual.nombre });
+    render(`<div class="card"><p class="msg msg-ok">✅ Foto cargada y sobre ${esc(numero)} marcado como listo.</p><button class="btn btn-outline" onclick="pantallaTaller()">← Volver a Taller</button></div>`);
+  } else if (modo === 'retiro') {
+    const { saldo, tipoCliente, nombreCliente, telefonoCliente, medioPago } = extra;
+    const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
+    const montoCobrado = esCuentaCorriente ? 0 : saldo;
+
+    const { data: sobreData } = await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', sobreId).select('cliente_id').single();
+
+    if (montoCobrado > 0) {
+      await sb.from('movimientos_caja').insert({
+        vendedora: usuarioActual.nombre, descripcion: 'cobro saldo sobre ' + numero, ingresa_egresa: 'INGRESA',
+        tipo_cliente: tipoCliente, medio_pago: medioPago, monto: montoCobrado,
+        cliente_id: sobreData ? sobreData.cliente_id : null, sobre_id: sobreId
+      });
+    }
+
+    const detalle = esCuentaCorriente ? 'Se lo llevó, queda en cuenta corriente' : (montoCobrado > 0 ? 'Retirado y cobrado $' + montoCobrado : 'Retirado, sin saldo pendiente');
+    await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'RETIRADO', detalle: detalle + ' (entregó: ' + usuarioActual.nombre + ')' });
+
+    const mensajeWa = esCuentaCorriente
+      ? `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu pedido N° ${numero} en Joyería Tándem fue retirado. Queda un saldo de $${saldo.toLocaleString('es-AR')} en tu cuenta corriente. 💍`
+      : `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu pedido N° ${numero} en Joyería Tándem fue retirado y pagado correctamente. ¡Gracias por tu confianza! 💍`;
+
+    render(`
+      <div class="card">
+        <p class="msg msg-ok">✅ Foto cargada y sobre ${esc(numero)} retirado.</p>
+        ${botonWhatsApp(telefonoCliente, mensajeWa)}
+        <button class="btn btn-outline" style="margin-top:8px;" onclick="pantallaRetiro()">← Volver a Retiro</button>
+      </div>
+    `);
+  }
+}
+window.guardarFichaCatalogo = guardarFichaCatalogo;
+
+// ============================================================
 // PANTALLA 3: Taller — sobres que todavía no bajaron a un orfebre
 // ============================================================
 function pantallaTaller() {
@@ -2751,6 +2927,17 @@ async function marcarListo(sobreId, numero) {
     precio = items.reduce((acc, it) => acc + it.precio, 0);
   }
 
+  // NUEVO (25/09/2026): un diseño único no puede pasar a "Listo" sin su foto cargada
+  // al catálogo. Se chequea acá, justo antes del paso final (no aplica a Retorno/Deriva).
+  const { data: chequeoDU } = await sb.from('sobres').select('diseno_unico, foto_catalogo_ok').eq('id', sobreId).single();
+  if (chequeoDU && chequeoDU.diseno_unico && !chequeoDU.foto_catalogo_ok) {
+    msgBox.innerHTML = `
+      <div class="msg msg-error">⚠️ Es un diseño único — falta la foto para el catálogo antes de pasar a Listo.</div>
+      <button type="button" class="btn btn-oro" style="margin-top:8px;" onclick='pantallaFichaCatalogo(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, "listo", ${JSON.stringify({ precio: precio })})'>📸 Sacar foto ahora</button>
+    `;
+    return;
+  }
+
   const cambios = { listo: new Date().toISOString(), controlado_por: usuarioActual.nombre };
   if (precio) cambios.precio_total = precio;
 
@@ -2907,6 +3094,17 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
   const medioPago = document.getElementById('medio-' + sobreId).value;
   const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
   const montoCobrado = esCuentaCorriente ? 0 : saldo;
+
+  // NUEVO (25/09/2026): un diseño único no se puede cobrar/entregar sin su foto en el
+  // catálogo — sea que lo retiren en el local o se despache por envío.
+  const { data: chequeoDU } = await sb.from('sobres').select('diseno_unico, foto_catalogo_ok').eq('id', sobreId).single();
+  if (chequeoDU && chequeoDU.diseno_unico && !chequeoDU.foto_catalogo_ok) {
+    msgBox.innerHTML = `
+      <div class="msg msg-error">⚠️ Es un diseño único — falta la foto para el catálogo antes de cobrar/entregar.</div>
+      <button type="button" class="btn btn-oro" style="margin-top:8px;" onclick='pantallaFichaCatalogo(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, "retiro", ${JSON.stringify({ saldo, tipoCliente, nombreCliente, telefonoCliente, medioPago })})'>📸 Sacar foto ahora</button>
+    `;
+    return;
+  }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
@@ -3565,7 +3763,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -3687,6 +3885,7 @@ async function buscarSobreDetalle() {
       ` : ''}
       <div class="nro" style="font-size:18px;">#${s.numero} — ${s.clientes ? s.clientes.nombre : '(sin cliente)'}</div>
       <div class="desc">${s.descripcion || ''}</div>
+      ${s.diseno_unico ? `<div style="margin:6px 0; font-size:13px; font-weight:600; color:${s.foto_catalogo_ok ? '#2f5c3d' : '#a05a1f'};">✨ Diseño único — ${s.foto_catalogo_ok ? '✅ foto ya cargada al catálogo' : '⚠️ falta foto en el catálogo'}</div>` : ''}
       ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="pantallaEditarSobre('${s.id}')">✏️ Editar sobre</button>
