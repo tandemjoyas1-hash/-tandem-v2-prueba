@@ -1,0 +1,82 @@
+name: Proteger index.html contra regresiones
+
+# Se activa con cada push a main. Si el nuevo index.html perdió una función
+# crítica que ya existía (por ejemplo porque alguien escribió el archivo a
+# partir de una copia vieja), esto revierte solo el commit automáticamente,
+# antes de que el sitio en vivo quede roto por mucho tiempo.
+on:
+  push:
+    branches: [main]
+    paths: [index.html]
+
+permissions:
+  contents: write
+
+jobs:
+  chequear:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bajar el historial (commit actual y el anterior)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Comparar contra el commit anterior
+        id: chequeo
+        run: |
+          set -e
+          PREV=$(git rev-parse HEAD~1)
+          CURR=$(git rev-parse HEAD)
+
+          # Lista de "marcadores": funciones/textos que, una vez que existen,
+          # nunca deberían desaparecer de golpe en un solo commit. Si el commit
+          # anterior YA tenía el marcador y el nuevo NO, es señal de regresión.
+          MARCADORES=(
+            "cat-tiles"
+            "normalizarTelefonoAR"
+            "pantallaWhatsappSalida"
+            "pantallaEditarSobre"
+            "pantallaFichaCatalogo"
+            "fechaTaller"
+            "pedidos.tandemjoyas.com"
+          )
+
+          git show "$PREV:index.html" > /tmp/prev.html 2>/dev/null || { echo "sin_anterior=1" >> "$GITHUB_OUTPUT"; exit 0; }
+          cp index.html /tmp/curr.html
+
+          FALTANTES=""
+          for m in "${MARCADORES[@]}"; do
+            ANTES=$(grep -c -- "$m" /tmp/prev.html || true)
+            AHORA=$(grep -c -- "$m" /tmp/curr.html || true)
+            if [ "${ANTES:-0}" -gt 0 ] && [ "${AHORA:-0}" -eq 0 ]; then
+              FALTANTES="$FALTANTES\n - \"$m\" (estaba, ahora no)"
+            fi
+          done
+
+          # Además: si el archivo se achicó más de un 15%, es sospechoso aunque
+          # no falte ninguno de los marcadores de la lista de arriba.
+          TAM_ANTES=$(wc -c < /tmp/prev.html)
+          TAM_AHORA=$(wc -c < /tmp/curr.html)
+          UMBRAL=$(( TAM_ANTES * 85 / 100 ))
+
+          echo "faltantes<<EOF" >> "$GITHUB_OUTPUT"
+          echo -e "$FALTANTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$FALTANTES" ]; then
+            echo "regresion=1" >> "$GITHUB_OUTPUT"
+          elif [ "$TAM_AHORA" -lt "$UMBRAL" ]; then
+            echo "regresion=1" >> "$GITHUB_OUTPUT"
+            echo "achique=1 (de $TAM_ANTES a $TAM_AHORA bytes)" >> "$GITHUB_OUTPUT"
+          else
+            echo "regresion=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Revertir el commit si hay regresión
+        if: steps.chequeo.outputs.regresion == '1'
+        run: |
+          git config user.name "Tandem Sistema (protección automática)"
+          git config user.email "sistema@tandemjoyas.com"
+          git revert --no-edit HEAD
+          git push origin main
+          echo "::error::Se detectó una posible regresión y el commit se revirtió solo. Faltantes: ${{ steps.chequeo.outputs.faltantes }}"
