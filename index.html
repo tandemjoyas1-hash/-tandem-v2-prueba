@@ -239,6 +239,7 @@ window.addEventListener('popstate', () => {
     _restaurandoHistorial = true;
     app.innerHTML = _historialHTML.pop();
     _restaurandoHistorial = false;
+    if (typeof reponerCatalogoTrasVolver === 'function') reponerCatalogoTrasVolver();
   }
 });
 
@@ -686,6 +687,7 @@ function irAlCatalogoDesdeEntrada() {
     canal: document.getElementById('ne-canal').value,
     paraElDia: document.getElementById('ne-para-el-dia').value
   };
+  _catalogoEstadoGuardado = null;
   pantallaCatalogo();
 }
 window.irAlCatalogoDesdeEntrada = irAlCatalogoDesdeEntrada;
@@ -795,7 +797,8 @@ function pantallaCatalogo() {
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
-  document.getElementById('cat-buscar').focus();
+  const busquedaRestaurada = restaurarEstadoCatalogo();
+  if (!busquedaRestaurada) document.getElementById('cat-buscar').focus();
   cargarPrecioGramoActual();
   cargarIconosCategoria();
 }
@@ -902,6 +905,7 @@ window.aplicarAjusteGeneralManoObra = aplicarAjusteGeneralManoObra;
 
 // --- Editar un producto puntual (mano de obra y/o foto) ---
 async function pantallaDetalleProducto(cod) {
+  guardarEstadoCatalogo();
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
   const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).limit(1).maybeSingle();
@@ -931,6 +935,7 @@ async function pantallaDetalleProducto(cod) {
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
+      <button type="button" class="btn btn-outline" style="margin:0 0 12px 0;" onclick="pantallaCatalogo()">← Volver a los resultados</button>
       ${p.foto ? `<img src="${p.foto}" style="width:100%; max-height:320px; object-fit:contain; background:#fff; border-radius:12px;">` : ''}
       <h1 style="margin-top:14px;">${p.descripcion}</h1>
       <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
@@ -970,6 +975,7 @@ async function pantallaDetalleProducto(cod) {
 window.pantallaDetalleProducto = pantallaDetalleProducto;
 
 async function pantallaEditarProducto(cod) {
+  guardarEstadoCatalogo();
   render(`${pintarUsuarioActual()}<div class="card"><p>Cargando...</p></div>`);
 
   const { data: p, error } = await sb.schema('public').from('products').select('*').eq('cod', cod).limit(1).maybeSingle();
@@ -1281,6 +1287,7 @@ window.guardarProductoNuevo = guardarProductoNuevo;
 // Vuelve a la pantalla del catálogo y busca directo el producto por su código, para confirmar
 // que quedó bien cargado sin tener que buscarlo a mano.
 function verProductoEnCatalogo(cod) {
+  _catalogoEstadoGuardado = null;
   pantallaCatalogo();
   setTimeout(() => {
     const input = document.getElementById('cat-buscar');
@@ -1293,6 +1300,54 @@ function verProductoEnCatalogo(cod) {
 window.verProductoEnCatalogo = verProductoEnCatalogo;
 
 let _categoriaActivaCatalogo = null;
+
+// NUEVO: el catálogo recuerda la última búsqueda (letras + categoría + hasta dónde se bajó con el
+// scroll) cuando se abre un producto, y la restaura al volver. Antes la pantalla se armaba de cero
+// y había que volver a buscar para ver las otras opciones. Se descarta si pasaron más de 30 minutos.
+let _catalogoEstadoGuardado = null; // { termino, categoria, scrollY, hora }
+let _catalogoScrollPendiente = null;
+
+function guardarEstadoCatalogo() {
+  const inp = document.getElementById('cat-buscar');
+  if (!inp) return; // no estamos en el catálogo (ej: ya en el detalle): se conserva lo guardado antes
+  if (!inp.value.trim() && !_categoriaActivaCatalogo) { _catalogoEstadoGuardado = null; return; }
+  _catalogoEstadoGuardado = {
+    termino: inp.value,
+    categoria: _categoriaActivaCatalogo,
+    scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+    hora: Date.now()
+  };
+}
+window.guardarEstadoCatalogo = guardarEstadoCatalogo;
+
+// Devuelve true si restauró una búsqueda anterior.
+function restaurarEstadoCatalogo() {
+  const e = _catalogoEstadoGuardado;
+  _catalogoEstadoGuardado = null;
+  if (!e || (Date.now() - e.hora) > 30 * 60 * 1000) return false;
+  const inp = document.getElementById('cat-buscar');
+  if (!inp) return false;
+  inp.value = e.termino || '';
+  _categoriaActivaCatalogo = e.categoria || null;
+  if (_categoriaActivaCatalogo) {
+    const activo = document.getElementById('cat-btn-' + _categoriaActivaCatalogo.replace(/\s+/g, '-'));
+    if (activo) { activo.classList.remove('btn-outline'); activo.classList.add('btn-verde'); }
+  }
+  _catalogoScrollPendiente = e.scrollY || 0;
+  buscarEnCatalogo();
+  return true;
+}
+
+// Cuando se vuelve con el botón "atrás" del celular/navegador, la pantalla se restaura tal cual
+// estaba (resultados incluidos) pero el cuadro de búsqueda quedaba vacío: acá se le repone el texto.
+function reponerCatalogoTrasVolver() {
+  const inp = document.getElementById('cat-buscar');
+  const e = _catalogoEstadoGuardado;
+  if (!inp || !e) return;
+  _catalogoEstadoGuardado = null;
+  inp.value = e.termino || '';
+  window.scrollTo(0, e.scrollY || 0);
+}
 
 function buscarPorCategoriaCatalogo(cat) {
   // Si tocás la misma categoría que ya estaba activa, se desactiva (vuelve a buscar en todas)
@@ -1455,6 +1510,8 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
     const { data: productos, error } = await consulta;
 
     if (miId !== _catalogoBusquedaId) return; // llegó una búsqueda más nueva mientras esperaba, se descarta esta
+    const yScrollRestaurar = _catalogoScrollPendiente;
+    _catalogoScrollPendiente = null;
 
     if (error) throw error;
 
@@ -1516,6 +1573,10 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
 
     _fotosProductosActuales = {};
     productos.forEach(p => { if (p.foto) _fotosProductosActuales[p.cod] = p.foto; });
+    if (yScrollRestaurar) {
+      window.scrollTo(0, yScrollRestaurar);
+      setTimeout(() => window.scrollTo(0, yScrollRestaurar), 300); // por si las fotos terminan de acomodarse
+    }
   } catch (err) {
     resBox.innerHTML = `<div class="msg msg-error">No se pudo buscar: ${err.message || err}</div>`;
   }
