@@ -244,7 +244,7 @@ window.addEventListener('popstate', () => {
 
 function pintarUsuarioActual() {
   if (!usuarioActual) return '';
-  if (usuarioActual.rol === 'ADMIN') pfRefrescarBadge();
+  pfRefrescarBadge();
   return `
     <div class="usuario-actual">
       <span>👤 <strong>${usuarioActual.nombre}</strong> (${usuarioActual.rol})</span>
@@ -263,7 +263,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaListoLista()"><span class="nav-icon">🔄</span><span class="nav-label">REGRESO</span></button>
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
-      ${usuarioActual.rol === 'ADMIN' ? `<button onclick="pantallaPagosFijos()" style="position:relative;"><span class="nav-icon">💸</span><span class="nav-label">PAGOS</span><span class="pf-badge" style="position:absolute; top:2px; right:4px; background:#c0392b; color:#fff; border-radius:10px; font-size:10px; padding:1px 5px; ${_pfVencidos ? '' : 'display:none;'}">${_pfVencidos}</span></button>` : ''}
+      <button onclick="pantallaPagosFijos()" style="position:relative;"><span class="nav-icon">💸</span><span class="nav-label">PAGOS</span><span class="pf-badge" style="position:absolute; top:2px; right:4px; background:#c0392b; color:#fff; border-radius:10px; font-size:10px; padding:1px 5px; ${_pfVencidos ? '' : 'display:none;'}">${_pfVencidos}</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
     </div>`;
 }
@@ -5506,7 +5506,7 @@ window.pfMoverMes = pfMoverMes;
 // Cuenta lo vencido del mes actual (para el globito rojo del botón PAGOS). Se consulta como
 // mucho cada 5 minutos; "forzar" lo consulta ya (después de guardar un pago).
 async function pfRefrescarBadge(forzar) {
-  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  if (!usuarioActual) return;
   if (!forzar && Date.now() - _pfUltimaConsulta < 5 * 60 * 1000) return;
   _pfUltimaConsulta = Date.now();
   const ym = mesActualISO();
@@ -5541,7 +5541,8 @@ const PF_ESTILO = {
 };
 
 async function pantallaPagosFijos(mantenerMes) {
-  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  if (!usuarioActual) return;
+  const esAdmin = usuarioActual.rol === 'ADMIN';
   if (!mantenerMes || !_pfMes) _pfMes = mesActualISO();
   render(`<div class="card"><h2>💸 Pagos del mes</h2><div id="pf-cuerpo">Cargando...</div></div>`);
   const ym = _pfMes;
@@ -5583,11 +5584,11 @@ async function pantallaPagosFijos(mantenerMes) {
           <span style="font-size:12px; color:${est.color}; white-space:nowrap;">${est.txt}</span>
         </div>
         <div style="font-size:12px; color:#777; margin:2px 0;">${c.dia_vencimiento ? 'Vence ~ día ' + c.dia_vencimiento : 'Sin día fijo'}${c.medio_habitual ? ' · ' + esc(c.medio_habitual) : ''}</div>
-        ${p ? `<div style="font-size:14px; margin-top:4px;">${pfPlata(p.monto)} · pagado el ${esc(fechaCortaAR(p.fecha_pago))}${p.pagado_por ? ' · ' + esc(PF_QUIEN_TXT[p.pagado_por] || p.pagado_por) : ''}${p.nota ? '<br><span style="font-size:12px; color:#777;">📝 ' + esc(p.nota) + '</span>' : ''}</div>` : ''}
+        ${p ? `<div style="font-size:14px; margin-top:4px;">${pfPlata(p.monto)} · pagado el ${esc(fechaCortaAR(p.fecha_pago))}${p.pagado_por ? ' · ' + esc(PF_QUIEN_TXT[p.pagado_por] || p.pagado_por) : ''}${p.cargado_por ? ' · anotó ' + esc(p.cargado_por) : ''}${p.nota ? '<br><span style="font-size:12px; color:#777;">📝 ' + esc(p.nota) + '</span>' : ''}</div>` : ''}
         <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-          <button type="button" class="btn ${p ? 'btn-outline' : 'btn-oro'}" style="margin:0;" onclick="pfAbrirForm(${c.id})">${p ? '✏️ Editar' : '💰 Registrar pago'}</button>
-          ${p ? `<button type="button" class="btn btn-outline" style="margin:0;" onclick="pfDeshacer(${c.id})">↩️ Deshacer</button>` : ''}
-          <button type="button" class="btn btn-outline" style="margin:0; font-size:12px;" onclick="pfQuitarConcepto(${c.id})">🗑️ Quitar de la lista</button>
+          ${(!p || esAdmin) ? `<button type="button" class="btn ${p ? 'btn-outline' : 'btn-oro'}" style="margin:0;" onclick="pfAbrirForm(${c.id})">${p ? '✏️ Editar' : '💰 Registrar pago'}</button>` : ''}
+          ${p && esAdmin ? `<button type="button" class="btn btn-outline" style="margin:0;" onclick="pfDeshacer(${c.id})">↩️ Deshacer</button>` : ''}
+          ${esAdmin ? `<button type="button" class="btn btn-outline" style="margin:0; font-size:12px;" onclick="pfQuitarConcepto(${c.id})">🗑️ Quitar de la lista</button>` : ''}
         </div>
         <div id="pf-form-${c.id}"></div>
       </div>`;
@@ -5599,10 +5600,10 @@ async function pantallaPagosFijos(mantenerMes) {
       <b style="text-transform:capitalize;">${esc(pfNombreMes(ym))}</b>
       <button type="button" class="btn btn-outline" style="margin:0;" onclick="pfMoverMes(1)">▶</button>
     </div>
-    <div class="sub" style="text-align:center;">Pagado en el mes: <b>${pfPlata(totalPagado)}</b></div>
+    ${esAdmin ? `<div class="sub" style="text-align:center;">Pagado en el mes: <b>${pfPlata(totalPagado)}</b></div>` : ''}
     ${aviso}
     ${items || '<div class="vacio">No hay conceptos cargados.</div>'}
-    <div style="border-top:1px dashed #e5dfd3; margin-top:14px; padding-top:10px;">
+    ${esAdmin ? `<div style="border-top:1px dashed #e5dfd3; margin-top:14px; padding-top:10px;">
       <b>➕ Agregar un pago fijo</b>
       <label>Nombre</label>
       <input type="text" id="pf-nuevo-nombre" placeholder="Ej: Seguro del local" autocomplete="off">
@@ -5615,7 +5616,7 @@ async function pantallaPagosFijos(mantenerMes) {
       </select>
       <div id="pf-nuevo-msg"></div>
       <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="pfAgregarConcepto()">➕ Agregar</button>
-    </div>`;
+    </div>` : ''}`;
 }
 window.pantallaPagosFijos = pantallaPagosFijos;
 
@@ -5624,7 +5625,7 @@ function pfAbrirForm(cid) {
   const p = _pfData.pagos[cid];
   const box = document.getElementById('pf-form-' + cid);
   if (box.innerHTML) { box.innerHTML = ''; return; }
-  const quien = (p && p.pagado_por) || c.quien_habitual || '';
+  const quien = (p && p.pagado_por) || (usuarioActual.rol === 'ADMIN' ? c.quien_habitual : 'CHICAS') || '';
   box.innerHTML = `
     <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5dfd3;">
       <label>Monto</label>
@@ -5647,6 +5648,7 @@ window.pfAbrirForm = pfAbrirForm;
 async function pfGuardar(cid) {
   const c = _pfData.conceptos[cid];
   const msg = document.getElementById('pf-msg-' + cid);
+  if (usuarioActual.rol !== 'ADMIN' && _pfData.pagos[cid]) { msg.innerHTML = '<div class="msg msg-error">Ese pago ya está anotado. Si hay que corregirlo, avisale a Mauricio.</div>'; return; }
   const monto = parseFloat(document.getElementById('pf-monto-' + cid).value);
   const fecha = document.getElementById('pf-fecha-' + cid).value;
   const quien = document.getElementById('pf-quien-' + cid).value || null;
@@ -5655,7 +5657,7 @@ async function pfGuardar(cid) {
   if (!fecha) { msg.innerHTML = '<div class="msg msg-error">Falta la fecha de pago.</div>'; return; }
   msg.innerHTML = '<div class="msg">Guardando...</div>';
   const { error } = await sb.from('pagos_fijos_mes').upsert(
-    { pago_fijo_id: cid, periodo: _pfMes + '-01', monto: monto, fecha_pago: fecha, pagado_por: quien, medio: c.medio_habitual || null, nota: nota },
+    { pago_fijo_id: cid, periodo: _pfMes + '-01', monto: monto, fecha_pago: fecha, pagado_por: quien, medio: c.medio_habitual || null, nota: nota, cargado_por: usuarioActual.nombre },
     { onConflict: 'pago_fijo_id,periodo' }
   );
   if (error) { msg.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${esc(error.message)}</div>`; return; }
@@ -5665,6 +5667,7 @@ async function pfGuardar(cid) {
 window.pfGuardar = pfGuardar;
 
 async function pfDeshacer(cid) {
+  if (usuarioActual.rol !== 'ADMIN') return;
   if (!confirm('¿Sacar el pago registrado de este mes?')) return;
   const { error } = await sb.from('pagos_fijos_mes').delete().eq('pago_fijo_id', cid).eq('periodo', _pfMes + '-01');
   if (error) { alert('No se pudo: ' + error.message); return; }
@@ -5674,6 +5677,7 @@ async function pfDeshacer(cid) {
 window.pfDeshacer = pfDeshacer;
 
 async function pfAgregarConcepto() {
+  if (usuarioActual.rol !== 'ADMIN') return;
   const msg = document.getElementById('pf-nuevo-msg');
   const nombre = document.getElementById('pf-nuevo-nombre').value.trim();
   const dia = parseInt(document.getElementById('pf-nuevo-dia').value, 10) || null;
@@ -5692,6 +5696,7 @@ async function pfAgregarConcepto() {
 window.pfAgregarConcepto = pfAgregarConcepto;
 
 async function pfQuitarConcepto(cid) {
+  if (usuarioActual.rol !== 'ADMIN') return;
   const c = _pfData.conceptos[cid];
   if (!confirm('¿Sacar "' + c.nombre + '" de la lista de pagos fijos? Lo ya registrado en meses anteriores no se borra.')) return;
   const { error } = await sb.from('pagos_fijos').update({ activo: false }).eq('id', cid);
