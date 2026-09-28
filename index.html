@@ -455,16 +455,25 @@ function buscarFotoSobre() {
   _timeoutVerFoto = setTimeout(async () => {
     const { data: s, error } = await sb
       .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia, listo, fecha_salida')
       .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
     if (error) { box.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
     if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
 
-    const fechaEntregaHtml = s.para_el_dia
-      ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">🔧 Tener listo el ${fechaCortaAR(fechaTaller(s.para_el_dia))}</div><div style="text-align:center; font-size:13px; color:#777;">Cliente retira el ${fechaCortaAR(s.para_el_dia)}</div>`
-      : '';
+    // Si la fecha límite del taller ya pasó y el sobre todavía no está listo ni retirado, se muestra
+    // en rojo como ATRASADO con la fecha real (fechaTaller() la reemplaza por "hoy" cuando venció,
+    // lo que hacía parecer que el taller todavía tenía tiempo).
+    const fechaEntregaHtml = (() => {
+      if (!s.para_el_dia) return '';
+      const limiteTaller = fechaTallerSinAjustar(s.para_el_dia);
+      const atrasado = limiteTaller && limiteTaller < fechaHoyISO() && !s.listo && !s.fecha_salida;
+      const lineaTaller = atrasado
+        ? `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#b23b3b;">⚠️ Atrasado: tenía que estar listo el ${fechaCortaAR(limiteTaller)}</div>`
+        : `<div style="text-align:center; margin-top:8px; font-size:16px; font-weight:700; color:#7a5c00;">🔧 Tener listo el ${fechaCortaAR(fechaTaller(s.para_el_dia))}</div>`;
+      return lineaTaller + `<div style="text-align:center; font-size:13px; color:#777;">Cliente retira el ${fechaCortaAR(s.para_el_dia)}</div>`;
+    })();
 
     // NUEVO (05/09/2026): además de foto_referencia (la primera, vieja), se buscan TODAS las
     // fotos guardadas en tandem.fotos_sobre para este sobre (ej: mesa + laterales de un sello).
@@ -3851,9 +3860,12 @@ async function buscarSobreDetalle() {
         </div>
       `).join('')}
     </div>
+    ${(!s.foto_referencia && (!fotosExtra || fotosExtra.length === 0)) ? `<div style="font-size:13px; color:#a05a1f; margin:6px 0;">Este sobre no tiene fotos cargadas todavía.</div>` : ''}
     <div id="bs-pendientes" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px;"></div>
     <input type="file" id="bs-fotos-input" accept="image/*" style="display:none;" onchange="agregarFotoPendiente('${s.id}')">
     <button class="btn btn-outline" style="width:auto; display:inline-block; padding:10px 18px; font-size:14px; margin-top:8px;" onclick="document.getElementById('bs-fotos-input').click()">➕ Elegir foto</button>
+    <input type="file" id="bs-fotos-camara" accept="image/*" capture="environment" style="display:none;" onchange="agregarFotoPendiente('${s.id}','bs-fotos-camara')">
+    <button class="btn btn-outline" style="width:auto; display:inline-block; padding:10px 18px; font-size:14px; margin-top:8px;" onclick="document.getElementById('bs-fotos-camara').click()">📷 Sacar foto</button>
     <button id="bs-btn-subir" class="btn btn-verde" style="width:auto; padding:8px 16px; font-size:13px; display:none;" onclick="subirFotosSobre('${s.id}')">📷 Subir fotos elegidas</button>
     <div id="bs-fotos-msg"></div>
   `;
@@ -3994,8 +4006,8 @@ window.confirmarCancelarSobre = confirmarCancelarSobre;
 // vista previa, y recién al tocar "Subir fotos elegidas" se mandan todas juntas al servidor.
 window._fotosPendientes = window._fotosPendientes || [];
 
-function agregarFotoPendiente(sobreId) {
-  const input = document.getElementById('bs-fotos-input');
+function agregarFotoPendiente(sobreId, idInput) {
+  const input = document.getElementById(idInput || 'bs-fotos-input');
   const archivo = input.files && input.files[0];
   if (!archivo) return;
 
@@ -4371,6 +4383,22 @@ function fechaTaller(fechaClienteISO) {
   const iso = f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
   return iso < hoy ? hoy : iso;
 }
+// Igual que fechaTaller() pero SIN reemplazar la fecha por "hoy" cuando ya venció: devuelve la
+// fecha límite real del taller (2 días hábiles antes de la fecha del cliente).
+function fechaTallerSinAjustar(fechaClienteISO) {
+  if (!fechaClienteISO) return null;
+  const p = fechaClienteISO.split('-').map(Number);
+  const f = new Date(p[0], p[1] - 1, p[2]);
+  let restados = 0;
+  while (restados < 2) {
+    f.setDate(f.getDate() - 1);
+    const dia = f.getDay();
+    if (dia !== 0 && dia !== 6) restados++;
+  }
+  return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+}
+window.fechaTallerSinAjustar = fechaTallerSinAjustar;
+
 function mostrarFechaTaller() {
   const box = document.getElementById('ne-fecha-taller');
   const v = document.getElementById('ne-para-el-dia').value;
