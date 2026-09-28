@@ -1100,7 +1100,10 @@ async function guardarEdicionProducto(cod) {
 window.guardarEdicionProducto = guardarEdicionProducto;
 
 // --- Agregar un producto nuevo ---
-function pantallaAgregarProducto() {
+// catInicial / materialInicial: se usan al tocar "Cargar otro producto" después de guardar uno,
+// para seguir cargando en la misma categoría y con el mismo material sin volver a elegirlos.
+function pantallaAgregarProducto(catInicial, materialInicial) {
+  guardarEstadoCatalogo(); // si se viene del catálogo, "Volver al catálogo" regresa a esa misma búsqueda
   render(`
     ${pintarUsuarioActual()}
     <div class="card">
@@ -1158,10 +1161,15 @@ function pantallaAgregarProducto() {
       <button class="btn btn-outline" style="margin-top:10px;" onclick="pantallaCatalogo()">← Volver al catálogo</button>
     </div>
   `);
+  if (catInicial) {
+    const selCat = document.getElementById('ap-cat');
+    if (selCat) selCat.value = catInicial;
+  }
   sugerirCodigoNuevo();
+  const materialElegido = materialInicial || 'PLATA';
   cargarPreciosMateriales().then(mapa => {
     const sel = document.getElementById('ap-material');
-    if (sel) sel.innerHTML = Object.keys(mapa).map(id => `<option value="${id}" ${id === 'PLATA' ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('');
+    if (sel) sel.innerHTML = Object.keys(mapa).map(id => `<option value="${id}" ${id === materialElegido ? 'selected' : ''}>${mapa[id].nombre}</option>`).join('');
   });
 }
 window.pantallaAgregarProducto = pantallaAgregarProducto;
@@ -1279,6 +1287,7 @@ async function guardarProductoNuevo() {
 
   msgBox.innerHTML = `
     <div class="msg msg-ok">✅ Producto "${descripcion}" agregado.</div>
+    <button class="btn btn-verde" style="margin-top:8px;" onclick='pantallaAgregarProducto(${JSON.stringify(cat)}, ${JSON.stringify(nuevo.material)})'>➕ Cargar otro producto (misma categoría)</button>
     <button class="btn btn-outline" style="margin-top:8px;" onclick='verProductoEnCatalogo(${JSON.stringify(cod)})'>🔍 Ver el producto en el catálogo</button>
   `;
 }
