@@ -264,6 +264,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaBoletas()"><span class="nav-icon">📦</span><span class="nav-label">BOLETA</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaReportes()"><span class="nav-icon">📊</span><span class="nav-label">REPORTES</span></button>' : ''}
       <button onclick="pantallaPagosFijos()" style="position:relative;"><span class="nav-icon">💸</span><span class="nav-label">PAGOS</span><span class="pf-badge" style="position:absolute; top:2px; right:4px; background:#c0392b; color:#fff; border-radius:10px; font-size:10px; padding:1px 5px; ${_pfVencidos ? '' : 'display:none;'}">${_pfVencidos}</span></button>
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaGastos()"><span class="nav-icon">📈</span><span class="nav-label">GASTOS</span></button>' : ''}
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
     </div>`;
 }
@@ -5584,7 +5585,7 @@ async function pantallaPagosFijos(mantenerMes) {
           <span style="font-size:12px; color:${est.color}; white-space:nowrap;">${est.txt}</span>
         </div>
         <div style="font-size:12px; color:#777; margin:2px 0;">${c.dia_vencimiento ? 'Vence ~ día ' + c.dia_vencimiento : 'Sin día fijo'}${c.medio_habitual ? ' · ' + esc(c.medio_habitual) : ''}</div>
-        ${p ? `<div style="font-size:14px; margin-top:4px;">${pfPlata(p.monto)} · pagado el ${esc(fechaCortaAR(p.fecha_pago))}${p.pagado_por ? ' · ' + esc(PF_QUIEN_TXT[p.pagado_por] || p.pagado_por) : ''}${p.cargado_por ? ' · anotó ' + esc(p.cargado_por) : ''}${p.nota ? '<br><span style="font-size:12px; color:#777;">📝 ' + esc(p.nota) + '</span>' : ''}</div>` : ''}
+        ${p ? `<div style="font-size:14px; margin-top:4px;">${pfPlata(p.monto)} · pagado el ${esc(fechaCortaAR(p.fecha_pago))}${p.pagado_por ? ' · ' + esc(PF_QUIEN_TXT[p.pagado_por] || p.pagado_por) : ''}${p.cargado_por ? ' · anotó ' + esc(p.cargado_por) : ''}${p.en_caja ? ' · ya en caja' : ''}${p.nota ? '<br><span style="font-size:12px; color:#777;">📝 ' + esc(p.nota) + '</span>' : ''}</div>` : ''}
         <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
           ${(!p || esAdmin) ? `<button type="button" class="btn ${p ? 'btn-outline' : 'btn-oro'}" style="margin:0;" onclick="pfAbrirForm(${c.id})">${p ? '✏️ Editar' : '💰 Registrar pago'}</button>` : ''}
           ${p && esAdmin ? `<button type="button" class="btn btn-outline" style="margin:0;" onclick="pfDeshacer(${c.id})">↩️ Deshacer</button>` : ''}
@@ -5633,10 +5634,14 @@ function pfAbrirForm(cid) {
       <label>Fecha en que se pagó</label>
       <input type="date" id="pf-fecha-${cid}" value="${esc(p ? p.fecha_pago : fechaHoyISO())}">
       <label>¿Quién lo pagó?</label>
-      <select id="pf-quien-${cid}">
+      <select id="pf-quien-${cid}" onchange="document.getElementById('pf-encaja-${cid}').checked = (this.value === 'CHICAS')">
         <option value="">—</option>
         ${Object.keys(PF_QUIEN_TXT).map(k => `<option value="${k}" ${k === quien ? 'selected' : ''}>${PF_QUIEN_TXT[k]}</option>`).join('')}
       </select>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+        <input type="checkbox" id="pf-encaja-${cid}" style="width:auto; margin:0;" ${(p ? p.en_caja : quien === 'CHICAS') ? 'checked' : ''}>
+        Ya está cargado en la caja (así no se cuenta dos veces en GASTOS)
+      </label>
       <label>Nota (ej: comprobante pasado por WhatsApp)</label>
       <input type="text" id="pf-nota-${cid}" value="${esc((p && p.nota) || '')}" autocomplete="off">
       <div id="pf-msg-${cid}"></div>
@@ -5657,7 +5662,7 @@ async function pfGuardar(cid) {
   if (!fecha) { msg.innerHTML = '<div class="msg msg-error">Falta la fecha de pago.</div>'; return; }
   msg.innerHTML = '<div class="msg">Guardando...</div>';
   const { error } = await sb.from('pagos_fijos_mes').upsert(
-    { pago_fijo_id: cid, periodo: _pfMes + '-01', monto: monto, fecha_pago: fecha, pagado_por: quien, medio: c.medio_habitual || null, nota: nota, cargado_por: usuarioActual.nombre },
+    { pago_fijo_id: cid, periodo: _pfMes + '-01', monto: monto, fecha_pago: fecha, pagado_por: quien, medio: c.medio_habitual || null, nota: nota, cargado_por: usuarioActual.nombre, en_caja: !!((document.getElementById('pf-encaja-' + cid) || {}).checked) },
     { onConflict: 'pago_fijo_id,periodo' }
   );
   if (error) { msg.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${esc(error.message)}</div>`; return; }
@@ -5705,6 +5710,124 @@ async function pfQuitarConcepto(cid) {
   pantallaPagosFijos(true);
 }
 window.pfQuitarConcepto = pfQuitarConcepto;
+
+// ============================================================
+// NUEVO (28/09/2026): resumen mensual de gastos y ganancia aproximada del negocio. Solo ADMIN.
+// Sale de la función tandem.resumen_gastos(mes), que clasifica cada gasto por lo que dice la
+// descripción y el proveedor (el código PACKAGING de la caja se usa de comodín y no sirve para
+// clasificar). Las reglas viven en la tabla tandem.reglas_gasto: se ajustan sin tocar la app.
+// La ganancia es APROXIMADA: cuenta lo cobrado y lo pagado por caja, no lo que quedó a deber.
+// ============================================================
+let _gsMes = null;
+let _gsResumen = null;
+// Como pfPlata pero con el signo menos delante del $ (-$50.000 y no $-50.000)
+const gsPlata = n => (Number(n) < 0 ? '-' : '') + pfPlata(Math.abs(Number(n)));
+
+function gsMoverMes(delta) {
+  const [a, m] = _gsMes.split('-').map(Number);
+  const d = new Date(a, m - 1 + delta, 1);
+  _gsMes = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  pantallaGastos(true);
+}
+window.gsMoverMes = gsMoverMes;
+
+async function pantallaGastos(mantenerMes) {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  if (!mantenerMes || !_gsMes) _gsMes = mesActualISO();
+  render(`<div class="card"><h2>📈 Gastos y ganancia</h2><div id="gs-cuerpo">Cargando...</div></div>`);
+  const { data, error } = await sb.rpc('resumen_gastos', { p_mes: _gsMes + '-01' });
+  const cuerpo = document.getElementById('gs-cuerpo');
+  if (error) { cuerpo.innerHTML = `<div class="msg msg-error">${esc(error.message)}</div>`; return; }
+  _gsResumen = data;
+
+  const ventas = Number(data.ventas_total || 0);
+  const gastos = Number(data.gastos_total || 0);
+  const fijos = Number(data.fijos_fuera_caja_total || 0);
+  const ganancia = Number(data.ganancia_aprox || 0);
+  const margen = ventas > 0 ? Math.round(100 * ganancia / ventas) : 0;
+  const color = ganancia >= 0 ? '#2f5c3d' : '#a03a2a';
+  const cats = data.gastos || [];
+  const sinClas = cats.find(c => c.categoria === 'Sin clasificar');
+  const ymNombre = pfNombreMes(_gsMes);
+
+  const filaCat = (c, i) => {
+    const pct = gastos > 0 ? Math.round(100 * Number(c.total) / gastos) : 0;
+    const items = (c.items || []).map(it => `
+      <div style="display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:3px 0; border-bottom:1px solid #f0ebe0;">
+        <span>${esc(fechaCortaAR(it.fecha))} · ${esc(it.descripcion || '(sin descripción)')}<br><span style="color:#999;">${esc(it.medio || '')}</span></span>
+        <b style="white-space:nowrap;">${pfPlata(it.monto)}</b>
+      </div>`).join('');
+    return `
+      <div style="border:1px solid #e5dfd3; border-radius:10px; padding:8px 10px; margin-bottom:6px; ${c.categoria === 'Sin clasificar' ? 'background:#fff4e0;' : ''}">
+        <div style="display:flex; justify-content:space-between; gap:8px; cursor:pointer;" onclick="gsToggle(${i})">
+          <b>${esc(c.categoria)} <span style="font-weight:400; color:#999; font-size:12px;">(${c.cant})</span></b>
+          <span><b>${pfPlata(c.total)}</b> <span style="font-size:12px; color:#777;">${pct}%</span></span>
+        </div>
+        <div style="height:5px; background:#f0ebe0; border-radius:3px; margin-top:5px;"><div style="height:5px; width:${pct}%; background:#c9a44c; border-radius:3px;"></div></div>
+        <div id="gs-det-${i}" style="display:none; margin-top:6px;">${items}</div>
+      </div>`;
+  };
+
+  const medios = (data.ventas_por_medio || []).map(m => `
+    <div style="display:flex; justify-content:space-between; font-size:13px; padding:2px 0;"><span>${esc(m.medio)}</span><b>${pfPlata(m.total)}</b></div>`).join('');
+
+  const listaFijos = (data.fijos_fuera_caja || []).map(f => `
+    <div style="display:flex; justify-content:space-between; font-size:13px; padding:2px 0;"><span>${esc(f.nombre)}</span><b>${pfPlata(f.monto)}</b></div>`).join('');
+
+  cuerpo.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <button type="button" class="btn btn-outline" style="margin:0;" onclick="gsMoverMes(-1)">◀</button>
+      <b style="text-transform:capitalize;">${esc(ymNombre)}</b>
+      <button type="button" class="btn btn-outline" style="margin:0;" onclick="gsMoverMes(1)">▶</button>
+    </div>
+
+    <div style="text-align:center; margin:10px 0;">
+      <div class="sub">Ganancia aproximada</div>
+      <div style="font-size:30px; font-weight:700; color:${color};">${gsPlata(ganancia)}</div>
+      <div class="sub">${margen}% de lo cobrado</div>
+    </div>
+
+    <div style="border:1px solid #e5dfd3; border-radius:10px; padding:8px 10px; font-size:14px;">
+      <div style="display:flex; justify-content:space-between;"><span>💰 Cobrado (ventas)</span><b>${pfPlata(ventas)}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>➖ Gastos de caja</span><b>${pfPlata(gastos)}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>➖ Pagos fijos fuera de caja</span><b>${pfPlata(fijos)}</b></div>
+    </div>
+
+    <label style="margin-top:10px;">Sueldos del mes, aprox. (solo para este cálculo, no se guarda)</label>
+    <input type="number" id="gs-sueldos" inputmode="decimal" placeholder="0" oninput="gsRecalcular()">
+    <div id="gs-final" style="margin-top:6px;"></div>
+
+    <div style="font-size:12px; color:#777; margin:10px 0;">Es aproximada: cuenta lo cobrado y lo pagado por caja, no lo que quedó a deber. No incluye sueldos (salvo que los cargues arriba), compras con tarjeta que no pasen por la caja ni gastos personales.
+      ${Number(data.retiros_caja) ? '<br>Retiros de caja del mes: <b>' + pfPlata(data.retiros_caja) + '</b> (no se cuentan como gasto).' : ''}</div>
+
+    ${sinClas ? `<div class="msg msg-error">⚠️ Hay ${sinClas.cant} gasto(s) sin clasificar por ${pfPlata(sinClas.total)}. Tocá "Sin clasificar" para verlos y decime en qué categoría van.</div>` : ''}
+
+    <h3 style="margin:14px 0 6px;">En qué se gastó</h3>
+    ${cats.length ? cats.map(filaCat).join('') : '<div class="vacio">No hay gastos cargados este mes.</div>'}
+
+    ${listaFijos ? `<h3 style="margin:14px 0 6px;">Pagos fijos sumados aparte</h3>${listaFijos}
+      <div style="font-size:12px; color:#777; margin-top:4px;">Son los anotados en PAGOS que no están en la caja. Si alguno ya estaba cargado en la caja, editalo en PAGOS y tildá "ya está cargado en la caja" para no contarlo dos veces.</div>` : ''}
+
+    <h3 style="margin:14px 0 6px;">Cobrado por medio</h3>
+    ${medios || '<div class="vacio">Sin cobros este mes.</div>'}`;
+}
+window.pantallaGastos = pantallaGastos;
+
+function gsToggle(i) {
+  const el = document.getElementById('gs-det-' + i);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+window.gsToggle = gsToggle;
+
+function gsRecalcular() {
+  if (!_gsResumen) return;
+  const sueldos = parseFloat(document.getElementById('gs-sueldos').value) || 0;
+  const box = document.getElementById('gs-final');
+  if (!sueldos) { box.innerHTML = ''; return; }
+  const final = Number(_gsResumen.ganancia_aprox || 0) - sueldos;
+  box.innerHTML = `<div class="msg" style="font-weight:600; color:${final >= 0 ? '#2f5c3d' : '#a03a2a'};">Ganancia después de sueldos: ${gsPlata(final)}</div>`;
+}
+window.gsRecalcular = gsRecalcular;
 
 function pantallaReportes() {
   if (!usuarioActual || usuarioActual.rol !== 'ADMIN') {
