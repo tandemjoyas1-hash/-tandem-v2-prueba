@@ -456,7 +456,7 @@ function buscarFotoSobre() {
   _timeoutVerFoto = setTimeout(async () => {
     const { data: s, error } = await sb
       .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia, listo, fecha_salida')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia, listo, fecha_salida, diseno_unico, foto_catalogo_ok')
       .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
@@ -495,8 +495,20 @@ function buscarFotoSobre() {
       box.innerHTML = `
         <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
         <div class="vacio" style="text-align:center; margin-top:10px;">Este sobre no tiene foto cargada.</div>
-        <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+        <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${esc(s.descripcion || '')}</div>
         ${fechaEntregaHtml}
+        
+      <div style="border-top:1px dashed #e5dfd3; margin-top:12px; padding-top:10px;">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="vf-diseno-unico" style="width:auto; margin:0;" ${s.diseno_unico ? 'checked' : ''} onchange="vfMarcarDisenoUnico('${s.id}', this.checked)">
+          ✨ Diseño único / modelo exclusivo
+        </label>
+        ${s.diseno_unico ? (s.foto_catalogo_ok
+          ? '<div class="msg msg-ok" style="margin-top:6px;">✅ Ya está cargado al catálogo.</div>'
+          : `<div class="msg msg-error" style="margin-top:6px;">⚠️ Falta cargarlo al catálogo — no se puede entregar sin esto.</div>
+             <button type="button" class="btn btn-oro" style="margin-top:6px;" onclick='pantallaFichaCatalogo(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, "foto", {})'>📸 Cargar al catálogo ahora</button>`)
+          : ''}
+      </div>
       `;
       return;
     }
@@ -507,12 +519,33 @@ function buscarFotoSobre() {
         ${f.etiqueta ? `<div style="text-align:center; margin-top:10px; font-size:15px; font-weight:700; color:#7a5c00;">🏷️ ${f.etiqueta}</div>` : ''}
         <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="width:100%; max-height:60vh; object-fit:contain; border-radius:10px; border:1px solid #e6ddc9; margin-top:${f.etiqueta ? '4' : '10'}px; cursor:pointer;">
       `).join('')}
-      <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${s.descripcion || ''}</div>
+      <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${esc(s.descripcion || '')}</div>
       ${fechaEntregaHtml}
+      
+      <div style="border-top:1px dashed #e5dfd3; margin-top:12px; padding-top:10px;">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="vf-diseno-unico" style="width:auto; margin:0;" ${s.diseno_unico ? 'checked' : ''} onchange="vfMarcarDisenoUnico('${s.id}', this.checked)">
+          ✨ Diseño único / modelo exclusivo
+        </label>
+        ${s.diseno_unico ? (s.foto_catalogo_ok
+          ? '<div class="msg msg-ok" style="margin-top:6px;">✅ Ya está cargado al catálogo.</div>'
+          : `<div class="msg msg-error" style="margin-top:6px;">⚠️ Falta cargarlo al catálogo — no se puede entregar sin esto.</div>
+             <button type="button" class="btn btn-oro" style="margin-top:6px;" onclick='pantallaFichaCatalogo(${JSON.stringify(s.id)}, ${JSON.stringify(s.numero)}, "foto", {})'>📸 Cargar al catálogo ahora</button>`)
+          : ''}
+      </div>
     `;
   }, 250);
 }
 window.buscarFotoSobre = buscarFotoSobre;
+
+// NUEVO (29/09/2026): tildar/destildar "Diseño único" a mano desde la pantalla FOTO —
+// antes solo se detectaba solo en Nueva Entrada por palabras clave (sello, escudo, etc.),
+// y no había forma de corregirlo después. Se vuelve a pintar el mismo sobre para reflejarlo.
+async function vfMarcarDisenoUnico(sobreId, valor) {
+  await sb.from('sobres').update({ diseno_unico: valor }).eq('id', sobreId);
+  buscarFotoSobre();
+}
+window.vfMarcarDisenoUnico = vfMarcarDisenoUnico;
 
 // ============================================================
 // PANTALLA 2: Nueva Entrada (cargar un sobre)
@@ -2671,6 +2704,13 @@ async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
         <button class="btn btn-outline" style="margin-top:8px;" onclick="pantallaRetiro()">← Volver a Retiro</button>
       </div>
     `);
+  } else {
+    // modo "foto": se cargó de forma anticipada, no hay ningún paso pendiente que completar.
+    pantallaVerFoto();
+    setTimeout(() => {
+      const inp = document.getElementById('vf-numero');
+      if (inp) { inp.value = numero; buscarFotoSobre(); }
+    }, 50);
   }
 }
 window.guardarFichaCatalogo = guardarFichaCatalogo;
