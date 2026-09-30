@@ -1913,7 +1913,7 @@ window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
 // NUEVO (25/09/2026): tilda solo "Diseño único" si el trabajo menciona sello, escudo,
 // logo, personalizado, etc. — la vendedora puede sacarlo o ponerlo a mano después igual.
-const PALABRAS_DISENO_UNICO = /sello|escudo|logo|personalizad|instituci|policía|policia|gendarme|prefectura|ejercito|ejército|marina|bomberos|club|escuela|colegio/i;
+const PALABRAS_DISENO_UNICO = /sello|escudo|logo|personalizad|instituci|policía|policia|gendarme|prefectura|ejercito|ejército|marina|bomberos|club|escuela|colegio|a pedido|dise[ñn]o (propio|particular|exclusivo|del cliente)|manda(r)? (dise[ñn]o|foto|boceto|imagen|referencia)|seg[uú]n (dise[ñn]o|boceto|foto)|idea del cliente|dibujo (que|del)/i;
 function detectarDisenoUnico() {
   const trabajo = document.getElementById('ne-trabajo').value;
   document.getElementById('ne-diseno-unico').checked = PALABRAS_DISENO_UNICO.test(trabajo);
