@@ -456,7 +456,7 @@ function buscarFotoSobre() {
   _timeoutVerFoto = setTimeout(async () => {
     const { data: s, error } = await sb
       .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia, listo, fecha_salida, diseno_unico, foto_catalogo_ok')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia, listo, fecha_salida, diseno_unico, foto_catalogo_ok, baja_taller, salida_taller_at')
       .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
@@ -491,13 +491,24 @@ function buscarFotoSobre() {
       ? [{ url: s.foto_referencia, etiqueta: null }, ...(fotosExtra || [])]
       : (fotosExtra || []);
 
+
+    // NUEVO (29/09/2026): "salió del taller" es un estado intermedio entre "en taller" y
+    // "listo": la pieza ya está terminada y en el canasto del local, pero todavía nadie la
+    // controló (eso sigue pasando en Taller > Marcar listo, que calcula el precio final).
+    const bloqueSalioTaller = (s.baja_taller && !s.listo && !s.fecha_salida) ? `
+      <div style="border-top:1px dashed #e5dfd3; margin-top:12px; padding-top:10px;">
+        ${s.salida_taller_at
+          ? `<div class="msg" style="background:#fff4e0; color:#a05a1f;">📦 En el local — falta controlar (salió del taller ${esc(fechaCortaAR(s.salida_taller_at))})</div>
+             <button type="button" class="btn btn-outline" style="margin-top:6px; font-size:12px;" onclick="marcarSalidaTaller('${s.id}', false)">↩️ En realidad todavía está en el taller</button>`
+          : `<button type="button" class="btn btn-oro" onclick="marcarSalidaTaller('${s.id}', true)">📤 Salió del taller — dejarlo en el canasto</button>`}
+      </div>` : '';
     if (todasLasFotos.length === 0) {
       box.innerHTML = `
         <div class="nro" style="font-size:20px; text-align:center;">#${s.numero}</div>
         <div class="vacio" style="text-align:center; margin-top:10px;">Este sobre no tiene foto cargada.</div>
         <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${esc(s.descripcion || '')}</div>
         ${fechaEntregaHtml}
-        
+        ${bloqueSalioTaller}
       <div style="border-top:1px dashed #e5dfd3; margin-top:12px; padding-top:10px;">
         <label style="display:flex; align-items:center; gap:8px;">
           <input type="checkbox" id="vf-diseno-unico" style="width:auto; margin:0;" ${s.diseno_unico ? 'checked' : ''} onchange="vfMarcarDisenoUnico('${s.id}', this.checked)">
@@ -521,7 +532,7 @@ function buscarFotoSobre() {
       `).join('')}
       <div class="desc" style="text-align:center; margin-top:10px; font-size:16px;">${esc(s.descripcion || '')}</div>
       ${fechaEntregaHtml}
-      
+      ${bloqueSalioTaller}
       <div style="border-top:1px dashed #e5dfd3; margin-top:12px; padding-top:10px;">
         <label style="display:flex; align-items:center; gap:8px;">
           <input type="checkbox" id="vf-diseno-unico" style="width:auto; margin:0;" ${s.diseno_unico ? 'checked' : ''} onchange="vfMarcarDisenoUnico('${s.id}', this.checked)">
@@ -546,6 +557,12 @@ async function vfMarcarDisenoUnico(sobreId, valor) {
   buscarFotoSobre();
 }
 window.vfMarcarDisenoUnico = vfMarcarDisenoUnico;
+
+async function marcarSalidaTaller(sobreId, valor) {
+  await sb.from('sobres').update({ salida_taller_at: valor ? new Date().toISOString() : null }).eq('id', sobreId);
+  buscarFotoSobre();
+}
+window.marcarSalidaTaller = marcarSalidaTaller;
 
 // ============================================================
 // PANTALLA 2: Nueva Entrada (cargar un sobre)
@@ -3868,6 +3885,7 @@ window.escanearSobre = escanearSobre;
 function estadoDeSobre(s) {
   if (s.fecha_salida) return '✅ Retirado';
   if (s.listo) return '🟢 Listo para retirar';
+  if (s.salida_taller_at) return '📦 En el local — falta controlar';
   if (s.baja_taller) return '🛠 En taller (' + (s.orfebre || '') + ')';
   return '🆕 Recién ingresado';
 }
@@ -3878,7 +3896,7 @@ async function cargarTodosLosSobres() {
 
   const { data: sobres, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, clientes(nombre)')
+    .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, salida_taller_at, clientes(nombre)')
     .is('fecha_salida', null)
     .order('fecha_entrada');
 
@@ -3903,7 +3921,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, salida_taller_at, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -3918,7 +3936,7 @@ async function buscarSobreDetalle() {
       const ids = clientesMatch.map(c => c.id);
       const { data } = await sb
         .from('sobres')
-        .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, clientes(nombre)')
+        .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, salida_taller_at, clientes(nombre)')
         .in('cliente_id', ids)
         .order('fecha_entrada', { ascending: false })
         .limit(20);
