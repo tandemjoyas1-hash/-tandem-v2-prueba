@@ -2588,10 +2588,24 @@ function pantallaFichaCatalogo(sobreId, numero, modo, extra) {
 
       <div id="fc-msg"></div>
       <button type="button" class="btn btn-verde" style="margin-top:10px;" onclick='guardarFichaCatalogo(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${JSON.stringify(modo)}, ${JSON.stringify(extra || {})})'>💾 Guardar y continuar</button>
+      <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick='volverDeFichaCatalogo(${JSON.stringify(modo)}, ${JSON.stringify(numero)})'>← Volver sin guardar</button>
     </div>
   `);
 }
 window.pantallaFichaCatalogo = pantallaFichaCatalogo;
+
+// NUEVO (29/09/2026): cancelar la carga de la foto sin guardar nada y volver adonde estaba.
+// No saca el tilde de "Diseño único" ni toca la caja — solo cierra esta pantalla.
+function volverDeFichaCatalogo(modo, numero) {
+  if (modo === 'listo') { pantallaTaller(); return; }
+  if (modo === 'retiro') { pantallaRetiro(); return; }
+  pantallaVerFoto();
+  setTimeout(() => {
+    const inp = document.getElementById('vf-numero');
+    if (inp) { inp.value = numero; buscarFotoSobre(); }
+  }, 50);
+}
+window.volverDeFichaCatalogo = volverDeFichaCatalogo;
 
 function previsualizarFotoFicha() {
   const archivo = document.getElementById('fc-foto').files[0];
