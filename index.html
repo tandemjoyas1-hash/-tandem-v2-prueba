@@ -437,6 +437,14 @@ function pantallaVerFoto() {
         oninput="buscarFotoSobre()" autofocus>
       <div id="vf-resultado" style="margin-top:18px;"></div>
     </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2 style="margin:0 0 4px;">🔄 Volvieron del taller</h2>
+      <div class="sub">Terminados, para dejar en el canasto — escribí los N° de sobre, separados por espacio</div>
+      <input type="text" id="rt-sobres" placeholder="Ej: 4801 4802 4803">
+      <button class="btn btn-oro" onclick="regresanAlLocalLote()">Regreso al local</button>
+      <div id="rt-resultado"></div>
+    </div>
   `);
   document.getElementById('vf-numero').focus();
 }

@@ -45,6 +45,7 @@ jobs:
             "vfMarcarDisenoUnico"
             "marcarSalidaTaller"
             "regresanAlLocalLote"
+            "Volvieron del taller"
           )
 
           git show "$PREV:index.html" > /tmp/prev.html 2>/dev/null || { echo "sin_anterior=1" >> "$GITHUB_OUTPUT"; exit 0; }
