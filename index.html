@@ -631,7 +631,7 @@ function pantallaNuevaEntrada() {
         <option value="Laureano">🧪 Laureano</option>
       </select>
 
-      <label>Tipo de producto (opcional, para los reportes — escribí para buscar)</label>
+      <label>Tipo de producto — escribí y TOCÁ una opción de la lista que aparece</label>
       <div style="display:flex; gap:8px; align-items:center;">
         <input type="text" id="ne-tipo-producto-busqueda" style="flex:1;" placeholder="Ej: acero, anillo, cadena..." autocomplete="off" oninput="filtrarTipoProducto('ne')" onfocus="filtrarTipoProducto('ne')">
         <button type="button" onclick="toggleNuevaCategoria('ne')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
@@ -2011,6 +2011,10 @@ async function guardarNuevaEntrada() {
   }
   if (!canal) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Elegí el canal de venta (Local / Redes con envío / Redes retiro).</div>`;
+    return;
+  }
+  if (!tipoProducto) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen).</div>`;
     return;
   }
   if (canal === 'LOCAL' && /(env[ií]o|enviar|correo|andreani|encomienda)/i.test(trabajo)) {
@@ -6451,7 +6455,7 @@ function pantallaVentaDirecta() {
       <label>Descripción</label>
       <input type="text" id="vd-descripcion" placeholder="Ej: Pila de reloj">
 
-      <label>Tipo de producto (opcional, para los reportes — escribí para buscar)</label>
+      <label>Tipo de producto — escribí y TOCÁ una opción de la lista que aparece</label>
       <div style="display:flex; gap:8px; align-items:center;">
         <input type="text" id="vd-tipo-producto-busqueda" style="flex:1;" placeholder="Ej: acero, anillo, cadena..." autocomplete="off" oninput="filtrarTipoProducto('vd')" onfocus="filtrarTipoProducto('vd')">
         <button type="button" onclick="toggleNuevaCategoria('vd')" style="flex:0 0 auto; width:auto; margin-top:0; padding:12px 14px; border:1.5px solid #e6ddc9; border-radius:8px; background:#fdfcf9; font-size:16px; cursor:pointer;">✏️</button>
@@ -6676,6 +6680,11 @@ async function guardarVentaDirecta() {
 
   const tipoProducto = document.getElementById('vd-tipo-producto').value;
   const proveedorId = document.getElementById('vd-proveedor').value || null;
+
+  if (!tipoProducto) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen).</div>`;
+    return;
+  }
 
   // NUEVO (05/09/2026): aviso de posible venta duplicada. Si otra vendedora (o la misma) ya
   // cargó hoy una venta del mismo monto para el mismo cliente (o, si no hay cliente, la misma

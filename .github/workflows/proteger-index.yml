@@ -46,6 +46,7 @@ jobs:
             "marcarSalidaTaller"
             "regresanAlLocalLote"
             "Volvieron del taller"
+            "Falta elegir el tipo de producto"
           )
 
           git show "$PREV:index.html" > /tmp/prev.html 2>/dev/null || { echo "sin_anterior=1" >> "$GITHUB_OUTPUT"; exit 0; }
