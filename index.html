@@ -2766,6 +2766,13 @@ function pantallaTaller() {
       <div id="bt-resultado"></div>
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <h2>📦 Regresan al local</h2>
+      <div class="sub">Terminados en el taller, para dejar en el canasto — escribí los N° de sobre, separados por espacio</div>
+      <input type="text" id="rt-sobres" placeholder="Ej: 4801 4802 4803">
+      <button class="btn btn-oro" onclick="regresanAlLocalLote()">Regresaron al local</button>
+      <div id="rt-resultado"></div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
       <label>🔍 Buscar sobre pendiente (por número o cliente)</label>
       <input type="text" id="bt-buscar" placeholder="Ej: Georgi, o 4801" oninput="buscarSobresPendientesEtapa('bt-buscar', 'bt-buscar-resultado', 'bt-sobres', false)">
       <div id="bt-buscar-resultado" style="margin-top:8px;"></div>
@@ -2852,6 +2859,7 @@ function agregarNumeroASobres(idDestino, numero) {
 window.agregarNumeroASobres = agregarNumeroASobres;
 
 let _bajarTallerLoteEnCurso = false;
+let _regresanLocalLoteEnCurso = false;
 async function bajarATallerLote() {
   if (_bajarTallerLoteEnCurso) return;
   const resBox = document.getElementById('bt-resultado');
@@ -2901,6 +2909,55 @@ async function bajarATallerLote() {
   _bajarTallerLoteEnCurso = false;
 }
 window.bajarATallerLote = bajarATallerLote;
+
+// NUEVO (30/09/2026): el equivalente de "Bajar al taller" pero al revés — el orfebre (o
+// quien reciba el canasto) anota de una vez varios sobres que ya están terminados y
+// volvieron al local. Deja el mismo estado que el botón individual de la pantalla FOTO
+// (salida_taller_at), es un paso intermedio: todavía falta el control real (Listo).
+async function regresanAlLocalLote() {
+  if (_regresanLocalLoteEnCurso) return;
+  const resBox = document.getElementById('rt-resultado');
+  const numeros = [...new Set(document.getElementById('rt-sobres').value.trim().split(/[\s,]+/).filter(n => n))];
+
+  if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+
+  _regresanLocalLoteEnCurso = true;
+  resBox.innerHTML = `<div class="msg">⏳ Guardando... no vuelvas a tocar el botón</div>`;
+  const ok = [], yaEstaban = [], errores = [];
+
+  for (const numero of numeros) {
+    const { data: sobre, error: errBuscar } = await sb
+      .from('sobres')
+      .select('id, baja_taller, listo, fecha_salida, salida_taller_at')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (errBuscar || !sobre) { errores.push(numero + ' (no existe)'); continue; }
+    if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
+    if (!sobre.baja_taller) { errores.push(numero + ' (no había bajado a taller)'); continue; }
+    if (sobre.listo) { yaEstaban.push(numero + ' (ya estaba Listo)'); continue; }
+    if (sobre.salida_taller_at) { yaEstaban.push(numero); continue; }
+
+    const { error } = await sb.from('sobres').update({ salida_taller_at: new Date().toISOString() }).eq('id', sobre.id);
+    if (error) { errores.push(numero + ' (error al guardar)'); continue; }
+
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobre.id,
+      evento: 'REGRESO AL LOCAL',
+      detalle: 'En el local, falta controlar (lo anotó: ' + usuarioActual.nombre + ')'
+    });
+    ok.push(numero);
+  }
+
+  resBox.innerHTML = `
+    ${ok.length > 0 ? `<div class="msg msg-ok">✅ En el local, falta controlar: ${ok.join(', ')}</div>` : ''}
+    ${yaEstaban.length > 0 ? `<div class="msg" style="background:#eef3ea; color:#3a5a2c;">ℹ️ Ya estaban así (no hacía falta hacer nada): ${yaEstaban.join(', ')}</div>` : ''}
+    ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron anotar: ${errores.join(', ')}</div>` : ''}
+  `;
+  document.getElementById('rt-sobres').value = '';
+  _regresanLocalLoteEnCurso = false;
+}
+window.regresanAlLocalLote = regresanAlLocalLote;
 
 // ============================================================
 // PANTALLA 4: Listo — sobres en taller, esperando control final
