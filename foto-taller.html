@@ -48,6 +48,9 @@
   .vacio { color: #8a8378; text-align: center; margin-top: 10px; }
   .msg { text-align: center; margin-top: 10px; color: #8a8378; }
   img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 10px; border: 1px solid #e6ddc9; margin-top: 12px; }
+  .btn { width: 100%; padding: 16px; font-size: 18px; font-weight: 700; border: none; border-radius: 12px; background: #c9a24a; color: white; margin-top: 10px; cursor: pointer; }
+  .btn:active { opacity: .8; }
+  .rt-aviso { text-align: center; margin-top: 10px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -57,6 +60,14 @@
   <div class="sub">Joyería Tándem — escribí el número de sobre</div>
   <input type="tel" inputmode="numeric" id="numero" placeholder="Ej: 4801" autofocus>
   <div id="resultado" style="margin-top:18px;"></div>
+</div>
+
+<div class="card">
+  <h1>🔄 Volvieron del taller</h1>
+  <div class="sub">Terminados, para dejar en el canasto — escribí los N° de sobre, separados por espacio</div>
+  <input type="text" id="rtSobres" placeholder="Ej: 4801 4802 4803" style="font-size:18px; padding:14px; text-align:left;">
+  <button class="btn" id="rtBoton">Regreso al local</button>
+  <div id="rtResultado" class="rt-aviso"></div>
 </div>
 
 <script>
@@ -149,6 +160,48 @@ input.addEventListener('input', () => {
       ${fechaHtml}
     `;
   }, 250);
+});
+
+document.getElementById('rtBoton').addEventListener('click', async () => {
+  const campo = document.getElementById('rtSobres');
+  const resBox = document.getElementById('rtResultado');
+  const numeros = [...new Set(campo.value.trim().split(/[\s,]+/).filter(n => n))];
+
+  if (numeros.length === 0) { resBox.innerHTML = 'Escribí al menos un N° de sobre.'; return; }
+
+  resBox.innerHTML = '⏳ Guardando...';
+  const ok = [], yaEstaban = [], errores = [];
+
+  for (const numero of numeros) {
+    const { data: s, error: errBuscar } = await sb
+      .from('sobres')
+      .select('id, baja_taller, listo, fecha_salida, salida_taller_at, orfebre')
+      .eq('numero', normalizarSobre(numero))
+      .maybeSingle();
+
+    if (errBuscar || !s) { errores.push(numero + ' (no existe)'); continue; }
+    if (s.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
+    if (!s.baja_taller) { errores.push(numero + ' (no había bajado a taller)'); continue; }
+    if (s.listo) { yaEstaban.push(numero + ' (ya estaba Listo)'); continue; }
+    if (s.salida_taller_at) { yaEstaban.push(numero); continue; }
+
+    const { error } = await sb.from('sobres').update({ salida_taller_at: new Date().toISOString() }).eq('id', s.id);
+    if (error) { errores.push(numero + ' (error al guardar)'); continue; }
+
+    await sb.from('historial_sobres').insert({
+      sobre_id: s.id,
+      evento: 'REGRESO AL LOCAL',
+      detalle: 'En el local, falta controlar (taller: ' + (s.orfebre || 'sin asignar') + ')'
+    });
+    ok.push(numero);
+  }
+
+  resBox.innerHTML = [
+    ok.length ? '✅ Listo: ' + ok.join(', ') : '',
+    yaEstaban.length ? 'ℹ️ Ya estaban así: ' + yaEstaban.join(', ') : '',
+    errores.length ? '⚠️ No se pudo: ' + errores.join(', ') : ''
+  ].filter(Boolean).join('<br>');
+  campo.value = '';
 });
 </script>
 
