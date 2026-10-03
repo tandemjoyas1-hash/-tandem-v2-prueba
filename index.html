@@ -3362,6 +3362,31 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
     return;
   }
 
+  // NUEVO (03/10/2026): si hay que cobrar algo, el tipo de producto se hereda del primer
+  // movimiento ya tipado de este sobre (la seña, normalmente) — así no se repite la
+  // elección en cada pago del mismo trabajo. Solo se pide si ese sobre nunca tuvo ninguno.
+  let tipoProducto = null;
+  if (montoCobrado > 0) {
+    const elegido = document.getElementById('rt-tp-' + sobreId);
+    tipoProducto = elegido ? elegido.value : '';
+    if (!tipoProducto) {
+      const { data: movConTipo } = await sb.from('movimientos_caja').select('codigo').eq('sobre_id', sobreId).not('codigo', 'is', null).limit(1).maybeSingle();
+      tipoProducto = movConTipo ? movConTipo.codigo : '';
+    }
+    if (!tipoProducto) {
+      msgBox.innerHTML = `
+        <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder cobrar.</div>
+        <label>Tipo de producto</label>
+        <input type="text" id="rt-tp-${sobreId}-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('rt-tp-${sobreId}')" onfocus="filtrarTipoProducto('rt-tp-${sobreId}')">
+        <input type="hidden" id="rt-tp-${sobreId}" value="">
+        <div id="rt-tp-${sobreId}-sugerencias"></div>
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarRetiro(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldo}, ${JSON.stringify(tipoCliente)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefonoCliente)})'>Elegido, reintentar</button>
+      `;
+      cargarTiposProducto('rt-tp-' + sobreId);
+      return;
+    }
+  }
+
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   const { data: sobreData, error: errFecha } = await sb
@@ -3386,7 +3411,8 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
       medio_pago: medioPago,
       monto: montoCobrado,
       cliente_id: sobreData.cliente_id,
-      sobre_id: sobreId
+      sobre_id: sobreId,
+      codigo: tipoProducto ? parseInt(tipoProducto) : null
     });
     errorCobro = errCobro;
   }
@@ -4783,6 +4809,7 @@ function renderFilasMovimientosCD(movimientos) {
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
+      ${m.ingresa_egresa === 'INGRESA' && !m.codigo ? `<div style="color:#c0392b; font-weight:700; font-size:12px; margin-top:2px;">⚠️ Falta tipo de producto — tocá para elegirlo</div>` : ''}
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
     </div>
@@ -4794,7 +4821,7 @@ function renderFilasMovimientosCD(movimientos) {
       <td>${m.vendedora || ''}</td>
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''}</td>
+      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''}${m.ingresa_egresa === 'INGRESA' && !m.codigo ? '<br><span style="color:#c0392b; font-weight:700; font-size:12px;">⚠️ Falta tipo de producto</span>' : ''}</td>
       <td>${m.medio_pago || ''}</td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
@@ -5531,6 +5558,27 @@ async function confirmarPagoParcial(sobreId, numero, saldoActual) {
     return;
   }
 
+  // NUEVO (03/10/2026): mismo criterio que en Retiro — hereda el tipo de producto del
+  // primer movimiento ya tipado de este sobre; solo lo pide si nunca tuvo ninguno.
+  const elegido = document.getElementById('pp-tp');
+  let tipoProducto = elegido ? elegido.value : '';
+  if (!tipoProducto) {
+    const { data: movConTipo } = await sb.from('movimientos_caja').select('codigo').eq('sobre_id', sobreId).not('codigo', 'is', null).limit(1).maybeSingle();
+    tipoProducto = movConTipo ? movConTipo.codigo : '';
+  }
+  if (!tipoProducto) {
+    msgBox.innerHTML = `
+      <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder registrar el pago.</div>
+      <label>Tipo de producto</label>
+      <input type="text" id="pp-tp-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('pp-tp')" onfocus="filtrarTipoProducto('pp-tp')">
+      <input type="hidden" id="pp-tp" value="">
+      <div id="pp-tp-sugerencias"></div>
+      <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarPagoParcial(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldoActual})'>Elegido, reintentar</button>
+    `;
+    cargarTiposProducto('pp-tp');
+    return;
+  }
+
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   const { data: sobreData } = await sb.from('sobres').select('cliente_id, tipo_cliente').eq('id', sobreId).single();
@@ -5543,7 +5591,8 @@ async function confirmarPagoParcial(sobreId, numero, saldoActual) {
     medio_pago: medioPago,
     monto: monto,
     cliente_id: sobreData ? sobreData.cliente_id : null,
-    sobre_id: sobreId
+    sobre_id: sobreId,
+    codigo: tipoProducto ? parseInt(tipoProducto) : null
   });
 
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
