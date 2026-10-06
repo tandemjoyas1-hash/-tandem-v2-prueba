@@ -3374,27 +3374,22 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
       tipoProducto = movConTipo ? movConTipo.codigo : '';
     }
     if (!tipoProducto) {
-      // Si el selector ya está en pantalla (es un reintento), no se vuelve a armar ni se borra
-      // lo escrito: se avisa qué falta y se reabren las opciones.
-      const campoYa = document.getElementById(prefijoTP + '-tipo-producto-busqueda');
-      if (campoYa) {
+      // Si el desplegable ya está en pantalla (es un reintento), no se vuelve a armar: solo se
+      // avisa que falta elegir.
+      const selYa = document.getElementById(prefijoTP + '-tipo-producto');
+      if (selYa) {
         const aviso = document.getElementById(prefijoTP + '-aviso');
-        if (aviso) aviso.innerHTML = campoYa.value.trim()
-          ? '<div class="msg msg-error">⚠️ Tocá una de las opciones de la lista para elegir el tipo de producto.</div>'
-          : '<div class="msg msg-error">⚠️ Escribí el tipo de producto y tocá una de las opciones de la lista.</div>';
-        filtrarTipoProducto(prefijoTP);
+        if (aviso) aviso.innerHTML = '<div class="msg msg-error">⚠️ Elegí un tipo de producto de la lista.</div>';
         return;
       }
       msgBox.innerHTML = `
         <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder cobrar.</div>
         <div id="${prefijoTP}-aviso"></div>
         <label>Tipo de producto</label>
-        <input type="text" id="rt-${sobreId}-tipo-producto-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('rt-${sobreId}')" onfocus="filtrarTipoProducto('rt-${sobreId}')">
-        <input type="hidden" id="rt-${sobreId}-tipo-producto" value="">
-        <div id="rt-${sobreId}-tipo-producto-sugerencias"></div>
-        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarRetiro(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldo}, ${JSON.stringify(tipoCliente)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefonoCliente)})'>Elegido, reintentar</button>
+        <select id="rt-${sobreId}-tipo-producto"><option value="">Cargando opciones…</option></select>
+        <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarRetiro(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldo}, ${JSON.stringify(tipoCliente)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefonoCliente)})'>Confirmar cobro y entregar</button>
       `;
-      cargarTiposProducto('rt-' + sobreId);
+      llenarSelectTipoProducto('rt-' + sobreId);
       return;
     }
   }
@@ -5578,25 +5573,20 @@ async function confirmarPagoParcial(sobreId, numero, saldoActual) {
     tipoProducto = movConTipo ? movConTipo.codigo : '';
   }
   if (!tipoProducto) {
-    const campoYa = document.getElementById('pp-tipo-producto-busqueda');
-    if (campoYa) {
+    const selYa = document.getElementById('pp-tipo-producto');
+    if (selYa) {
       const aviso = document.getElementById('pp-aviso');
-      if (aviso) aviso.innerHTML = campoYa.value.trim()
-        ? '<div class="msg msg-error">⚠️ Tocá una de las opciones de la lista para elegir el tipo de producto.</div>'
-        : '<div class="msg msg-error">⚠️ Escribí el tipo de producto y tocá una de las opciones de la lista.</div>';
-      filtrarTipoProducto('pp');
+      if (aviso) aviso.innerHTML = '<div class="msg msg-error">⚠️ Elegí un tipo de producto de la lista.</div>';
       return;
     }
     msgBox.innerHTML = `
       <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder registrar el pago.</div>
       <div id="pp-aviso"></div>
       <label>Tipo de producto</label>
-      <input type="text" id="pp-tipo-producto-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('pp')" onfocus="filtrarTipoProducto('pp')">
-      <input type="hidden" id="pp-tipo-producto" value="">
-      <div id="pp-tipo-producto-sugerencias"></div>
-      <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarPagoParcial(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldoActual})'>Elegido, reintentar</button>
+      <select id="pp-tipo-producto"><option value="">Cargando opciones…</option></select>
+      <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='confirmarPagoParcial(${JSON.stringify(sobreId)}, ${JSON.stringify(numero)}, ${saldoActual})'>Registrar pago</button>
     `;
-    cargarTiposProducto('pp');
+    llenarSelectTipoProducto('pp');
     return;
   }
 
@@ -6731,6 +6721,25 @@ function resolverTipoProducto(prefix) {
   return String(elegida.codigo);
 }
 window.resolverTipoProducto = resolverTipoProducto;
+
+// NUEVO (06/10/2026): llena un desplegable (<select id="<prefix>-tipo-producto">) con todas las
+// categorías, de la A a la Z. Se usa en Retiro y Pago Parcial, donde elegir de una lista es más
+// rápido y seguro que escribir (Nueva Entrada y Venta Directa siguen con el buscador).
+async function llenarSelectTipoProducto(prefix) {
+  const sel = document.getElementById(prefix + '-tipo-producto');
+  if (!sel) return;
+  if (!_cacheTiposProducto) {
+    const { data } = await sb.from('codigos_producto').select('codigo, descripcion').gte('codigo', 1000).order('descripcion');
+    _cacheTiposProducto = data || [];
+  }
+  if (_cacheTiposProducto.length === 0) {
+    sel.innerHTML = '<option value="">No se pudieron cargar las opciones — recargá la página</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">Elegir tipo de producto…</option>' +
+    _cacheTiposProducto.map(c => `<option value="${c.codigo}">${esc(c.descripcion)}</option>`).join('');
+}
+window.llenarSelectTipoProducto = llenarSelectTipoProducto;
 
 function toggleNuevaCategoria(prefix) {
   const box = document.getElementById(prefix + '-nueva-categoria-box');
