@@ -3367,15 +3367,27 @@ async function confirmarRetiro(sobreId, numero, saldo, tipoCliente, nombreClient
   // elección en cada pago del mismo trabajo. Solo se pide si ese sobre nunca tuvo ninguno.
   let tipoProducto = null;
   if (montoCobrado > 0) {
-    const elegido = document.getElementById('rt-' + sobreId + '-tipo-producto');
-    tipoProducto = elegido ? elegido.value : '';
+    const prefijoTP = 'rt-' + sobreId;
+    tipoProducto = resolverTipoProducto(prefijoTP);
     if (!tipoProducto) {
       const { data: movConTipo } = await sb.from('movimientos_caja').select('codigo').eq('sobre_id', sobreId).not('codigo', 'is', null).limit(1).maybeSingle();
       tipoProducto = movConTipo ? movConTipo.codigo : '';
     }
     if (!tipoProducto) {
+      // Si el selector ya está en pantalla (es un reintento), no se vuelve a armar ni se borra
+      // lo escrito: se avisa qué falta y se reabren las opciones.
+      const campoYa = document.getElementById(prefijoTP + '-tipo-producto-busqueda');
+      if (campoYa) {
+        const aviso = document.getElementById(prefijoTP + '-aviso');
+        if (aviso) aviso.innerHTML = campoYa.value.trim()
+          ? '<div class="msg msg-error">⚠️ Tocá una de las opciones de la lista para elegir el tipo de producto.</div>'
+          : '<div class="msg msg-error">⚠️ Escribí el tipo de producto y tocá una de las opciones de la lista.</div>';
+        filtrarTipoProducto(prefijoTP);
+        return;
+      }
       msgBox.innerHTML = `
         <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder cobrar.</div>
+        <div id="${prefijoTP}-aviso"></div>
         <label>Tipo de producto</label>
         <input type="text" id="rt-${sobreId}-tipo-producto-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('rt-${sobreId}')" onfocus="filtrarTipoProducto('rt-${sobreId}')">
         <input type="hidden" id="rt-${sobreId}-tipo-producto" value="">
@@ -5560,15 +5572,24 @@ async function confirmarPagoParcial(sobreId, numero, saldoActual) {
 
   // NUEVO (03/10/2026): mismo criterio que en Retiro — hereda el tipo de producto del
   // primer movimiento ya tipado de este sobre; solo lo pide si nunca tuvo ninguno.
-  const elegido = document.getElementById('pp-tipo-producto');
-  let tipoProducto = elegido ? elegido.value : '';
+  let tipoProducto = resolverTipoProducto('pp');
   if (!tipoProducto) {
     const { data: movConTipo } = await sb.from('movimientos_caja').select('codigo').eq('sobre_id', sobreId).not('codigo', 'is', null).limit(1).maybeSingle();
     tipoProducto = movConTipo ? movConTipo.codigo : '';
   }
   if (!tipoProducto) {
+    const campoYa = document.getElementById('pp-tipo-producto-busqueda');
+    if (campoYa) {
+      const aviso = document.getElementById('pp-aviso');
+      if (aviso) aviso.innerHTML = campoYa.value.trim()
+        ? '<div class="msg msg-error">⚠️ Tocá una de las opciones de la lista para elegir el tipo de producto.</div>'
+        : '<div class="msg msg-error">⚠️ Escribí el tipo de producto y tocá una de las opciones de la lista.</div>';
+      filtrarTipoProducto('pp');
+      return;
+    }
     msgBox.innerHTML = `
       <div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado — elegilo para poder registrar el pago.</div>
+      <div id="pp-aviso"></div>
       <label>Tipo de producto</label>
       <input type="text" id="pp-tipo-producto-busqueda" placeholder="Ej: acero, anillo, compostura..." autocomplete="off" oninput="filtrarTipoProducto('pp')" onfocus="filtrarTipoProducto('pp')">
       <input type="hidden" id="pp-tipo-producto" value="">
@@ -6688,6 +6709,28 @@ function elegirTipoProducto(prefix, codigo, descripcion) {
   document.getElementById(prefix + '-tipo-producto-sugerencias').innerHTML = '';
 }
 window.elegirTipoProducto = elegirTipoProducto;
+
+// NUEVO (06/10/2026): devuelve el tipo de producto de un selector. Si ya tocaron una opción,
+// usa esa. Si solo escribieron texto y no tocaron nada, lo toma cuando coincide con UNA sola
+// categoría (ej: "acero" -> ACERO); si hay dudas (ej: "anillo" -> varias), devuelve vacío y
+// quien llama le avisa a la persona que toque una opción, sin borrarle lo escrito.
+function resolverTipoProducto(prefix) {
+  const oculto = document.getElementById(prefix + '-tipo-producto');
+  if (oculto && oculto.value) return oculto.value;
+  const visible = document.getElementById(prefix + '-tipo-producto-busqueda');
+  const texto = visible ? visible.value.trim().toLowerCase() : '';
+  if (!texto || !_cacheTiposProducto) return '';
+  const exactas = _cacheTiposProducto.filter(c => c.descripcion.toLowerCase() === texto);
+  let elegida = exactas.length === 1 ? exactas[0] : null;
+  if (!elegida && texto.length >= 3) {
+    const parciales = _cacheTiposProducto.filter(c => c.descripcion.toLowerCase().includes(texto));
+    if (parciales.length === 1) elegida = parciales[0];
+  }
+  if (!elegida) return '';
+  elegirTipoProducto(prefix, String(elegida.codigo), elegida.descripcion);
+  return String(elegida.codigo);
+}
+window.resolverTipoProducto = resolverTipoProducto;
 
 function toggleNuevaCategoria(prefix) {
   const box = document.getElementById(prefix + '-nueva-categoria-box');
