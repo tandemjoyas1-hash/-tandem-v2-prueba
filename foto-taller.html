@@ -111,7 +111,7 @@ input.addEventListener('input', () => {
 
     const { data: s, error } = await sb
       .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia, clientes(nombre)')
+      .select('id, numero, descripcion, foto_referencia, para_el_dia, diseno_unico, foto_catalogo_ok, clientes(nombre)')
       .eq('numero', numeroNormalizado)
       .maybeSingle();
 
@@ -133,6 +133,18 @@ input.addEventListener('input', () => {
       .eq('sobre_id', s.id)
       .order('created_at');
 
+    const duHtml = `
+      <div style="border-top:1px dashed #e6ddc9; margin-top:16px; padding-top:12px;">
+        <label style="display:flex; align-items:center; gap:10px; font-size:18px; font-weight:700; justify-content:center;">
+          <input type="checkbox" style="width:26px; height:26px; padding:0; margin:0;" ${s.diseno_unico ? 'checked' : ''} onchange="marcarDisenoUnico('${s.id}', this.checked)">
+          ✨ Modelo especial — cargar al catálogo
+        </label>
+        ${s.diseno_unico ? (s.foto_catalogo_ok
+          ? '<div class="msg" style="color:#2f5c3d; font-weight:700;">✅ Ya está cargado al catálogo</div>'
+          : '<div class="msg" style="color:#a05a1f; font-weight:700;">⚠️ Marcado: no se puede entregar hasta cargarlo al catálogo (lo hacen en el local)</div>')
+          : ''}
+      </div>`;
+
     const urlsExtra = (fotosExtra || []).map(f => f.url);
     const todasLasFotos = s.foto_referencia && !urlsExtra.includes(s.foto_referencia)
       ? [{ url: s.foto_referencia, etiqueta: null }, ...(fotosExtra || [])]
@@ -145,6 +157,7 @@ input.addEventListener('input', () => {
         <div class="vacio">Este sobre no tiene foto cargada.</div>
         <div class="desc">${s.descripcion || ''}</div>
         ${fechaHtml}
+        ${duHtml}
       `;
       return;
     }
@@ -158,9 +171,25 @@ input.addEventListener('input', () => {
       `).join('')}
       <div class="desc">${s.descripcion || ''}</div>
       ${fechaHtml}
+      ${duHtml}
     `;
   }, 250);
 });
+
+async function marcarDisenoUnico(sobreId, valor) {
+  const { error } = await sb.from('sobres').update({ diseno_unico: valor }).eq('id', sobreId);
+  if (!error) {
+    await sb.from('historial_sobres').insert({
+      sobre_id: sobreId,
+      evento: valor ? 'MODELO ESPECIAL' : 'MODELO ESPECIAL QUITADO',
+      detalle: valor ? 'Marcado desde la app de fotos: hay que cargarlo al catálogo' : 'Desmarcado desde la app de fotos'
+    });
+  } else {
+    alert('No se pudo guardar: ' + error.message);
+  }
+  input.dispatchEvent(new Event('input'));
+}
+window.marcarDisenoUnico = marcarDisenoUnico;
 
 document.getElementById('rtBoton').addEventListener('click', async () => {
   const campo = document.getElementById('rtSobres');
