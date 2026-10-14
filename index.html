@@ -565,6 +565,9 @@ window.buscarFotoSobre = buscarFotoSobre;
 // viewport de la app no lo bloquea) — acá solo se muestra la foto grande, sin recorte.
 function abrirFotoGrande(url) {
   cerrarFotoGrande();
+  // NUEVO (14/10/2026): en la compu (mouse) el visor tiene zoom propio — rueda, clic, arrastrar
+  // y botones +/−. En celular/tablet queda igual que antes (pellizco nativo con dos dedos).
+  if (window.matchMedia && window.matchMedia('(pointer: fine)').matches) { abrirVisorZoomPC(url); return; }
   const overlay = document.createElement('div');
   overlay.id = 'foto-grande-overlay';
   overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:9999; display:flex; align-items:flex-start; justify-content:center; overflow:auto;';
@@ -580,7 +583,54 @@ window.abrirFotoGrande = abrirFotoGrande;
 function cerrarFotoGrande() {
   const overlay = document.getElementById('foto-grande-overlay');
   if (overlay) overlay.remove();
+  if (window._fgTecla) { document.removeEventListener('keydown', window._fgTecla); window._fgTecla = null; }
 }
+
+function abrirVisorZoomPC(url) {
+  const overlay = document.createElement('div');
+  overlay.id = 'foto-grande-overlay';
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:9999; overflow:hidden; user-select:none;';
+  overlay.innerHTML = `
+    <img id="fg-img" src="${url}" draggable="false" style="position:absolute; left:50%; top:50%; max-width:96vw; max-height:94vh; transform:translate(-50%,-50%); transform-origin:center center; cursor:zoom-in;">
+    <span onclick="cerrarFotoGrande()" style="position:fixed; top:12px; right:16px; color:white; font-size:36px; line-height:1; z-index:10000; cursor:pointer; padding:6px 10px;">&times;</span>
+    <div style="position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:10000; display:flex; gap:8px; align-items:center; background:rgba(0,0,0,.6); padding:6px 10px; border-radius:24px; color:white; font-size:14px;">
+      <button type="button" id="fg-menos" style="width:36px; height:36px; border-radius:50%; border:none; font-size:22px; cursor:pointer;">−</button>
+      <span id="fg-nivel" style="min-width:48px; text-align:center;">100%</span>
+      <button type="button" id="fg-mas" style="width:36px; height:36px; border-radius:50%; border:none; font-size:22px; cursor:pointer;">+</button>
+      <button type="button" id="fg-reset" style="height:36px; border-radius:18px; border:none; padding:0 12px; cursor:pointer;">Ajustar</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const img = overlay.querySelector('#fg-img');
+  const nivel = overlay.querySelector('#fg-nivel');
+  let z = 1, x = 0, y = 0, arrastrando = false, movio = false, ox = 0, oy = 0;
+  function pintar() {
+    if (z <= 1) { x = 0; y = 0; }
+    img.style.transform = 'translate(calc(-50% + ' + x + 'px), calc(-50% + ' + y + 'px)) scale(' + z + ')';
+    img.style.cursor = z > 1 ? (arrastrando ? 'grabbing' : 'grab') : 'zoom-in';
+    nivel.textContent = Math.round(z * 100) + '%';
+  }
+  function zoomA(nuevo) { z = Math.max(1, Math.min(8, nuevo)); pintar(); }
+  overlay.addEventListener('wheel', e => { e.preventDefault(); zoomA(z * (e.deltaY < 0 ? 1.2 : 1 / 1.2)); }, { passive: false });
+  img.addEventListener('mousedown', e => { e.preventDefault(); arrastrando = true; movio = false; ox = e.clientX - x; oy = e.clientY - y; pintar(); });
+  window.addEventListener('mousemove', function mover(e) {
+    if (!document.getElementById('foto-grande-overlay')) { window.removeEventListener('mousemove', mover); return; }
+    if (!arrastrando || z <= 1) return;
+    movio = true; x = e.clientX - ox; y = e.clientY - oy; pintar();
+  });
+  window.addEventListener('mouseup', function soltar() {
+    if (!document.getElementById('foto-grande-overlay')) { window.removeEventListener('mouseup', soltar); return; }
+    arrastrando = false; pintar();
+  });
+  img.addEventListener('click', () => { if (movio) { movio = false; return; } zoomA(z > 1 ? 1 : 3); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) cerrarFotoGrande(); });
+  overlay.querySelector('#fg-mas').addEventListener('click', () => zoomA(z * 1.4));
+  overlay.querySelector('#fg-menos').addEventListener('click', () => zoomA(z / 1.4));
+  overlay.querySelector('#fg-reset').addEventListener('click', () => zoomA(1));
+  window._fgTecla = e => { if (e.key === 'Escape') cerrarFotoGrande(); };
+  document.addEventListener('keydown', window._fgTecla);
+}
+window.abrirVisorZoomPC = abrirVisorZoomPC;
 window.cerrarFotoGrande = cerrarFotoGrande;
 
 // NUEVO (29/09/2026): tildar/destildar "Diseño único" a mano desde la pantalla FOTO —
