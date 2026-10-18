@@ -109,14 +109,12 @@ input.addEventListener('input', () => {
     box.innerHTML = `<div class="msg">Buscando...</div>`;
     const numeroNormalizado = normalizarSobre(numero);
 
-    const { data: s, error } = await sb
-      .from('sobres')
-      .select('id, numero, descripcion, foto_referencia, para_el_dia, diseno_unico, foto_catalogo_ok, clientes(nombre)')
-      .eq('numero', numeroNormalizado)
-      .maybeSingle();
+    const { data: filas, error } = await sb.rpc('foto_buscar_sobre', { p_numero: numeroNormalizado });
 
     if (error) { box.innerHTML = `<div class="msg">${error.message}</div>`; return; }
-    if (!s) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
+    const s0 = (filas || [])[0];
+    if (!s0) { box.innerHTML = `<div class="vacio">No se encontró ese sobre.</div>`; return; }
+    const s = { ...s0, clientes: s0.cliente_nombre ? { nombre: s0.cliente_nombre } : null };
 
     const fechaHtml = s.para_el_dia
       ? `<div class="fecha">📅 Entregar el ${fechaCortaAR(s.para_el_dia)}</div>`
@@ -125,13 +123,8 @@ input.addEventListener('input', () => {
       ? `<div class="cliente">${s.clientes.nombre}</div>`
       : '';
 
-    // Además de foto_referencia (la primera, vieja), se buscan TODAS las fotos
-    // guardadas en tandem.fotos_sobre para este sobre (ej: mesa + laterales de un sello).
-    const { data: fotosExtra } = await sb
-      .from('fotos_sobre')
-      .select('url, etiqueta')
-      .eq('sobre_id', s.id)
-      .order('created_at');
+    // Todas las fotos del sobre vienen en la misma respuesta (foto_referencia + fotos_sobre).
+    const fotosExtra = s0.fotos || [];
 
     const duHtml = `
       <div style="border-top:1px dashed #e6ddc9; margin-top:16px; padding-top:12px;">
@@ -177,16 +170,8 @@ input.addEventListener('input', () => {
 });
 
 async function marcarDisenoUnico(sobreId, valor) {
-  const { error } = await sb.from('sobres').update({ diseno_unico: valor }).eq('id', sobreId);
-  if (!error) {
-    await sb.from('historial_sobres').insert({
-      sobre_id: sobreId,
-      evento: valor ? 'MODELO ESPECIAL' : 'MODELO ESPECIAL QUITADO',
-      detalle: valor ? 'Marcado desde la app de fotos: hay que cargarlo al catálogo' : 'Desmarcado desde la app de fotos'
-    });
-  } else {
-    alert('No se pudo guardar: ' + error.message);
-  }
+  const { error } = await sb.rpc('foto_marcar_modelo_especial', { p_sobre_id: sobreId, p_valor: valor });
+  if (error) alert('No se pudo guardar: ' + error.message);
   input.dispatchEvent(new Event('input'));
 }
 window.marcarDisenoUnico = marcarDisenoUnico;
@@ -202,27 +187,11 @@ document.getElementById('rtBoton').addEventListener('click', async () => {
   const ok = [], yaEstaban = [], errores = [];
 
   for (const numero of numeros) {
-    const { data: s, error: errBuscar } = await sb
-      .from('sobres')
-      .select('id, baja_taller, listo, fecha_salida, salida_taller_at, orfebre')
-      .eq('numero', normalizarSobre(numero))
-      .maybeSingle();
-
-    if (errBuscar || !s) { errores.push(numero + ' (no existe)'); continue; }
-    if (s.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
-    if (!s.baja_taller) { errores.push(numero + ' (no había bajado a taller)'); continue; }
-    if (s.listo) { yaEstaban.push(numero + ' (ya estaba Listo)'); continue; }
-    if (s.salida_taller_at) { yaEstaban.push(numero); continue; }
-
-    const { error } = await sb.from('sobres').update({ salida_taller_at: new Date().toISOString() }).eq('id', s.id);
+    const { data: r, error } = await sb.rpc('foto_regreso_local', { p_numero: normalizarSobre(numero) });
     if (error) { errores.push(numero + ' (error al guardar)'); continue; }
-
-    await sb.from('historial_sobres').insert({
-      sobre_id: s.id,
-      evento: 'REGRESO AL LOCAL',
-      detalle: 'En el local, falta controlar (taller: ' + (s.orfebre || 'sin asignar') + ')'
-    });
-    ok.push(numero);
+    if (r === 'ok') ok.push(numero);
+    else if (r === 'ya estaba' || r === 'ya estaba Listo') yaEstaban.push(numero + (r === 'ya estaba Listo' ? ' (ya estaba Listo)' : ''));
+    else errores.push(numero + ' (' + r + ')');
   }
 
   resBox.innerHTML = [
