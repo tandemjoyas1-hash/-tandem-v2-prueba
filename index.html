@@ -2460,9 +2460,11 @@ function armarHtmlComprobante(c) {
       /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
       .recibo { position: relative; }
       .recibo .marca { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: 0; padding-top: 2mm; }
-      .recibo .marca div { white-space: nowrap; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 11px; letter-spacing: 3px; color: #000; opacity: 0.22; font-weight: 700; height: 9mm; line-height: 9mm; text-align: center; }
-      .recibo .marca div:nth-child(even) { text-indent: 12mm; }
+      .recibo .marca div { display: flex; justify-content: space-around; width: 100%; max-width: 100%; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10px; letter-spacing: 2px; color: #000; opacity: 0.22; font-weight: 700; height: 9mm; line-height: 9mm; }
+      .recibo .marca div span { white-space: nowrap; }
+      .recibo .marca div:nth-child(even) { padding-left: 14mm; }
       .recibo .cont { position: relative; z-index: 1; }
+      .recibo .fila { background: #fff; }
       /* (19/10/2026) Todo el texto del recibo en negro, igual que los números; solo la marca de agua queda gris */
       .recibo .dir, .recibo .titulo, .recibo .subm, .recibo .fila span, .recibo .gracias, .recibo .borde { color: #000; }
       .recibo .monto { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 34px; font-weight: 700; margin: 8px 0 2px; }
@@ -2551,7 +2553,7 @@ function armarHojaReciboMovimiento(r) {
   const esc = escaparHtmlComprobante;
   const plata = n => '$ ' + (Number(n) || 0).toLocaleString('es-AR');
   const fila = (et, v) => (v || v === 0) ? `<div class="fila"><span>${et}</span><b>${esc(v)}</b></div>` : '';
-  const marca = Array.from({ length: 18 }, () => '<div>' + 'TÁNDEM JOYAS &nbsp;&nbsp;&nbsp; '.repeat(5) + '</div>').join('');
+  const marca = Array.from({ length: 18 }, () => '<div>' + '<span>TÁNDEM JOYAS</span>'.repeat(3) + '</div>').join('');
   return `<div class="hoja"><div class="marco recibo">
     <div class="marca">${marca}</div>
     <div class="cont">
@@ -2570,7 +2572,7 @@ function armarHojaReciboMovimiento(r) {
       ${fila('Atendió', r.vendedora)}
       <div class="gracias">Gracias por elegirnos</div>
     </div>
-    <div class="borde">TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS</div>
+    <div class="borde">TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS</div>
   </div></div>`;
 }
 
