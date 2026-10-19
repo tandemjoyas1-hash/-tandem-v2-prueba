@@ -2141,7 +2141,9 @@ async function guardarNuevaEntrada() {
       tipo_cliente: tipoCliente,
       categoria_producto: _productoSeleccionado ? _productoSeleccionado.cat : null,
       cod_producto: _productoSeleccionado ? _productoSeleccionado.cod : null,
-      foto_referencia: (window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) || null,
+      // La foto de referencia ya no se guarda como texto base64 en la fila (pesaba ~470 kB y se
+      // descargaba en cada lista). Se sube a Storage más abajo y acá se guarda solo la dirección.
+      foto_referencia: null,
       para_el_dia: paraElDia,
       canal: canal,
       diseno_unico: document.getElementById('ne-diseno-unico').checked
@@ -2169,6 +2171,7 @@ async function guardarNuevaEntrada() {
   // 2.05) NUEVO (05/09/2026): subir TODAS las fotos de referencia (no solo la primera) a la
   // tabla tandem.fotos_sobre + bucket "fotos-sobres", para que se vean todas en la pantalla FOTO
   // y en Sobres (ej: mesa + laterales de un sello). No frena el guardado si alguna falla.
+  let _primeraFotoGuardada = false;
   for (const item of window._fotosReferenciaLista) {
     try {
       const blob = await (await fetch(item.dataURL)).blob();
@@ -2177,8 +2180,18 @@ async function guardarNuevaEntrada() {
       if (!errSubida) {
         const { data: urlData } = sb.storage.from('fotos-sobres').getPublicUrl(nombreArchivo);
         await sb.from('fotos_sobre').insert({ sobre_id: sobreNuevo.id, url: urlData.publicUrl, path: nombreArchivo, etiqueta: item.etiqueta || null });
+        // La primera foto también queda en sobres.foto_referencia, pero como DIRECCIÓN (no base64).
+        if (!_primeraFotoGuardada) {
+          await sb.from('sobres').update({ foto_referencia: urlData.publicUrl }).eq('id', sobreNuevo.id);
+          _primeraFotoGuardada = true;
+        }
       }
     } catch (err) { /* si falla una foto, no corta el guardado del sobre */ }
+  }
+  // Respaldo: si no se pudo subir ninguna foto a Storage, se guarda la primera como antes (base64)
+  // para que el sobre no quede sin foto.
+  if (!_primeraFotoGuardada && window._fotosReferenciaLista[0] && window._fotosReferenciaLista[0].dataURL) {
+    try { await sb.from('sobres').update({ foto_referencia: window._fotosReferenciaLista[0].dataURL }).eq('id', sobreNuevo.id); } catch (e) {}
   }
 
   // 3) Registrar el movimiento de caja.
