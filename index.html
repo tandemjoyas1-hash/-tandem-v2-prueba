@@ -2463,6 +2463,8 @@ function armarHtmlComprobante(c) {
       .recibo .marca div { white-space: nowrap; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 11px; letter-spacing: 3px; color: #000; opacity: 0.22; font-weight: 700; height: 9mm; line-height: 9mm; text-align: center; }
       .recibo .marca div:nth-child(even) { text-indent: 12mm; }
       .recibo .cont { position: relative; z-index: 1; }
+      /* (19/10/2026) Todo el texto del recibo en negro, igual que los números; solo la marca de agua queda gris */
+      .recibo .dir, .recibo .titulo, .recibo .subm, .recibo .fila span, .recibo .gracias, .recibo .borde { color: #000; }
       .recibo .monto { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 34px; font-weight: 700; margin: 8px 0 2px; }
       .recibo .subm { text-align: center; font-size: 9px; letter-spacing: 2px; color: #444; font-weight: 700; margin-bottom: 8px; }
       .recibo .borde { position: absolute; left: 0; right: 0; bottom: 3mm; text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 7.5px; letter-spacing: 2px; color: #888; z-index: 1; white-space: nowrap; overflow: hidden; }
