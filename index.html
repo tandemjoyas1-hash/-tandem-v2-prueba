@@ -2458,7 +2458,7 @@ function armarHtmlComprobante(c) {
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
     </style></head><body>
-      ${hojaCliente}
+      ${c.soloTaller ? '' : hojaCliente}
       ${hojaTaller}
     </body></html>`;
 }
@@ -2535,7 +2535,7 @@ window.imprimirComprobante = imprimirComprobante;
 // NUEVO (22/09/2026): reimprimir el comprobante de un sobre YA cargado (para pruebas de
 // impresión, o si se rompió/perdió la hoja original) — arma los datos desde lo que quedó
 // guardado en el sobre en vez de depender de la memoria de la pantalla de Nueva Entrada.
-async function reimprimirComprobante(sobreId) {
+async function reimprimirComprobante(sobreId, soloTaller) {
   const { data: s, error } = await sb
     .from('sobres')
     .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, clientes(nombre, telefono)')
@@ -2566,6 +2566,7 @@ async function reimprimirComprobante(sobreId) {
     sena: sena,
     medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
     destino: s.orfebre,
+    soloTaller: !!soloTaller,
     fotos: (fotosExtra || []).map(f => f.url)
   });
 }
@@ -4246,6 +4247,7 @@ async function buscarSobreDetalle() {
       ${s.diseno_unico ? `<div style="margin:6px 0; font-size:13px; font-weight:600; color:${s.foto_catalogo_ok ? '#2f5c3d' : '#a05a1f'};">✨ Diseño único — ${s.foto_catalogo_ok ? '✅ foto ya cargada al catálogo' : '⚠️ falta foto en el catálogo'}</div>` : ''}
       ${!s.fecha_salida ? `<button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="irARetiroConSobre('${s.numero}')">💰 Dar salida (Retiro)</button>` : ''}
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
+      <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}', true)">🖨️ Imprimir solo taller</button>
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="pantallaEditarSobre('${s.id}')">✏️ Editar sobre</button>
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div style="font-weight:600;">${estadoDeSobre(s)}</div>
