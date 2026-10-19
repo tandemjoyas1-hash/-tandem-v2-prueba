@@ -405,7 +405,19 @@ async function confirmarSigoSiendoYo() {
 }
 window.confirmarSigoSiendoYo = confirmarSigoSiendoYo;
 
+// (19/10/2026) Registro silencioso de quién entra, desde qué red y a qué hora (para saber si hay accesos fuera del local u horario).
+function registrarAcceso() {
+  try {
+    if (!usuarioActual || !usuarioActual.id) return;
+    const ult = Number(localStorage.getItem('tandem_ult_registro') || 0);
+    if (Date.now() - ult < 30 * 60 * 1000) return;
+    localStorage.setItem('tandem_ult_registro', String(Date.now()));
+    sb.rpc('registrar_acceso', { p_usuario_id: usuarioActual.id, p_nombre: usuarioActual.nombre }).then(() => {}, () => {});
+  } catch (e) {}
+}
+
 function irAPantallaInicial() {
+  registrarAcceso();
   // Si se entró escaneando el QR de un comprobante, el equipo va directo a ese sobre.
   if (window._sobreDeQR && usuarioActual && usuarioActual.rol !== 'ORFEBRE') {
     const n = window._sobreDeQR;
