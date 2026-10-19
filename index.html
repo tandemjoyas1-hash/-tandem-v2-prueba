@@ -2373,25 +2373,28 @@ function armarHtmlComprobante(c) {
   // Datos del local en texto (copia taller, debajo de las fotos). Sin QR.
   const datosLocal = `<div class="local">Vélez Sarsfield 156, Córdoba<br>Instagram @${INSTAGRAM_USUARIO}${WHATSAPP_LOCAL ? ' · WhatsApp ' + esc(WHATSAPP_LOCAL) : ''}</div>`;
 
+  // (19/10/2026) Hoja del cliente para doblar al medio: mitad de arriba = tapa (girada 180° para que
+  // al doblar quede derecha), mitad de abajo = datos del pedido. Todo negro.
   const hojaCliente = `
-    <div class="hoja"><div class="marco">
-      ${cabecera('Copia cliente')}
-      ${fila('Fecha', c.fechaHora)}
-      ${fila('Señor/a', c.cliente)}
-      ${fila('Teléfono', c.telefono)}
-      ${fila('Atendió', c.vendedora)}
-      ${trabajo}
-      <div class="pagoqr">
-        <div class="pagos">
-          ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
-          ${hayTotal ? fila('Total', plata(c.total)) : ''}
-          ${hayPagos ? fila('Seña', plata(c.sena)) : ''}
-          ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
-        </div>
-        ${bloqueQr}
+    <div class="hoja"><div class="marco cv">
+      <div class="cv-mitad cv-tapa"><div class="cv-giro">
+        <div class="cv-logo"><div class="cv-l1">TANDEM</div><div class="cv-l2">JOYAS</div></div>
+        <div class="cv-dir">Vélez Sarsfield 156 · Córdoba</div>
+        <div class="cv-sobre"><small>COMPROBANTE · SOBRE N°</small><b>${esc(c.numero)}</b></div>
+        ${qrSobreSvg ? `<div class="cv-qr">${qrSobreSvg}<span>Escaneá con la cámara y consultá por tu pedido</span></div>` : ''}
+        <div class="cv-dir">Instagram @${INSTAGRAM_USUARIO}${WHATSAPP_LOCAL ? ' · WhatsApp ' + esc(WHATSAPP_LOCAL) : ''}</div>
+      </div></div>
+      <div class="cv-doblar"><span>doblar acá</span></div>
+      <div class="cv-mitad cv-datos">
+        ${fila('Fecha', c.fechaHora)}
+        ${fila('Señor/a', c.cliente)}
+        ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
+        <div class="cv-trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+        ${hayTotal ? fila('Total', plata(c.total)) : ''}
+        ${hayPagos ? fila('Seña', plata(c.sena)) : ''}
+        ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
+        <div class="nota">Gracias por confiar en Tándem Joyas. Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
       </div>
-      <div class="gracias">Gracias por confiar en Tándem Joyas</div>
-      <div class="nota">Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
     </div></div>
   `;
 
@@ -2423,9 +2426,9 @@ function armarHtmlComprobante(c) {
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
-      .hoja { width: 125.6mm; height: 188mm; position: relative; top: -5mm; padding: 0; page-break-after: always; break-after: page; overflow: visible; }
+      .hoja { width: 125.6mm; height: 188mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
-      .marco { height: 193mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
+      .marco { height: 193mm; margin-top: -5mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
       .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
       .l2 { margin: 3px auto 0; width: 62%; border-top: 1px solid #111; padding-top: 2px; }
@@ -2435,6 +2438,24 @@ function armarHtmlComprobante(c) {
       .copia { display: inline-block; margin-left: 6px; border: 1px solid #111; border-radius: 8px; padding: 1px 7px; letter-spacing: 0.5px; color: #111; }
       .sobre { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; margin: 4px 0 5px; line-height: 1.1; }
       .sobre small { font-family: Arial, Helvetica, sans-serif; font-size: 9px; letter-spacing: 2px; font-weight: 700; margin-right: 6px; color: #444; vertical-align: middle; }
+      .cv { padding: 0; display: flex; flex-direction: column; }
+      .cv-mitad { height: 50%; padding: 5mm 7mm; overflow: hidden; }
+      .cv-giro { height: 100%; transform: rotate(180deg); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; }
+      .cv-doblar { border-top: 0.5mm dashed #000; position: relative; height: 0; }
+      .cv-doblar span { position: absolute; top: -2.2mm; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 2mm; font-size: 8px; color: #000; }
+      .cv-l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 44px; font-weight: 700; letter-spacing: 2px; line-height: 1; }
+      .cv-l2 { font-size: 18px; letter-spacing: 8px; margin-top: 1mm; }
+      .cv-dir { font-size: 11px; color: #000; }
+      .cv-sobre small { display: block; font-size: 13px; letter-spacing: 2px; font-weight: 700; }
+      .cv-sobre b { font-size: 58px; line-height: 1; font-weight: 900; }
+      .cv-qr svg { width: 33mm; height: 33mm; display: block; margin: 0 auto; }
+      .cv-qr span { display: block; margin-top: 1mm; font-size: 10px; color: #000; }
+      .cv-datos { display: flex; flex-direction: column; gap: 1mm; }
+      .cv-datos .fila { font-size: 14px; padding: 0.8mm 0; border-bottom-color: #888; }
+      .cv-datos .fila span { font-size: 10px; color: #000; }
+      .cv-trabajo { font-size: 19px; font-weight: 700; border: 0.4mm solid #111; border-radius: 2mm; padding: 2mm; flex: 1; min-height: 0; overflow: hidden; line-height: 1.15; }
+      .cv-datos .saldo { margin-top: 1mm; padding: 1.5mm 3mm; } .cv-datos .saldo span { font-size: 11px; color: #000; } .cv-datos .saldo b { font-size: 20px; }
+      .cv-datos .nota { color: #000; font-size: 8px; margin-top: 1mm; }
       .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 2.5px 0; border-bottom: 0.3mm solid #c8c8c8; font-size: 11.5px; }
       .fila span { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #555; }
       .fila b { text-align: right; font-weight: 700; }
