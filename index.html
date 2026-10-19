@@ -2420,11 +2420,11 @@ function armarHtmlComprobante(c) {
          real cortada (103 x 148mm aprox). Se ajusta el tamaño de página de la app para que
          coincida justo con "4x6 in", así imprime bien eligiendo esa opción en el
          cartel de impresión, sin tener que correr ni agrandar nada a mano cada vez. */
-      @page { size: 125.6mm 175.4mm; margin: 0; }
+      @page { size: 125.6mm 188mm; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
-      .hoja { width: 125.6mm; height: 175.4mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
+      .hoja { width: 125.6mm; height: 188mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
       .marco { height: 100%; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
@@ -2465,6 +2465,19 @@ function armarHtmlComprobante(c) {
       .recibo .marca div:nth-child(even) { padding-left: 14mm; }
       .recibo .cont { position: relative; z-index: 1; }
       .recibo .fila { background: #fff; }
+      /* (19/10/2026) Recibo con letra grande, ocupando toda la hoja */
+      .recibo .marco { padding: 8mm 6mm; }
+      .recibo .cont { display: flex; flex-direction: column; justify-content: space-between; height: 100%; padding-bottom: 7mm; }
+      .recibo .l1 { font-size: 46px; letter-spacing: 2px; }
+      .recibo .l2 span { font-size: 20px; letter-spacing: 6px; }
+      .recibo .dir { font-size: 13px; margin-top: 6px; }
+      .recibo .titulo { font-size: 14px; margin-top: 0; }
+      .recibo .monto { font-size: 58px; margin: 0; }
+      .recibo .subm { font-size: 14px; margin: 0; }
+      .recibo .fila { font-size: 19px; padding: 6px 0; }
+      .recibo .fila span { font-size: 12px; }
+      .recibo .gracias { font-size: 20px; margin-top: 0; }
+      .recibo .borde { font-size: 10px; bottom: 4mm; }
       /* (19/10/2026) Todo el texto del recibo en negro, igual que los números; solo la marca de agua queda gris */
       .recibo .dir, .recibo .titulo, .recibo .subm, .recibo .fila span, .recibo .gracias, .recibo .borde { color: #000; }
       .recibo .monto { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 34px; font-weight: 700; margin: 8px 0 2px; }
