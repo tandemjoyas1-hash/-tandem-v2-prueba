@@ -3178,7 +3178,7 @@ async function regresanAlLocalLote() {
 
   _regresanLocalLoteEnCurso = true;
   resBox.innerHTML = `<div class="msg">⏳ Guardando... no vuelvas a tocar el botón</div>`;
-  const ok = [], yaEstaban = [], errores = [];
+  const ok = [], yaEstaban = [], errores = [], sinBajaAntes = [];
 
   for (const numero of numeros) {
     const { data: sobre, error: errBuscar } = await sb
@@ -3189,12 +3189,23 @@ async function regresanAlLocalLote() {
 
     if (errBuscar || !sobre) { errores.push(numero + ' (no existe)'); continue; }
     if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
-    if (!sobre.baja_taller) { errores.push(numero + ' (no había bajado a taller)'); continue; }
     if (sobre.listo) { yaEstaban.push(numero + ' (ya estaba Listo)'); continue; }
     if (sobre.salida_taller_at) { yaEstaban.push(numero); continue; }
 
-    const { error } = await sb.from('sobres').update({ salida_taller_at: new Date().toISOString() }).eq('id', sobre.id);
+    // (19/10/2026) Si nadie lo había bajado al taller, se baja y se regresa en un solo paso (no se rebota).
+    const ahora = new Date().toISOString();
+    const sinBaja = !sobre.baja_taller;
+    const cambios = sinBaja ? { baja_taller: ahora, salida_taller_at: ahora } : { salida_taller_at: ahora };
+    const { error } = await sb.from('sobres').update(cambios).eq('id', sobre.id);
     if (error) { errores.push(numero + ' (error al guardar)'); continue; }
+    if (sinBaja) {
+      await sb.from('historial_sobres').insert({
+        sobre_id: sobre.id,
+        evento: 'BAJA A TALLER',
+        detalle: 'No estaba registrado en taller; se anotó al darle regreso (lo anotó: ' + usuarioActual.nombre + ')'
+      });
+      sinBajaAntes.push(numero);
+    }
 
     await sb.from('historial_sobres').insert({
       sobre_id: sobre.id,
@@ -3206,6 +3217,7 @@ async function regresanAlLocalLote() {
 
   resBox.innerHTML = `
     ${ok.length > 0 ? `<div class="msg msg-ok">✅ En el local, falta controlar: ${ok.join(', ')}</div>` : ''}
+    ${sinBajaAntes.length > 0 ? `<div class="msg" style="background:#fff4e0; color:#a05a1f;">ℹ️ Estos no estaban anotados en el taller; se anotaron ahora y quedaron en el local: ${sinBajaAntes.join(', ')}</div>` : ''}
     ${yaEstaban.length > 0 ? `<div class="msg" style="background:#eef3ea; color:#3a5a2c;">ℹ️ Ya estaban así (no hacía falta hacer nada): ${yaEstaban.join(', ')}</div>` : ''}
     ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron anotar: ${errores.join(', ')}</div>` : ''}
   `;
