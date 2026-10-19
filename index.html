@@ -2457,9 +2457,19 @@ function armarHtmlComprobante(c) {
       .local { text-align: center; font-size: 9.5px; line-height: 1.5; margin-top: 7px; padding-top: 5px; border-top: 0.3mm solid #c8c8c8; color: #222; }
       .gracias { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 11px; margin-top: 7px; }
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
+      /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
+      .recibo { position: relative; }
+      .recibo .marca { position: absolute; left: -30mm; right: -30mm; top: -30mm; bottom: -30mm; transform: rotate(-30deg); display: flex; flex-direction: column; gap: 9mm; z-index: 0; }
+      .recibo .marca div { white-space: nowrap; font-family: Georgia, 'Times New Roman', serif; font-size: 11px; letter-spacing: 3px; color: #e9e9e9; font-weight: 700; }
+      .recibo .marca div:nth-child(even) { margin-left: 14mm; }
+      .recibo .cont { position: relative; z-index: 1; }
+      .recibo .monto { text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 34px; font-weight: 700; margin: 8px 0 2px; }
+      .recibo .subm { text-align: center; font-size: 9px; letter-spacing: 2px; color: #444; font-weight: 700; margin-bottom: 8px; }
+      .recibo .borde { position: absolute; left: 0; right: 0; bottom: 3mm; text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 7.5px; letter-spacing: 2px; color: #888; z-index: 1; white-space: nowrap; overflow: hidden; }
     </style></head><body>
-      ${c.soloTaller ? '' : hojaCliente}
-      ${hojaTaller}
+      ${c.hojaRecibo || ''}
+      ${(c.soloTaller || c.hojaRecibo) ? '' : hojaCliente}
+      ${c.soloRecibo ? '' : hojaTaller}
     </body></html>`;
 }
 
@@ -2532,10 +2542,97 @@ async function imprimirComprobante() {
 }
 window.imprimirComprobante = imprimirComprobante;
 
+// NUEVO (19/10/2026): imprimir desde la Caja del Día el comprobante de UN movimiento.
+// Opciones: recibo para el cliente, hoja del taller (si el movimiento tiene sobre) o ambos.
+// No guarda nada en la base: solo arma la hoja y abre la impresión.
+function armarHojaReciboMovimiento(r) {
+  const esc = escaparHtmlComprobante;
+  const plata = n => '$ ' + (Number(n) || 0).toLocaleString('es-AR');
+  const fila = (et, v) => (v || v === 0) ? `<div class="fila"><span>${et}</span><b>${esc(v)}</b></div>` : '';
+  const marca = Array.from({ length: 20 }, () => '<div>' + 'TÁNDEM JOYAS &nbsp;&nbsp;&nbsp; '.repeat(8) + '</div>').join('');
+  return `<div class="hoja"><div class="marco recibo">
+    <div class="marca">${marca}</div>
+    <div class="cont">
+      <div class="logo"><div class="l1">TANDEM</div><div class="l2"><span>JOYAS</span></div></div>
+      <div class="dir">Vélez Sarsfield 156 · Córdoba</div>
+      <div class="titulo">${esc(r.titulo)}</div>
+      <div class="monto">${plata(r.monto)}</div>
+      <div class="subm">${esc(r.subtitulo)}</div>
+      ${fila('Fecha', r.fechaHora)}
+      ${fila('Pedido N°', r.numero)}
+      ${fila('Cliente', r.cliente)}
+      ${fila('Concepto', r.concepto)}
+      ${fila('Medio de pago', r.medio)}
+      ${r.total != null ? fila('Total del trabajo', plata(r.total)) : ''}
+      ${r.saldo != null ? fila('Saldo a abonar', plata(r.saldo)) : ''}
+      ${fila('Atendió', r.vendedora)}
+      <div class="gracias">Gracias por elegirnos</div>
+    </div>
+    <div class="borde">TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS</div>
+  </div></div>`;
+}
+
+async function abrirImprimirMovimiento(id) {
+  const { data: m, error } = await sb
+    .from('movimientos_caja')
+    .select('id, descripcion, monto, medio_pago, ingresa_egresa, vendedora, created_at, sobre_id, clientes(nombre), sobres(id, numero, descripcion, precio_total)')
+    .eq('id', id).maybeSingle();
+  if (error || !m) { alert('No se pudo cargar el movimiento.'); return; }
+  const tieneSobre = !!(m.sobres && m.sobres.id);
+  const ingreso = m.ingresa_egresa === 'INGRESA';
+
+  let saldo = null, total = null;
+  if (tieneSobre && ingreso && m.sobres.precio_total != null) {
+    total = Number(m.sobres.precio_total) || 0;
+    const { data: pagos } = await sb.from('movimientos_caja').select('monto, created_at')
+      .eq('sobre_id', m.sobre_id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
+    const pagado = (pagos || []).filter(p => p.created_at <= m.created_at).reduce((a, p) => a + Number(p.monto), 0);
+    saldo = Math.max(0, total - pagado);
+  }
+  const cuando = new Date(m.created_at);
+  const r = {
+    titulo: ingreso ? 'RECIBO DE PAGO' : 'COMPROBANTE DE EGRESO',
+    subtitulo: !ingreso ? 'EGRESO' : (saldo != null && saldo > 0 ? 'SEÑA RECIBIDA' : 'PAGO RECIBIDO'),
+    monto: m.monto,
+    fechaHora: cuando.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' · ' + cuando.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    numero: tieneSobre ? m.sobres.numero : '',
+    cliente: m.clientes ? m.clientes.nombre : '',
+    concepto: m.descripcion || (tieneSobre ? m.sobres.descripcion : ''),
+    medio: m.medio_pago,
+    total, saldo,
+    vendedora: m.vendedora
+  };
+  const hoja = armarHojaReciboMovimiento(r);
+
+  const viejo = document.getElementById('modal-imprimir-mov'); if (viejo) viejo.remove();
+  const div = document.createElement('div');
+  div.id = 'modal-imprimir-mov';
+  div.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px;';
+  div.innerHTML = `<div style="background:#fff; border-radius:14px; padding:18px; max-width:340px; width:100%;">
+    <div style="font-weight:700; margin-bottom:4px;">🖨️ Imprimir</div>
+    <div style="font-size:13px; color:#555; margin-bottom:12px;">${ingreso ? '⬆️' : '⬇️'} ${esc(plataCortaMov(m.monto))} — ${esc(m.medio_pago || '')}${tieneSobre ? ' · Pedido ' + esc(m.sobres.numero) : ''}</div>
+    <button type="button" class="btn" id="imp-cliente" style="width:100%; margin-bottom:8px;">🧾 Para el cliente</button>
+    <button type="button" class="btn btn-outline" id="imp-taller" style="width:100%; margin-bottom:8px;" ${tieneSobre ? '' : 'disabled'}>🛠️ Para el taller</button>
+    <button type="button" class="btn btn-outline" id="imp-ambos" style="width:100%; margin-bottom:8px;" ${tieneSobre ? '' : 'disabled'}>🧾🛠️ Ambos</button>
+    ${tieneSobre ? '' : '<div style="font-size:12px; color:#8a8378; margin-bottom:8px;">Este movimiento no tiene sobre: solo se puede imprimir el recibo del cliente.</div>'}
+    <button type="button" class="btn btn-outline" id="imp-cerrar" style="width:100%;">Cancelar</button>
+  </div>`;
+  document.body.appendChild(div);
+  const cerrar = () => div.remove();
+  document.getElementById('imp-cerrar').onclick = cerrar;
+  document.getElementById('imp-cliente').onclick = async () => { cerrar(); await imprimirComprobanteObjeto({ numero: '', codigo: '-', fotos: [], hojaRecibo: hoja, soloRecibo: true }); };
+  if (tieneSobre) {
+    document.getElementById('imp-taller').onclick = async () => { cerrar(); await reimprimirComprobante(m.sobre_id, true); };
+    document.getElementById('imp-ambos').onclick = async () => { cerrar(); await reimprimirComprobante(m.sobre_id, true, hoja); };
+  }
+}
+function plataCortaMov(n) { return '$' + (Number(n) || 0).toLocaleString('es-AR'); }
+window.abrirImprimirMovimiento = abrirImprimirMovimiento;
+
 // NUEVO (22/09/2026): reimprimir el comprobante de un sobre YA cargado (para pruebas de
 // impresión, o si se rompió/perdió la hoja original) — arma los datos desde lo que quedó
 // guardado en el sobre en vez de depender de la memoria de la pantalla de Nueva Entrada.
-async function reimprimirComprobante(sobreId, soloTaller) {
+async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo) {
   const { data: s, error } = await sb
     .from('sobres')
     .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, clientes(nombre, telefono)')
@@ -2567,6 +2664,7 @@ async function reimprimirComprobante(sobreId, soloTaller) {
     medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
     destino: s.orfebre,
     soloTaller: !!soloTaller,
+    hojaRecibo: hojaRecibo || '',
     fotos: (fotosExtra || []).map(f => f.url)
   });
 }
@@ -4882,7 +4980,7 @@ function renderFilasMovimientosCD(movimientos) {
   }
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span></div>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span><span title="Imprimir" style="float:right; font-size:15px; margin-right:12px; cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></div>
       ${m.ingresa_egresa === 'INGRESA' && !m.codigo ? `<div style="color:#c0392b; font-weight:700; font-size:12px; margin-top:2px;">⚠️ Falta tipo de producto — tocá para elegirlo</div>` : ''}
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
@@ -4896,7 +4994,7 @@ function renderFilasMovimientosCD(movimientos) {
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
       <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''}${m.ingresa_egresa === 'INGRESA' && !m.codigo ? '<br><span style="color:#c0392b; font-weight:700; font-size:12px;">⚠️ Falta tipo de producto</span>' : ''}</td>
-      <td>${m.medio_pago || ''}</td>
+      <td>${m.medio_pago || ''} <span title="Imprimir" style="cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
       </td>
