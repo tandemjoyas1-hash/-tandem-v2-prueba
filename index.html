@@ -2549,9 +2549,8 @@ function armarHojaReciboMovimiento(r) {
   const esc = escaparHtmlComprobante;
   const plata = n => '$ ' + (Number(n) || 0).toLocaleString('es-AR');
   const fila = (et, v) => (v || v === 0) ? `<div class="fila"><span>${et}</span><b>${esc(v)}</b></div>` : '';
-  const marca = Array.from({ length: 18 }, () => '<div>' + 'TÁNDEM JOYAS &nbsp;&nbsp;&nbsp; '.repeat(5) + '</div>').join('');
+  // (19/10/2026) Sin marca de agua en el fondo: la impresora/celu la sacaba tan negra como los números y no se leía.
   return `<div class="hoja"><div class="marco recibo">
-    <div class="marca">${marca}</div>
     <div class="cont">
       <div class="logo"><div class="l1">TANDEM</div><div class="l2"><span>JOYAS</span></div></div>
       <div class="dir">Vélez Sarsfield 156 · Córdoba</div>
