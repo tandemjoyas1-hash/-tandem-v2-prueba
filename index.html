@@ -707,10 +707,6 @@ function pantallaNuevaEntrada() {
       <h1>📥 Entrada</h1>
       <div class="sub">Cargar un sobre nuevo</div>
 
-      <input type="file" id="ne-foto" accept="image/*" capture="environment" style="display:none;" onchange="leerFotoSobre()">
-      <button class="btn btn-outline" onclick="document.getElementById('ne-foto').click()">📷 Leer sobre por foto</button>
-      <div id="ne-foto-msg"></div>
-
       <label>Foto de referencia del cliente (opcional — podés agregar varias: mesa, laterales, etc.)</label>
       <input type="file" id="ne-foto-ref" accept="image/*" style="display:none;" onchange="adjuntarFotoReferencia()">
       <button type="button" class="btn btn-outline" onclick="document.getElementById('ne-foto-ref').click()">📎 Adjuntar foto que mandó el cliente</button>
@@ -736,8 +732,13 @@ function pantallaNuevaEntrada() {
         <option value="TALLER">Taller</option>
       </select>
 
-      <label>Trabajo / descripción</label>
-      <input type="text" id="ne-trabajo" placeholder="Ej: arreglo cadena" oninput="detectarDisenoUnico()">
+      <label>Trabajo / descripción (y precio de este ítem)</label>
+      <div class="ne-item-fila" style="display:flex; gap:8px; align-items:flex-start;">
+        <textarea id="ne-trabajo" rows="2" placeholder="Ej: arreglo cadena" oninput="autoCrecerTexto(this); detectarDisenoUnico()" style="flex:1; min-width:0; font-size:16px; padding:8px; box-sizing:border-box; resize:none; overflow:hidden; font-family:inherit;"></textarea>
+        <input type="number" id="ne-item-precio-0" class="ne-item-precio" placeholder="$ precio" inputmode="decimal" oninput="recalcularTotalItems()" style="width:110px; flex:none;">
+      </div>
+      <div id="ne-items-extra"></div>
+      <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="agregarItemEntrada()">➕ Agregar otro ítem (otra descripción y precio)</button>
 
       <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
         <input type="checkbox" id="ne-diseno-unico" style="width:auto; margin:0;">
@@ -863,6 +864,8 @@ function irAlCatalogoDesdeEntrada() {
     telefono: document.getElementById('ne-telefono').value,
     tipoCliente: document.getElementById('ne-tipo-cliente').value,
     trabajo: document.getElementById('ne-trabajo').value,
+    precio0: document.getElementById('ne-item-precio-0').value,
+    extras: [...document.querySelectorAll('#ne-items-extra .ne-item-extra')].map(f => ({ d: f.querySelector('textarea').value, p: f.querySelector('input').value })),
     tipoProducto: document.getElementById('ne-tipo-producto').value,
     cantidad: document.getElementById('ne-cantidad').value,
     total: document.getElementById('ne-total').value,
@@ -1573,6 +1576,9 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-telefono').value = _borradorEntrada.telefono;
   document.getElementById('ne-tipo-cliente').value = _borradorEntrada.tipoCliente;
   document.getElementById('ne-trabajo').value = _borradorEntrada.trabajo;
+  autoCrecerTexto(document.getElementById('ne-trabajo'));
+  if (_borradorEntrada.precio0) document.getElementById('ne-item-precio-0').value = _borradorEntrada.precio0;
+  (_borradorEntrada.extras || []).forEach(x => agregarItemEntrada(x.d, x.p));
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
@@ -2086,12 +2092,67 @@ function normalizarTelefonoAR(tel) {
   return d.length === 10 ? d : '';
 }
 
+// (21/10/2026) Nueva Entrada con varios ítems: cada uno con su descripción y precio. El total se suma solo.
+function autoCrecerTexto(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.max(el.scrollHeight, 44) + 'px';
+}
+window.autoCrecerTexto = autoCrecerTexto;
+
+function agregarItemEntrada(desc, precio) {
+  const cont = document.getElementById('ne-items-extra');
+  if (!cont) return;
+  const fila = document.createElement('div');
+  fila.className = 'ne-item-fila ne-item-extra';
+  fila.style.cssText = 'display:flex; gap:8px; align-items:flex-start; margin-top:8px;';
+  fila.innerHTML = `
+    <textarea rows="2" class="ne-item-desc" placeholder="Descripción del otro ítem" oninput="autoCrecerTexto(this)" style="flex:1; min-width:0; font-size:16px; padding:8px; box-sizing:border-box; resize:none; overflow:hidden; font-family:inherit;"></textarea>
+    <input type="number" class="ne-item-precio" placeholder="$ precio" inputmode="decimal" oninput="recalcularTotalItems()" style="width:110px; flex:none;">
+    <button type="button" onclick="this.parentNode.remove(); recalcularTotalItems();" style="width:auto; flex:none; margin-top:0; padding:8px 10px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">✕</button>`;
+  cont.appendChild(fila);
+  const ta = fila.querySelector('textarea'), pr = fila.querySelector('input');
+  if (desc) { ta.value = desc; autoCrecerTexto(ta); }
+  if (precio) pr.value = precio;
+  else if (!desc) ta.focus();
+}
+window.agregarItemEntrada = agregarItemEntrada;
+
+function leerItemsEntrada() {
+  const items = [];
+  const d0 = document.getElementById('ne-trabajo').value.trim();
+  const p0 = parseFloat(document.getElementById('ne-item-precio-0').value) || 0;
+  if (d0 || p0) items.push({ descripcion: d0, precio: p0 });
+  document.querySelectorAll('#ne-items-extra .ne-item-extra').forEach(f => {
+    const d = f.querySelector('textarea').value.trim();
+    const p = parseFloat(f.querySelector('input').value) || 0;
+    if (d || p) items.push({ descripcion: d, precio: p });
+  });
+  return items;
+}
+
+function recalcularTotalItems() {
+  const items = leerItemsEntrada();
+  const suma = items.reduce((a, it) => a + it.precio, 0);
+  if (suma > 0) document.getElementById('ne-total').value = suma;
+}
+window.recalcularTotalItems = recalcularTotalItems;
+
+function limpiarItemsEntrada() {
+  const cont = document.getElementById('ne-items-extra');
+  if (cont) cont.innerHTML = '';
+  const p0 = document.getElementById('ne-item-precio-0');
+  if (p0) p0.value = '';
+  const t = document.getElementById('ne-trabajo');
+  if (t) autoCrecerTexto(t);
+}
+
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   const tipoCliente = document.getElementById('ne-tipo-cliente').value;
-  const trabajo = document.getElementById('ne-trabajo').value.trim();
+  const itemsEntrada = leerItemsEntrada();
+  const trabajo = itemsEntrada.map(it => it.descripcion).filter(Boolean).join(' + ');
   const paraElDia = document.getElementById('ne-para-el-dia').value || null;
   const destino = document.getElementById('ne-destino').value;
   const canal = document.getElementById('ne-canal').value;
@@ -2244,6 +2305,11 @@ async function guardarNuevaEntrada() {
     try { await sb.from('sobres').update({ foto_referencia: window._fotosReferenciaLista[0].dataURL }).eq('id', sobreNuevo.id); } catch (e) {}
   }
 
+  // 2b) Ítems (solo si hay más de uno: cada descripción con su precio)
+  if (itemsEntrada.length > 1) {
+    try { await sb.from('items_sobre').insert(itemsEntrada.map(it => ({ sobre_id: sobreNuevo.id, descripcion: it.descripcion, precio: it.precio }))); } catch (e) {}
+  }
+
   // 3) Registrar el movimiento de caja.
   //    - Si es CUENTA CORRIENTE: se registra con el precio total como monto (aunque no se haya
   //      cobrado nada en el momento) — así queda la deuda reflejada en Caja del Día.
@@ -2322,6 +2388,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
+  limpiarItemsEntrada();
   document.getElementById('ne-destino').value = '';
   document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
   mostrarFechaTaller();
