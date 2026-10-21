@@ -836,6 +836,7 @@ function pantallaNuevaEntrada() {
       </select>
 
       <button class="btn btn-verde" onclick="guardarNuevaEntrada()">Guardar entrada</button>
+      <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="limpiarFormularioEntrada()">🗑️ Limpiar / empezar de cero</button>
       <div id="ne-msg"></div>
     </div>
   `);
@@ -843,6 +844,7 @@ function pantallaNuevaEntrada() {
   mostrarFechaTaller();
   cargarTiposProducto('ne');
   cargarProveedores('ne');
+  iniciarBorradorAuto();
 }
 
 const SUPABASE_FUNCIONES_URL = 'https://vbkpczhbudktbkclqncy.supabase.co/functions/v1';
@@ -873,23 +875,57 @@ function precioGramoDeMaterial(materialId) {
 }
 let _borradorEntrada = null; // guarda lo ya escrito en Entrada antes de ir al catálogo
 
-function irAlCatalogoDesdeEntrada() {
+// (21/10/2026) El borrador de Nueva Entrada se guarda SOLO mientras escriben (y sobrevive a salir a otra
+// pantalla o al catálogo): al volver a Entrada se recupera todo. Se borra al guardar el sobre o con "Limpiar".
+let _catalogoDesdeEntrada = false; // true = el catálogo se abrió desde Entrada para ELEGIR un producto
+function guardarBorradorEntrada() {
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  if (!document.getElementById('ne-sobre')) return;
   _borradorEntrada = {
-    sobre: document.getElementById('ne-sobre').value,
-    cliente: document.getElementById('ne-cliente').value,
-    telefono: document.getElementById('ne-telefono').value,
-    tipoCliente: document.getElementById('ne-tipo-cliente').value,
-    trabajo: document.getElementById('ne-trabajo').value,
-    precio0: document.getElementById('ne-item-precio-0').value,
+    sobre: g('ne-sobre'),
+    cliente: g('ne-cliente'),
+    telefono: g('ne-telefono'),
+    tipoCliente: g('ne-tipo-cliente'),
+    trabajo: g('ne-trabajo'),
+    precio0: g('ne-item-precio-0'),
     extras: [...document.querySelectorAll('#ne-items-extra .ne-item-extra')].map(f => ({ d: f.querySelector('textarea').value, p: f.querySelector('input').value })),
-    tipoProducto: document.getElementById('ne-tipo-producto').value,
-    cantidad: document.getElementById('ne-cantidad').value,
-    total: document.getElementById('ne-total').value,
-    sena: document.getElementById('ne-sena').value,
-    medioPago: document.getElementById('ne-medio-pago').value,
-    canal: document.getElementById('ne-canal').value,
-    paraElDia: document.getElementById('ne-para-el-dia').value
+    tipoProducto: g('ne-tipo-producto'),
+    cantidad: g('ne-cantidad'),
+    total: g('ne-total'),
+    sena: g('ne-sena'),
+    medioPago: g('ne-medio-pago'),
+    canal: g('ne-canal'),
+    paraElDia: g('ne-para-el-dia'),
+    destino: g('ne-destino'),
+    proveedor: g('ne-proveedor'),
+    dUnico: !!(document.getElementById('ne-diseno-unico') && document.getElementById('ne-diseno-unico').checked),
+    envio: { nombre: g('ne-env-nombre'), provincia: g('ne-env-provincia'), localidad: g('ne-env-localidad'), direccion: g('ne-env-direccion'), cp: g('ne-env-cp'), telefono: g('ne-env-telefono') },
+    productoSel: _productoSeleccionado
   };
+  try { sessionStorage.setItem('tandem_borrador_entrada', JSON.stringify(_borradorEntrada)); } catch (e) {}
+}
+function borrarBorradorEntrada() {
+  _borradorEntrada = null; _productoSeleccionado = null;
+  try { sessionStorage.removeItem('tandem_borrador_entrada'); } catch (e) {}
+}
+function limpiarFormularioEntrada() {
+  if (!confirm('¿Borrar todo lo que está cargado en esta entrada?')) return;
+  borrarBorradorEntrada();
+  pantallaNuevaEntrada();
+}
+window.limpiarFormularioEntrada = limpiarFormularioEntrada;
+function iniciarBorradorAuto() {
+  if (!_borradorEntrada) {
+    try { const j = sessionStorage.getItem('tandem_borrador_entrada'); if (j) _borradorEntrada = JSON.parse(j); } catch (e) {}
+  }
+  if (_borradorEntrada) restaurarBorradorEntrada();
+  const card = document.getElementById('ne-sobre').closest('.card');
+  if (card) { card.addEventListener('input', guardarBorradorEntrada); card.addEventListener('change', guardarBorradorEntrada); }
+}
+
+function irAlCatalogoDesdeEntrada() {
+  guardarBorradorEntrada();
+  _catalogoDesdeEntrada = true;
   _catalogoEstadoGuardado = null;
   pantallaCatalogo();
 }
@@ -897,7 +933,7 @@ window.irAlCatalogoDesdeEntrada = irAlCatalogoDesdeEntrada;
 
 function abrirCatalogoParaConsulta() {
   // Modo consulta: solo para pasar presupuestos, no crea ni modifica ningún sobre
-  _borradorEntrada = null;
+  _catalogoDesdeEntrada = false;
   pantallaCatalogo();
 }
 window.abrirCatalogoParaConsulta = abrirCatalogoParaConsulta;
@@ -946,7 +982,7 @@ function pantallaCatalogo() {
   // así que también se borra la categoría activa (antes quedaba "pegada" y la búsqueda por código
   // no encontraba nada porque seguía filtrando por la categoría de la vez anterior).
   _categoriaActivaCatalogo = null;
-  const esConsulta = !_borradorEntrada;
+  const esConsulta = !_catalogoDesdeEntrada;
   render(`
     ${pintarUsuarioActual()}
     <div class="card card-ancha">
@@ -1580,8 +1616,8 @@ function buscarPorCategoriaCatalogo(cat) {
 window.buscarPorCategoriaCatalogo = buscarPorCategoriaCatalogo;
 
 function volverAEntradaSinElegir() {
+  _catalogoDesdeEntrada = false;
   pantallaNuevaEntrada();
-  restaurarBorradorEntrada();
 }
 window.volverAEntradaSinElegir = volverAEntradaSinElegir;
 
@@ -1593,14 +1629,23 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-tipo-cliente').value = _borradorEntrada.tipoCliente;
   document.getElementById('ne-trabajo').value = _borradorEntrada.trabajo;
   autoCrecerTexto(document.getElementById('ne-trabajo'));
-  if (_borradorEntrada.precio0) document.getElementById('ne-item-precio-0').value = _borradorEntrada.precio0;
+  document.getElementById('ne-item-precio-0').value = _borradorEntrada.precio0 || '';
+  document.getElementById('ne-items-extra').innerHTML = '';
   (_borradorEntrada.extras || []).forEach(x => agregarItemEntrada(x.d, x.p));
+  if (_borradorEntrada.productoSel) _productoSeleccionado = _borradorEntrada.productoSel;
+  if (_borradorEntrada.destino) document.getElementById('ne-destino').value = _borradorEntrada.destino;
+  if (_borradorEntrada.dUnico) document.getElementById('ne-diseno-unico').checked = true;
+  if (_borradorEntrada.envio) {
+    const en = _borradorEntrada.envio;
+    [['nombre','nombre'],['provincia','provincia'],['localidad','localidad'],['direccion','direccion'],['cp','cp'],['telefono','telefono']].forEach(([k, id]) => { const e = document.getElementById('ne-env-' + id); if (e) e.value = en[k] || ''; });
+  }
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
-  if (_borradorEntrada.canal) document.getElementById('ne-canal').value = _borradorEntrada.canal;
+  if (_borradorEntrada.canal) { document.getElementById('ne-canal').value = _borradorEntrada.canal; const bx = document.getElementById('ne-envio-box'); if (bx) bx.style.display = _borradorEntrada.canal === 'REDES_ENVIO' ? 'block' : 'none'; }
   if (_borradorEntrada.paraElDia) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
+  if (_borradorEntrada.proveedor) setTimeout(() => { const sp = document.getElementById('ne-proveedor'); if (sp) sp.value = _borradorEntrada.proveedor; }, 600);
   if (_borradorEntrada.tipoProducto) {
     // La cache de categorías recién se termina de cargar (cargarTiposProducto es async), por eso esperamos un toque.
     setTimeout(() => {
@@ -1799,12 +1844,14 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
 window.ejecutarBusquedaCatalogo = ejecutarBusquedaCatalogo;
 
 function elegirProductoCatalogo(cod, cat, descripcion, precio, listaPrecio) {
-  if (!_borradorEntrada) return; // modo consulta: solo mirar precios, no hay nada que "elegir"
+  if (!_catalogoDesdeEntrada || !_borradorEntrada) return; // modo consulta: solo mirar precios, no hay nada que "elegir"
   _productoSeleccionado = { cod, cat };
   _borradorEntrada.trabajo = descripcion + (listaPrecio ? ' (' + listaPrecio + ')' : '');
-  _borradorEntrada.total = precio;
+  _borradorEntrada.precio0 = precio;
+  _borradorEntrada.total = precio + ((_borradorEntrada.extras || []).reduce((a, x) => a + (parseFloat(x.p) || 0), 0));
+  _borradorEntrada.productoSel = _productoSeleccionado;
+  _catalogoDesdeEntrada = false;
   pantallaNuevaEntrada();
-  restaurarBorradorEntrada();
 }
 window.elegirProductoCatalogo = elegirProductoCatalogo;
 
@@ -2443,6 +2490,7 @@ async function guardarNuevaEntrada() {
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
     ${movImpId ? `<button type="button" class="btn btn-oro" style="margin-top:8px;" onclick='abrirImprimirMovimiento(${JSON.stringify(movImpId)})'>🖨️ Imprimir: cliente / taller / ambos</button>` : ''}
     <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
+  borrarBorradorEntrada();
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-trabajo').value = '';
