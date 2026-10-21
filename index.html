@@ -238,6 +238,19 @@ let _restaurandoHistorial = false;
 // (ej: "#0801" -> "801"). Igual que hacía el sistema viejo, para que
 // no queden dos sobres "distintos" por un cero o un símbolo de más.
 // ============================================================
+// (21/10/2026) Número de sobre automático para cuando no hay sobres de papel: serie 90001 en adelante.
+async function numeroSobreAutomatico() {
+  const inp = document.getElementById('ne-sobre');
+  inp.placeholder = 'Buscando número...';
+  const { data, error } = await sb.from('sobres').select('numero').gte('numero', '90000').lt('numero', '99999').limit(2000);
+  if (error) { inp.placeholder = 'Ej: 4801'; alert('No se pudo buscar el número: ' + error.message); return; }
+  let max = 90000;
+  (data || []).forEach(r => { if (/^9\d{4}$/.test(r.numero)) max = Math.max(max, Number(r.numero)); });
+  inp.value = String(max + 1);
+  inp.placeholder = 'Ej: 4801';
+}
+window.numeroSobreAutomatico = numeroSobreAutomatico;
+
 function normalizarSobre(v) {
   const soloDigitos = String(v || '').replace(/\D/g, '');
   if (!soloDigitos) return String(v || '').trim();
@@ -706,6 +719,7 @@ function pantallaNuevaEntrada() {
 
       <label>N° de sobre</label>
       <input type="text" id="ne-sobre" placeholder="Ej: 4801">
+      <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="numeroSobreAutomatico()">🎲 Número automático (sin sobre de papel)</button>
 
       <label>Cliente</label>
       <input type="text" id="ne-cliente" placeholder="Nombre del cliente" oninput="buscarClienteEnEntrada()" autocomplete="off">
