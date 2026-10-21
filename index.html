@@ -801,12 +801,28 @@ function pantallaNuevaEntrada() {
       <input type="number" id="ne-sena" placeholder="0">
 
       <label>Canal de venta</label>
-      <select id="ne-canal">
+      <select id="ne-canal" onchange="mostrarDatosEnvio()">
         <option value="">— Elegí el canal —</option>
         <option value="LOCAL">Local</option>
         <option value="REDES_ENVIO">Redes — con envío</option>
         <option value="REDES_RETIRO">Redes — retiro en local</option>
       </select>
+
+      <div id="ne-envio-box" class="lista-sobre" style="display:none; margin-top:10px;">
+        <div style="font-weight:700; margin-bottom:4px;">📦 Datos de envío (se imprimen en una hoja aparte)</div>
+        <label>Nombre completo</label>
+        <input type="text" id="ne-env-nombre" autocomplete="off">
+        <label>Provincia</label>
+        <input type="text" id="ne-env-provincia" autocomplete="off">
+        <label>Localidad</label>
+        <input type="text" id="ne-env-localidad" autocomplete="off">
+        <label>Dirección</label>
+        <input type="text" id="ne-env-direccion" autocomplete="off">
+        <label>Código postal</label>
+        <input type="text" id="ne-env-cp" inputmode="numeric" autocomplete="off">
+        <label>Teléfono</label>
+        <input type="tel" id="ne-env-telefono" autocomplete="off">
+      </div>
 
       <label>Medio de pago de la seña</label>
       <select id="ne-medio-pago">
@@ -2146,6 +2162,24 @@ function limpiarItemsEntrada() {
   if (t) autoCrecerTexto(t);
 }
 
+function mostrarDatosEnvio() {
+  const box = document.getElementById('ne-envio-box');
+  if (!box) return;
+  const esEnvio = document.getElementById('ne-canal').value === 'REDES_ENVIO';
+  box.style.display = esEnvio ? 'block' : 'none';
+  if (esEnvio) {
+    const n = document.getElementById('ne-env-nombre'), t = document.getElementById('ne-env-telefono');
+    if (!n.value) n.value = document.getElementById('ne-cliente').value.trim();
+    if (!t.value) t.value = document.getElementById('ne-telefono').value.trim();
+  }
+}
+window.mostrarDatosEnvio = mostrarDatosEnvio;
+
+function leerDatosEnvioEntrada() {
+  const v = id => (document.getElementById(id).value || '').trim();
+  return { nombre: v('ne-env-nombre'), provincia: v('ne-env-provincia'), localidad: v('ne-env-localidad'), direccion: v('ne-env-direccion'), cp: v('ne-env-cp'), telefono: v('ne-env-telefono') };
+}
+
 async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
@@ -2225,6 +2259,16 @@ async function guardarNuevaEntrada() {
     return;
   }
 
+  const esEnvioCanal = canal === 'REDES_ENVIO';
+  const envioDatos = esEnvioCanal ? leerDatosEnvioEntrada() : null;
+  if (esEnvioCanal) {
+    const faltan = [['nombre', 'Nombre completo'], ['provincia', 'Provincia'], ['localidad', 'Localidad'], ['direccion', 'Dirección'], ['cp', 'Código postal'], ['telefono', 'Teléfono']].filter(x => !envioDatos[x[0]]).map(x => x[1]);
+    if (faltan.length) {
+      msgBox.innerHTML = `<div class="msg msg-error">📦 Faltan datos de envío: ${faltan.join(', ')}.</div>`;
+      return;
+    }
+  }
+
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   // IMPORTANTE: todo el guardado va envuelto en try/catch. Si se corta la conexión a mitad de
@@ -2257,7 +2301,13 @@ async function guardarNuevaEntrada() {
       foto_referencia: null,
       para_el_dia: paraElDia,
       canal: canal,
-      diseno_unico: document.getElementById('ne-diseno-unico').checked
+      diseno_unico: document.getElementById('ne-diseno-unico').checked,
+      envio_nombre: envioDatos ? envioDatos.nombre : null,
+      envio_provincia: envioDatos ? envioDatos.provincia : null,
+      envio_localidad: envioDatos ? envioDatos.localidad : null,
+      envio_direccion: envioDatos ? envioDatos.direccion : null,
+      envio_cp: envioDatos ? envioDatos.cp : null,
+      envio_telefono: envioDatos ? envioDatos.telefono : null
     })
     .select('id')
     .single();
@@ -2381,6 +2431,7 @@ async function guardarNuevaEntrada() {
     sena: sena,
     medioPago: medioPago,
     destino: destino,
+    envio: envioDatos,
     fotos: (window._fotosReferenciaLista || []).map(x => x && x.dataURL).filter(Boolean)
   };
   // (21/10/2026) Mismas opciones de impresión que en Caja del Día (cliente / taller / ambos) sobre el movimiento recién cargado
@@ -2400,6 +2451,8 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
   mostrarFechaTaller();
   document.getElementById('ne-canal').value = '';
+  ['nombre','provincia','localidad','direccion','cp','telefono'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
+  mostrarDatosEnvio();
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
@@ -2538,6 +2591,24 @@ function armarHtmlComprobante(c) {
     </div></div>
   `;
 
+  // (21/10/2026) Hoja de datos de envío (solo si el sobre es con envío): se imprime junto a la del taller.
+  const e = c.envio || null;
+  const filaEnv = (rot, val) => `<div class="env-fila"><span>${rot}</span><b>${esc(val || '')}</b></div>`;
+  const hojaEnvio = e ? `
+    <div class="hoja"><div class="marco envio">
+      <div class="env-tit">DATOS DE ENVÍO</div>
+      <div class="env-sobre">#${esc(c.numero)}</div>
+      <div class="env-linea"></div>
+      ${filaEnv('Nombre completo', e.nombre)}
+      ${filaEnv('Provincia', e.provincia)}
+      ${filaEnv('Localidad', e.localidad)}
+      ${filaEnv('Dirección', e.direccion)}
+      ${filaEnv('Código postal', e.cp)}
+      ${filaEnv('Teléfono', e.telefono)}
+      <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Cargó: ' + esc(c.vendedora) : ''}</div>
+    </div></div>
+  ` : '';
+
   // Cada copia sale en su propia hoja A6 (10,5 x 14,8 cm): una para el cliente y otra para el taller.
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Comprobante sobre ${esc(c.numero)}</title>
     <style>
@@ -2614,6 +2685,14 @@ function armarHtmlComprobante(c) {
       .tallerv2 .t-fotos img { flex: 1; min-width: 0; height: 100%; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .tallerv2 .t-fotos.n1 img { max-width: 100%; }
       .tallerv2 .t-cap { text-align: center; font-size: 14px; color: #000; margin-top: 3px; }
+      .envio { display: flex; flex-direction: column; }
+      .envio .env-tit { text-align: center; font-size: 16px; font-weight: 800; letter-spacing: 3px; margin-top: 2mm; }
+      .envio .env-sobre { text-align: center; font-size: 54px; font-weight: 900; line-height: 1; margin: 3px 0 4px; }
+      .envio .env-linea { border-top: 0.5mm solid #111; margin: 2mm 0 3mm; }
+      .envio .env-fila { border-bottom: 0.3mm solid #888; padding: 1.5mm 0 1.2mm; }
+      .envio .env-fila span { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #000; text-transform: uppercase; }
+      .envio .env-fila b { display: block; font-size: 23px; font-weight: 700; line-height: 1.2; min-height: 8mm; word-break: break-word; }
+      .envio .env-pie { margin-top: auto; text-align: center; font-size: 13px; font-weight: 700; padding-bottom: 6mm; }
       .tallerv2 .t-cargo { text-align: center; font-size: 15px; font-weight: 700; color: #000; margin-top: 4px; }
       /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
       .recibo { position: relative; }
@@ -2645,6 +2724,7 @@ function armarHtmlComprobante(c) {
       ${c.hojaRecibo || ''}
       ${(c.soloTaller || c.hojaRecibo) ? '' : hojaCliente}
       ${c.soloRecibo ? '' : hojaTaller}
+      ${c.soloRecibo ? '' : hojaEnvio}
     </body></html>`;
 }
 
@@ -2810,7 +2890,7 @@ window.abrirImprimirMovimiento = abrirImprimirMovimiento;
 async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo) {
   const { data: s, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, clientes(nombre, telefono)')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
 
@@ -2846,6 +2926,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo) {
     sena: sena,
     medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
     destino: s.orfebre,
+    envio: (s.envio_direccion || s.envio_nombre) ? { nombre: s.envio_nombre, provincia: s.envio_provincia, localidad: s.envio_localidad, direccion: s.envio_direccion, cp: s.envio_cp, telefono: s.envio_telefono } : null,
     soloTaller: !!soloTaller,
     hojaRecibo: hojaRecibo || '',
     fotos: (fotosExtra || []).map(f => f.url)
@@ -2859,7 +2940,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, clientes(nombre)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, clientes(nombre)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -2884,6 +2965,16 @@ async function pantallaEditarSobre(sobreId) {
 
       <label style="margin-top:12px;">📅 Fecha de entrega al cliente</label>
       <input type="date" id="es-para-el-dia" value="${s.para_el_dia || ''}">
+
+      <div class="lista-sobre" style="margin-top:14px;">
+        <div style="font-weight:700;">📦 Datos de envío (dejar vacío si no es con envío)</div>
+        <label>Nombre completo</label><input type="text" id="es-env-nombre" value="${esc(s.envio_nombre || '')}">
+        <label>Provincia</label><input type="text" id="es-env-provincia" value="${esc(s.envio_provincia || '')}">
+        <label>Localidad</label><input type="text" id="es-env-localidad" value="${esc(s.envio_localidad || '')}">
+        <label>Dirección</label><input type="text" id="es-env-direccion" value="${esc(s.envio_direccion || '')}">
+        <label>Código postal</label><input type="text" id="es-env-cp" value="${esc(s.envio_cp || '')}">
+        <label>Teléfono</label><input type="tel" id="es-env-telefono" value="${esc(s.envio_telefono || '')}">
+      </div>
 
       ${esCC ? '' : `
       <div class="lista-sobre" style="margin-top:14px;">
@@ -2954,7 +3045,10 @@ async function guardarEdicionSobre(sobreId, numero) {
     return;
   }
 
-  const cambios = { precio_total: total, para_el_dia: paraElDia };
+  const ev = id => (document.getElementById(id).value || '').trim() || null;
+  const cambios = { precio_total: total, para_el_dia: paraElDia,
+    envio_nombre: ev('es-env-nombre'), envio_provincia: ev('es-env-provincia'), envio_localidad: ev('es-env-localidad'),
+    envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono') };
   if (clienteId) cambios.cliente_id = clienteId;
   const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id').eq('id', sobreId).single();
   const descCambio = !!antes && descripcionNueva !== (antes.descripcion || '').trim();
