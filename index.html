@@ -2761,9 +2761,13 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, clientes(nombre)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, clientes(nombre)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
+  // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
+  const { data: movsSena } = await sb.from('movimientos_caja').select('monto, medio_pago').eq('sobre_id', sobreId).eq('ingresa_egresa', 'INGRESA');
+  const esCC = (movsSena || []).some(m => m.medio_pago === 'CUENTA CORRIENTE');
+  const cobrado = (movsSena || []).filter(m => m.medio_pago !== 'CUENTA CORRIENTE').reduce((a, m) => a + Number(m.monto || 0), 0);
 
   render(`
     <div class="card">
@@ -2774,11 +2778,31 @@ async function pantallaEditarSobre(sobreId) {
       <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
       <div id="es-cliente-sugerencias"></div>
 
+      <label style="margin-top:12px;">📝 Descripción del trabajo</label>
+      <textarea id="es-descripcion" rows="4" style="width:100%; font-size:16px; padding:8px; box-sizing:border-box;">${esc(s.descripcion || '')}</textarea>
+
       <label style="margin-top:12px;">Total del sobre</label>
       <input type="number" id="es-total" value="${s.precio_total != null ? s.precio_total : ''}" inputmode="decimal">
 
       <label style="margin-top:12px;">📅 Fecha de entrega al cliente</label>
       <input type="date" id="es-para-el-dia" value="${s.para_el_dia || ''}">
+
+      ${esCC ? '' : `
+      <div class="lista-sobre" style="margin-top:14px;">
+        <div style="font-weight:700;">💰 Seña cobrada hasta ahora: $${cobrado.toLocaleString('es-AR')}</div>
+        <label>¿Faltó cargar seña? Agregá acá lo que se cobró (se anota en la caja de HOY)</label>
+        <input type="number" id="es-sena-extra" placeholder="0" inputmode="decimal">
+        <label>Medio de pago</label>
+        <select id="es-sena-medio">
+          <option>EFECTIVO</option>
+          <option>TARJETA FISER</option>
+          <option>TRANSFERENCIA SANTANDER</option>
+          <option>MERCADO PAGO FISER</option>
+          <option>MERCADO PAGO LAUREANO</option>
+          <option>UALA CARLA</option>
+        </select>
+        <div style="font-size:12px; color:#8a8378; margin-top:4px;">Si hay una seña de más, se corrige desde Caja del Día (✏️ del movimiento).</div>
+      </div>`}
 
       <div id="es-msg"></div>
 
@@ -2822,6 +2846,10 @@ async function guardarEdicionSobre(sobreId, numero) {
   const totalTxt = document.getElementById('es-total').value.trim();
   const total = totalTxt === '' ? null : Number(totalTxt);
   const paraElDia = document.getElementById('es-para-el-dia').value || null;
+  const descripcionNueva = document.getElementById('es-descripcion').value.trim();
+  const senaExtraEl = document.getElementById('es-sena-extra');
+  const senaExtra = senaExtraEl ? (parseFloat(senaExtraEl.value) || 0) : 0;
+  const senaMedio = senaExtraEl ? document.getElementById('es-sena-medio').value : null;
 
   if (document.getElementById('es-cliente-nombre').value.trim() && !clienteId) {
     msgBox.innerHTML = `<div class="msg msg-error">Elegí el cliente de la lista (tocalo) para que quede bien vinculado.</div>`;
@@ -2830,6 +2858,9 @@ async function guardarEdicionSobre(sobreId, numero) {
 
   const cambios = { precio_total: total, para_el_dia: paraElDia };
   if (clienteId) cambios.cliente_id = clienteId;
+  const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id').eq('id', sobreId).single();
+  const descCambio = !!antes && descripcionNueva !== (antes.descripcion || '').trim();
+  if (descCambio) cambios.descripcion = descripcionNueva;
 
   const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${error.message}</div>`; return; }
@@ -2837,9 +2868,29 @@ async function guardarEdicionSobre(sobreId, numero) {
   // Mantiene los movimientos de caja de este sobre apuntando al mismo cliente
   if (clienteId) await sb.from('movimientos_caja').update({ cliente_id: clienteId }).eq('sobre_id', sobreId);
 
+  if (senaExtra > 0) {
+    const { data: base } = await sb.from('movimientos_caja').select('tipo_cliente, canal, cliente_id, cantidad, codigo, proveedor_id').eq('sobre_id', sobreId).order('created_at').limit(1);
+    const b = (base && base[0]) || {};
+    const { error: errSena } = await sb.from('movimientos_caja').insert({
+      vendedora: usuarioActual.nombre,
+      descripcion: 'seña (agregada después) sobre ' + numero,
+      ingresa_egresa: 'INGRESA',
+      tipo_cliente: b.tipo_cliente || null,
+      medio_pago: senaMedio,
+      monto: senaExtra,
+      cantidad: b.cantidad || 1,
+      canal: b.canal || null,
+      cliente_id: clienteId || b.cliente_id || null,
+      sobre_id: sobreId,
+      codigo: b.codigo || null,
+      proveedor_id: b.proveedor_id || null
+    });
+    if (errSena) { msgBox.innerHTML = `<div class="msg msg-error">Se guardó el sobre, pero NO la seña: ${errSena.message}</div>`; return; }
+  }
+
   await sb.from('historial_sobres').insert({
     sobre_id: sobreId, evento: 'EDICION',
-    detalle: 'Editado por ' + (usuarioActual ? usuarioActual.nombre : '') + (clienteId ? ' — cliente actualizado' : '') + (total != null ? ' — total: $' + total : '') + (paraElDia ? ' — entrega: ' + paraElDia : '')
+    detalle: 'Editado por ' + (usuarioActual ? usuarioActual.nombre : '') + (descCambio ? ' — descripción cambiada' : '') + (senaExtra > 0 ? ' — seña agregada: $' + senaExtra + ' (' + senaMedio + ')' : '') + (clienteId ? ' — cliente actualizado' : '') + (total != null ? ' — total: $' + total : '') + (paraElDia ? ' — entrega: ' + paraElDia : '')
   });
 
   volverADetalleSobre(numero);
@@ -3270,9 +3321,9 @@ function pantallaListoLista() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>🔄 Regreso</h1>
-      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio, para marcarlos listos de una</div>
+      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio, para cambiarles el estado de una (regreso del taller)</div>
       <input type="text" id="rg-sobres" placeholder="Ej: 4801 4802 4803">
-      <button class="btn btn-verde" onclick="marcarListoLote()">Marcar listo</button>
+      <button class="btn btn-verde" onclick="marcarListoLote()">Cambiar de estado</button>
       <div id="rg-resultado"></div>
 
       <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
@@ -3382,7 +3433,7 @@ async function buscarSobreParaListo() {
         <option value="GRABADO">✏️ Pasa a Grabado</option>
         <option value="LAUREANO">🧪 Pasa a Laureano</option>
       </select>
-      <button class="btn btn-verde" onclick="marcarListo('${s.id}', '${s.numero}')">Marcar listo</button>
+      <button class="btn btn-verde" onclick="marcarListo('${s.id}', '${s.numero}')">Cambiar de estado</button>
       <div id="msg-${s.id}"></div>
     </div>
   `;
