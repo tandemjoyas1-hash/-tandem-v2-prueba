@@ -179,9 +179,33 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 // ============================================================
 const SUPABASE_URL = 'https://vbkpczhbudktbkclqncy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wpv2kS2qMJFBhEOlGrWg3g_FWt8IFZn';
+// (21/10/2026) Si Supabase contesta "JWT expired" en cualquier pantalla, se manda al PIN en vez de mostrar el error técnico.
+let _sesionVencidaAvisada = false;
+function sesionVencida() {
+  if (_sesionVencidaAvisada) return;
+  _sesionVencidaAvisada = true;
+  setTimeout(() => { _sesionVencidaAvisada = false; }, 10000);
+  try { sb.auth.signOut().catch(() => {}); } catch (e) {}
+  cerrarSesion();
+  try { app.insertAdjacentHTML('afterbegin', '<div class="msg msg-error" style="margin:10px;">Se venció la sesión. Entrá de nuevo con tu PIN.</div>'); } catch (e) {}
+}
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  db: { schema: 'tandem' }
+  db: { schema: 'tandem' },
+  global: {
+    fetch: async (url, opts) => {
+      const r = await fetch(url, opts);
+      try {
+        if (r.status === 401 && !String(url).includes('/auth/v1/')) {
+          const t = await r.clone().text();
+          if (/jwt expired/i.test(t)) sesionVencida();
+        }
+      } catch (e) {}
+      return r;
+    }
+  }
 });
+// Mantiene viva la sesión aunque la pestaña quede abierta todo el día (renueva sola si está por vencer).
+setInterval(() => { try { if (usuarioActual) sb.auth.getSession(); } catch (e) {} }, 4 * 60 * 1000);
 
 let usuarioActual = null; // { id, nombre, rol }
 
@@ -3803,7 +3827,7 @@ async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
     : pagos.map(p => `
         <div class="lista-sobre">
           <div class="nro">$${Number(p.monto).toLocaleString('es-AR')}</div>
-          <div class="cli">${new Date(p.fecha).toLocaleDateString('es-AR')}</div>
+          <div class="cli">${new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-AR')}</div>
           <div class="desc">${p.descripcion || ''}</div>
         </div>
       `).join('');
@@ -4400,7 +4424,7 @@ async function buscarSobreDetalle() {
     : movimientos.map(m => `
         <div class="lista-sobre">
           <div class="nro">$${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}</div>
-          <div class="cli">${new Date(m.fecha).toLocaleDateString('es-AR')}</div>
+          <div class="cli">${new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-AR')}</div>
           <div class="desc">${m.descripcion || ''}</div>
         </div>
       `).join('');
