@@ -3561,7 +3561,11 @@ function pantallaListoLista() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>🔄 Regreso</h1>
-      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio, para cambiarles el estado de una (regreso del taller)</div>
+      <div class="msg" style="background:#fff4e0; color:#7a4a12; border:1px solid #e8c68f; margin-bottom:10px;">
+        ⚠️ Esta pantalla es para <b>CONTROLAR</b> los sobres (quedan "Listo para retirar").<br>
+        Para registrar que <b>volvieron del taller</b>, usá <b>"Regresaron al local"</b> (en <i>Bajar al taller</i> o en <i>Foto</i>).
+      </div>
+      <div class="sub">Escribí uno o varios N° de sobre, separados por espacio, para controlarlos de una</div>
       <input type="text" id="rg-sobres" placeholder="Ej: 4801 4802 4803">
       <button class="btn btn-verde" onclick="marcarListoLote()">Cambiar de estado</button>
       <div id="rg-resultado"></div>
