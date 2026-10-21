@@ -3697,6 +3697,8 @@ async function marcarListo(sobreId, numero) {
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
   if (retorno) {
+    // (21/10/2026) Vuelve a taller: deja de estar "en el local" para poder darle el regreso otra vez
+    await sb.from('sobres').update({ salida_taller_at: null }).eq('id', sobreId);
     await sb.from('historial_sobres').insert({
       sobre_id: sobreId,
       evento: 'RETORNO',
@@ -3710,7 +3712,8 @@ async function marcarListo(sobreId, numero) {
   // todavía, solo cambia quién lo tiene ahora. Sigue en la cola de "Regreso" hasta que ese
   // orfebre lo termine y alguien lo controle de nuevo.
   if (deriva) {
-    const { error } = await sb.from('sobres').update({ orfebre: deriva }).eq('id', sobreId);
+    // (21/10/2026) Al pasar a otro orfebre también deja de estar "en el local" (si no, no se podía dar el regreso de nuevo)
+    const { error } = await sb.from('sobres').update({ orfebre: deriva, salida_taller_at: null }).eq('id', sobreId);
     if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
     await sb.from('historial_sobres').insert({
       sobre_id: sobreId,
