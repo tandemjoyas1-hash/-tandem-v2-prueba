@@ -2383,7 +2383,14 @@ async function guardarNuevaEntrada() {
     destino: destino,
     fotos: (window._fotosReferenciaLista || []).map(x => x && x.dataURL).filter(Boolean)
   };
+  // (21/10/2026) Mismas opciones de impresión que en Caja del Día (cliente / taller / ambos) sobre el movimiento recién cargado
+  let movImpId = null;
+  try {
+    const { data: movImp } = await sb.from('movimientos_caja').select('id').eq('sobre_id', sobreNuevo.id).order('created_at').limit(1).maybeSingle();
+    movImpId = movImp ? movImp.id : null;
+  } catch (e) {}
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
+    ${movImpId ? `<button type="button" class="btn btn-oro" style="margin-top:8px;" onclick='abrirImprimirMovimiento(${JSON.stringify(movImpId)})'>🖨️ Imprimir: cliente / taller / ambos</button>` : ''}
     <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
