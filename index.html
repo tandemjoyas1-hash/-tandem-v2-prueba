@@ -2534,6 +2534,7 @@ function armarHtmlComprobante(c) {
       <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
       <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
       ${fotosMostrar.length ? '<div class="t-cap">Foto de referencia' + (fotosExtra > 0 ? ' (+' + fotosExtra + ' más en el sistema)' : '') + '</div>' : ''}
+      ${c.vendedora ? '<div class="t-cargo">Cargó: ' + esc(c.vendedora) + '</div>' : ''}
     </div></div>
   `;
 
@@ -2613,6 +2614,7 @@ function armarHtmlComprobante(c) {
       .tallerv2 .t-fotos img { flex: 1; min-width: 0; height: 100%; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .tallerv2 .t-fotos.n1 img { max-width: 100%; }
       .tallerv2 .t-cap { text-align: center; font-size: 14px; color: #000; margin-top: 3px; }
+      .tallerv2 .t-cargo { text-align: center; font-size: 15px; font-weight: 700; color: #000; margin-top: 4px; }
       /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
       .recibo { position: relative; }
       .recibo .marca { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: 0; padding-top: 2mm; }
@@ -2822,10 +2824,18 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo) {
   const { data: fotosExtra } = await sb
     .from('fotos_sobre').select('url').eq('sobre_id', sobreId).order('created_at').limit(3);
 
+  // Quién cargó el sobre (para saber a quién consultar si algo de la descripción está mal)
+  let quienCargo = '';
+  try {
+    const { data: hEnt } = await sb.from('historial_sobres').select('detalle').eq('sobre_id', sobreId).eq('evento', 'ENTRADA').order('created_at').limit(1);
+    const mm = hEnt && hEnt[0] && /dio entrada:\s*([^)]+)\)/.exec(hEnt[0].detalle || '');
+    if (mm) quienCargo = mm[1].trim();
+  } catch (e) {}
+
   await imprimirComprobanteObjeto({
     numero: s.numero,
     fechaHora: new Date(s.fecha_entrada + 'T00:00:00').toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-    vendedora: (pagos && pagos[0] && pagos[0].vendedora) || '',
+    vendedora: quienCargo || (pagos && pagos[0] && pagos[0].vendedora) || '',
     canal: s.canal,
     cliente: s.clientes ? s.clientes.nombre : '',
     telefono: s.clientes ? s.clientes.telefono : '',
