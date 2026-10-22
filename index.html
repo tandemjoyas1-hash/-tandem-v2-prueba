@@ -2909,7 +2909,7 @@ async function abrirImprimirMovimiento(id) {
     medio: m.medio_pago,
     total, saldo,
     vendedora: m.vendedora,
-    qr: (tieneSobre && ingreso) ? qrSvgComprobante('https://pedidos.tandemjoyas.com/?s=' + encodeURIComponent(String(m.sobres.numero) + (m.sobres.codigo_publico ? '-' + m.sobres.codigo_publico : ''))) : ''
+    qr: false /* sin QR en recibos de pago */ ? qrSvgComprobante('https://pedidos.tandemjoyas.com/?s=' + encodeURIComponent(String(m.sobres.numero) + (m.sobres.codigo_publico ? '-' + m.sobres.codigo_publico : ''))) : ''
   };
   const hoja = armarHojaReciboMovimiento(r);
 
