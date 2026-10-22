@@ -2762,6 +2762,10 @@ function armarHtmlComprobante(c) {
       .recibo .fila { font-size: 19px; padding: 6px 0; }
       .recibo .fila span { font-size: 12px; }
       .recibo .gracias { font-size: 20px; margin-top: 0; }
+      .recibo .rqr { display: flex; align-items: center; gap: 4mm; margin-top: 3mm; }
+      .recibo .rqr-img { width: 26mm; height: 26mm; flex: none; }
+      .recibo .rqr-img svg { width: 100%; height: 100%; display: block; }
+      .recibo .rqr-txt { font-size: 13px; font-weight: 700; color: #000; line-height: 1.2; }
       .recibo .borde { font-size: 10px; bottom: 4mm; }
       /* (19/10/2026) Todo el texto del recibo en negro, igual que los números; solo la marca de agua queda gris */
       .recibo .dir, .recibo .titulo, .recibo .subm, .recibo .fila span, .recibo .gracias, .recibo .borde { color: #000; }
@@ -2869,6 +2873,7 @@ function armarHojaReciboMovimiento(r) {
       ${r.total != null ? fila('Total del trabajo', plata(r.total)) : ''}
       ${r.saldo != null ? fila('Saldo a abonar', plata(r.saldo)) : ''}
       ${fila('Atendió', r.vendedora)}
+      ${r.qr ? `<div class="rqr"><div class="rqr-img">${r.qr}</div><div class="rqr-txt">Escaneá con la cámara y consultá por tu pedido</div></div>` : ''}
       <div class="gracias">Gracias por elegirnos</div>
     </div>
     <div class="borde">TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS ✦ TÁNDEM JOYAS</div>
@@ -2878,7 +2883,7 @@ function armarHojaReciboMovimiento(r) {
 async function abrirImprimirMovimiento(id) {
   const { data: m, error } = await sb
     .from('movimientos_caja')
-    .select('id, descripcion, monto, medio_pago, ingresa_egresa, vendedora, created_at, sobre_id, clientes(nombre), sobres(id, numero, descripcion, precio_total)')
+    .select('id, descripcion, monto, medio_pago, ingresa_egresa, vendedora, created_at, sobre_id, clientes(nombre), sobres(id, numero, descripcion, precio_total, codigo_publico)')
     .eq('id', id).maybeSingle();
   if (error || !m) { alert('No se pudo cargar el movimiento.'); return; }
   const tieneSobre = !!(m.sobres && m.sobres.id);
@@ -2903,7 +2908,8 @@ async function abrirImprimirMovimiento(id) {
     concepto: m.descripcion || (tieneSobre ? m.sobres.descripcion : ''),
     medio: m.medio_pago,
     total, saldo,
-    vendedora: m.vendedora
+    vendedora: m.vendedora,
+    qr: (tieneSobre && ingreso) ? qrSvgComprobante('https://pedidos.tandemjoyas.com/?s=' + encodeURIComponent(String(m.sobres.numero) + (m.sobres.codigo_publico ? '-' + m.sobres.codigo_publico : ''))) : ''
   };
   const hoja = armarHojaReciboMovimiento(r);
 
