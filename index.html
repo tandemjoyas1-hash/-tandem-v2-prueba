@@ -2307,14 +2307,9 @@ async function guardarNuevaEntrada() {
   }
 
   const esEnvioCanal = canal === 'REDES_ENVIO';
-  const envioDatos = esEnvioCanal ? leerDatosEnvioEntrada() : null;
-  if (esEnvioCanal) {
-    const faltan = [['nombre', 'Nombre completo'], ['provincia', 'Provincia'], ['localidad', 'Localidad'], ['direccion', 'Dirección'], ['cp', 'Código postal'], ['telefono', 'Teléfono']].filter(x => !envioDatos[x[0]]).map(x => x[1]);
-    if (faltan.length) {
-      msgBox.innerHTML = `<div class="msg msg-error">📦 Faltan datos de envío: ${faltan.join(', ')}.</div>`;
-      return;
-    }
-  }
+  const _envioLeido = esEnvioCanal ? leerDatosEnvioEntrada() : null;
+  const envioDatos = (_envioLeido && Object.values(_envioLeido).some(v => v)) ? _envioLeido : null;
+  // (22/10/2026) Los datos de envío ya no son obligatorios: se pueden completar después con ✏️ Editar sobre.
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
