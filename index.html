@@ -2914,7 +2914,8 @@ async function abrirImprimirMovimiento(id) {
   div.innerHTML = `<div style="background:#fff; border-radius:14px; padding:18px; max-width:340px; width:100%;">
     <div style="font-weight:700; margin-bottom:4px;">🖨️ Imprimir</div>
     <div style="font-size:13px; color:#555; margin-bottom:12px;">${ingreso ? '⬆️' : '⬇️'} ${esc(plataCortaMov(m.monto))} — ${esc(m.medio_pago || '')}${tieneSobre ? ' · Pedido ' + esc(m.sobres.numero) : ''}</div>
-    <button type="button" class="btn" id="imp-cliente" style="width:100%; margin-bottom:8px;">🧾 Para el cliente</button>
+    <button type="button" class="btn btn-oro" id="imp-pedido" style="width:100%; margin-bottom:8px;" ${tieneSobre ? '' : 'disabled'}>📋 Pedido completo (cliente con QR + taller)</button>
+    <button type="button" class="btn" id="imp-cliente" style="width:100%; margin-bottom:8px;">🧾 Recibo de pago (cliente)</button>
     <button type="button" class="btn btn-outline" id="imp-taller" style="width:100%; margin-bottom:8px;" ${tieneSobre ? '' : 'disabled'}>🛠️ Para el taller</button>
     <button type="button" class="btn btn-outline" id="imp-ambos" style="width:100%; margin-bottom:8px;" ${tieneSobre ? '' : 'disabled'}>🧾🛠️ Ambos</button>
     ${tieneSobre ? '' : '<div style="font-size:12px; color:#8a8378; margin-bottom:8px;">Este movimiento no tiene sobre: solo se puede imprimir el recibo del cliente.</div>'}
@@ -2925,6 +2926,7 @@ async function abrirImprimirMovimiento(id) {
   document.getElementById('imp-cerrar').onclick = cerrar;
   document.getElementById('imp-cliente').onclick = async () => { cerrar(); await imprimirComprobanteObjeto({ numero: '', codigo: '-', fotos: [], hojaRecibo: hoja, soloRecibo: true }); };
   if (tieneSobre) {
+    document.getElementById('imp-pedido').onclick = async () => { cerrar(); await reimprimirComprobante(m.sobre_id); };
     document.getElementById('imp-taller').onclick = async () => { cerrar(); await reimprimirComprobante(m.sobre_id, true); };
     document.getElementById('imp-ambos').onclick = async () => { cerrar(); await reimprimirComprobante(m.sobre_id, true, hoja); };
   }
