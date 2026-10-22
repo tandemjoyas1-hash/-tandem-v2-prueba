@@ -2488,8 +2488,8 @@ async function guardarNuevaEntrada() {
     movImpId = movImp ? movImp.id : null;
   } catch (e) {}
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
-    ${movImpId ? `<button type="button" class="btn btn-oro" style="margin-top:8px;" onclick='abrirImprimirMovimiento(${JSON.stringify(movImpId)})'>🖨️ Imprimir: cliente / taller / ambos</button>` : ''}
-    <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
+    ${movImpId ? `<button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='abrirImprimirMovimiento(${JSON.stringify(movImpId)})'>🖨️ Imprimir (pedido completo, cliente o taller)</button>` : ''}
+    <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
   borrarBorradorEntrada();
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
@@ -2921,11 +2921,11 @@ async function abrirImprimirMovimiento(id) {
     <div style="font-weight:700; margin-bottom:4px;">🖨️ Imprimir</div>
     <div style="font-size:13px; color:#555; margin-bottom:12px;">${ingreso ? '⬆️' : '⬇️'} ${esc(plataCortaMov(m.monto))} — ${esc(m.medio_pago || '')}${tieneSobre ? ' · Pedido ' + esc(m.sobres.numero) : ''}</div>
     ${tieneSobre ? `
-    <button type="button" class="btn btn-oro" id="imp-pedido" style="width:100%; margin-bottom:8px;">📋 Pedido completo (cliente con QR + taller)</button>
-    <button type="button" class="btn btn-outline" id="imp-cliente-solo" style="width:100%; margin-bottom:8px;">👤 Solo hoja del cliente (con QR)</button>
-    <button type="button" class="btn btn-outline" id="imp-taller" style="width:100%; margin-bottom:8px;">🛠️ Solo hoja del taller</button>
+    <button type="button" class="btn btn-verde" id="imp-pedido" style="width:100%; margin-bottom:8px;">📋 Pedido completo (cliente con QR + taller)</button>
+    <button type="button" class="btn btn-verde" id="imp-cliente-solo" style="width:100%; margin-bottom:8px;">👤 Solo hoja del cliente (con QR)</button>
+    <button type="button" class="btn btn-verde" id="imp-taller" style="width:100%; margin-bottom:8px;">🛠️ Solo hoja del taller</button>
     ` : `
-    <button type="button" class="btn" id="imp-cliente" style="width:100%; margin-bottom:8px;">🧾 Recibo de pago (cliente)</button>
+    <button type="button" class="btn btn-verde" id="imp-cliente" style="width:100%; margin-bottom:8px;">🧾 Recibo de pago (cliente)</button>
     <div style="font-size:12px; color:#8a8378; margin-bottom:8px;">Este movimiento no tiene pedido: solo se puede imprimir el recibo de pago.</div>
     `}
     <button type="button" class="btn btn-outline" id="imp-cerrar" style="width:100%;">Cancelar</button>
