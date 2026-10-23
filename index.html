@@ -2622,6 +2622,7 @@ function armarHtmlComprobante(c) {
   // recuadro con el trabajo y la foto de referencia grande abajo. Todo en blanco y negro, sin precios.
   const hojaTaller = `
     <div class="hoja"><div class="marco tallerv2">
+      ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
       <div class="t-sobre">#${esc(c.numero)}</div>
       <div class="t-fecha">Entrega: ${esc(fechaIsoALinda(c.paraElDia))}</div>
       <div class="t-listo">Taller: listo el ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
@@ -2728,6 +2729,7 @@ function armarHtmlComprobante(c) {
       .tallerv2 .t-fotos img { flex: 1; min-width: 0; height: 100%; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .tallerv2 .t-fotos.n1 img { max-width: 100%; }
       .tallerv2 .t-cap { text-align: center; font-size: 14px; color: #000; margin-top: 3px; }
+      .tallerv2 .t-retorno { text-align: center; font-size: 15px; font-weight: 800; letter-spacing: 1px; border: 0.5mm solid #111; border-radius: 2mm; padding: 1mm 0; margin: 6mm 0 2mm; }
       .envio { display: flex; flex-direction: column; }
       .envio .env-tit { text-align: center; font-size: 16px; font-weight: 800; letter-spacing: 3px; margin-top: 2mm; }
       .envio .env-sobre { text-align: center; font-size: 54px; font-weight: 900; line-height: 1; margin: 3px 0 4px; }
@@ -4609,6 +4611,30 @@ async function escanearSobre() {
 }
 window.escanearSobre = escanearSobre;
 
+async function confirmarTrabajoRetorno(sobreId, numero) {
+  const msgBox = document.getElementById('retorno-msg');
+  const motivo = (document.getElementById('retorno-motivo').value || '').trim();
+  const destino = document.getElementById('retorno-destino').value;
+  if (!motivo) { msgBox.innerHTML = `<div class="msg msg-error">Escribí qué hay que corregir.</div>`; return; }
+  msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
+  const { data: sobre, error: e0 } = await sb.from('sobres').select('descripcion, fecha_salida').eq('id', sobreId).single();
+  if (e0 || !sobre) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo leer el sobre.</div>`; return; }
+  if (!sobre.fecha_salida) { msgBox.innerHTML = `<div class="msg msg-error">Este sobre no está retirado.</div>`; return; }
+  const nuevaDesc = 'RETORNO: ' + motivo + '\n— Trabajo original: ' + (sobre.descripcion || '');
+  const { error } = await sb.from('sobres').update({
+    fecha_salida: null, listo: null, controlado_por: null, salida_taller_at: null,
+    baja_taller: new Date().toISOString(), orfebre: destino, descripcion: nuevaDesc
+  }).eq('id', sobreId);
+  if (error) { msgBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId, evento: 'TRABAJO DE RETORNO',
+    detalle: 'Vuelve a ingresar sin cargo a ' + destino + ': ' + motivo + ' (cargó: ' + usuarioActual.nombre + ')'
+  });
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} reingresado como trabajo de retorno. Ya está en ${destino}.</div>
+    <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="reimprimirComprobante('${sobreId}', true)">🖨️ Imprimir hoja del taller</button>`;
+}
+window.confirmarTrabajoRetorno = confirmarTrabajoRetorno;
+
 function estadoDeSobre(s) {
   if (s.fecha_salida) return '✅ Retirado';
   if (s.listo) return '🟢 Listo para retirar';
@@ -4778,6 +4804,25 @@ async function buscarSobreDetalle() {
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}')">🖨️ Reimprimir comprobante</button>
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="reimprimirComprobante('${s.id}', true)">🖨️ Imprimir solo taller</button>
       <button type="button" class="btn btn-outline" style="margin:8px 0;" onclick="pantallaEditarSobre('${s.id}')">✏️ Editar sobre</button>
+      ${s.fecha_salida ? `
+      <button type="button" class="btn btn-oro" style="margin:8px 0;" onclick="document.getElementById('retorno-box').style.display = document.getElementById('retorno-box').style.display === 'none' ? 'block' : 'none'">🔁 Trabajo de retorno</button>
+      <div id="retorno-box" class="lista-sobre" style="display:none; margin-bottom:10px;">
+        <div style="font-weight:700; margin-bottom:8px;">🔁 Trabajo de retorno — sobre ${s.numero}</div>
+        <div style="font-size:12px; color:#8a8378; margin-bottom:8px;">Vuelve a ingresar con el mismo número, sin cargo y sin tocar la cuenta del cliente.</div>
+        <label>¿Qué hay que corregir?</label>
+        <textarea id="retorno-motivo" rows="3" placeholder="Ej: quedó chico, achicar una talla"></textarea>
+        <label>¿A dónde va?</label>
+        <select id="retorno-destino">
+          ${s.orfebre ? `<option value="${esc(s.orfebre)}">Al mismo taller (${esc(s.orfebre)})</option>` : ''}
+          <option value="DANIEL">Daniel</option>
+          <option value="PACHULA">Pachula</option>
+          <option value="DISEÑO">Diseño</option>
+          <option value="GRABADO">Grabado</option>
+          <option value="LAUREANO">Laureano</option>
+        </select>
+        <button class="btn btn-verde" style="margin-top:10px;" onclick="confirmarTrabajoRetorno('${s.id}', '${s.numero}')">Confirmar retorno</button>
+        <div id="retorno-msg"></div>
+      </div>` : ''}
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div style="font-weight:600;">${estadoDeSobre(s)}</div>
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
