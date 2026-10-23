@@ -2625,7 +2625,7 @@ function armarHtmlComprobante(c) {
       <div class="t-sobre">#${esc(c.numero)}</div>
       <div class="t-fecha">Entrega: ${esc(fechaIsoALinda(c.paraElDia))}</div>
       <div class="t-listo">Taller: listo el ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
-      ${c.vendedora ? '<div class="t-cargo">Encargo de ' + esc(c.vendedora) + '</div>' : ''}
+      ${c.vendedora ? '<div class="t-cargo"><small>ENCARGADO POR</small>' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
       <div class="t-linea"></div>
       <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
@@ -2648,7 +2648,7 @@ function armarHtmlComprobante(c) {
       ${filaEnv('Dirección', e.direccion)}
       ${filaEnv('Código postal', e.cp)}
       ${filaEnv('Teléfono', e.telefono)}
-      <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Encargo de ' + esc(c.vendedora) : ''}</div>
+      <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Encargado por ' + esc(c.vendedora) : ''}</div>
     </div></div>
   ` : '';
 
@@ -2721,7 +2721,7 @@ function armarHtmlComprobante(c) {
       .tallerv2 .t-sobre { text-align: center; font-size: 54px; font-weight: 900; line-height: 1; margin: 0 0 2px; }
       .tallerv2 .t-fecha { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 1px; }
       .tallerv2 .t-listo { text-align: center; font-size: 17px; font-weight: 600; color: #000; margin-bottom: 3px; }
-      .tallerv2 .t-cliente { text-align: center; font-size: 24px; font-weight: 700; margin-bottom: 4px; word-break: break-word; }
+      .tallerv2 .t-cliente { text-align: center; font-size: 34px; line-height: 1.05; font-weight: 700; margin-bottom: 4px; word-break: break-word; }
       .tallerv2 .t-linea { border-top: 0.4mm dashed #000; margin: 0 0 5px; }
       .tallerv2 .t-desc { border: 0.4mm solid #111; border-radius: 2mm; padding: 8px 10px; font-size: 25px; font-weight: 600; line-height: 1.3; flex: 1; min-height: 24mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
       .tallerv2 .t-fotos { flex: 0 0 auto; height: 52mm; min-height: 0; display: flex; gap: 2mm; align-items: stretch; justify-content: center; }
@@ -2736,7 +2736,7 @@ function armarHtmlComprobante(c) {
       .envio .env-fila span { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #000; text-transform: uppercase; }
       .envio .env-fila b { display: block; font-size: 23px; font-weight: 700; line-height: 1.2; min-height: 8mm; word-break: break-word; }
       .envio .env-pie { margin-top: auto; text-align: center; font-size: 13px; font-weight: 700; padding-bottom: 6mm; }
-      .tallerv2 .t-cargo { text-align: center; font-size: 40px; font-weight: 800; color: #000; line-height: 1.05; margin: 0 0 3px; }
+      .tallerv2 { position: relative; } .tallerv2 .t-cargo { position: absolute; top: 5mm; right: 5mm; text-align: right; font-size: 17px; font-weight: 800; color: #000; line-height: 1.05; margin: 0; } .tallerv2 .t-cargo small { display: block; font-size: 8px; letter-spacing: 1px; font-weight: 700; }
       /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
       .recibo { position: relative; }
       .recibo .marca { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: 0; padding-top: 2mm; }
