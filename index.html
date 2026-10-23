@@ -4095,6 +4095,18 @@ async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
     .eq('cliente_id', clienteId)
     .order('fecha_entrada');
 
+  // (23/10/2026) Ventas directas a cuenta corriente (sin sobre): también suman a lo que debe.
+  // Solo se cuentan desde esta fecha, para no tocar los saldos viejos (los de antes ya están en el historial migrado).
+  const { data: ventasCCDirectas } = await sb
+    .from('movimientos_caja')
+    .select('monto, fecha, descripcion')
+    .eq('cliente_id', clienteId)
+    .eq('ingresa_egresa', 'INGRESA')
+    .eq('medio_pago', 'CUENTA CORRIENTE')
+    .is('sobre_id', null)
+    .gte('fecha', '2026-10-23')
+    .order('fecha');
+
   // "FUE PAGANDO" = TODOS los pagos reales que hizo el cliente (código 502 sueltos
   // + señas/cobros de saldo ligados a un sobre puntual), excluyendo lo que quedó
   // anotado como CUENTA CORRIENTE (eso es deuda, no pago).
@@ -4121,13 +4133,22 @@ async function verCuentaCliente(clienteId, nombreCliente, verTodo = false) {
   const pagos = verTodo ? (pagosTodos || []) : (pagosTodos || []).filter(p => esDeEsteMes(p.fecha));
   const hayHistorialViejo = !verTodo && ((sobresTodos || []).length > sobres.length || (pagosTodos || []).length > pagos.length);
 
-  const debe = (sobresTodos || []).reduce((acc, s) => acc + (Number(s.precio_total) || 0), 0);
+  const debe = (sobresTodos || []).reduce((acc, s) => acc + (Number(s.precio_total) || 0), 0)
+    + (ventasCCDirectas || []).reduce((acc, v) => acc + (Number(v.monto) || 0), 0);
   const haber = (pagosTodos || []).reduce((acc, p) => acc + Number(p.monto), 0);
   const saldo = debe - haber;
 
-  const filasCompras = sobres.length === 0
+  const ventasDirectasMostrar = verTodo ? (ventasCCDirectas || []) : (ventasCCDirectas || []).filter(v => esDeEsteMes(v.fecha));
+  const filasVentasDirectas = ventasDirectasMostrar.map(v => `
+        <div class="lista-sobre">
+          <div class="nro">🏷️ Venta directa — $${(Number(v.monto) || 0).toLocaleString('es-AR')}</div>
+          <div class="cli">${new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-AR')}</div>
+          <div class="desc">${v.descripcion || ''}</div>
+        </div>
+      `).join('');
+  const filasCompras = (sobres.length === 0 && ventasDirectasMostrar.length === 0)
     ? `<div class="vacio">Sin compras ${verTodo ? '' : 'este mes '}registradas</div>`
-    : sobres.map(s => `
+    : filasVentasDirectas + sobres.map(s => `
         <div class="lista-sobre">
           <div class="nro">#${s.numero} — $${(Number(s.precio_total) || 0).toLocaleString('es-AR')}</div>
           <div class="cli">${s.fecha_entrada ? new Date(s.fecha_entrada).toLocaleDateString('es-AR') : ''}</div>
