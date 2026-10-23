@@ -2625,7 +2625,7 @@ function armarHtmlComprobante(c) {
       <div class="t-sobre">#${esc(c.numero)}</div>
       <div class="t-fecha">Entrega: ${esc(fechaIsoALinda(c.paraElDia))}</div>
       <div class="t-listo">Taller: listo el ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
-      ${c.vendedora ? '<div class="t-cargo">Cargó: ' + esc(c.vendedora) + '</div>' : ''}
+      ${c.vendedora ? '<div class="t-cargo">Encargo de ' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
       <div class="t-linea"></div>
       <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
@@ -2648,7 +2648,7 @@ function armarHtmlComprobante(c) {
       ${filaEnv('Dirección', e.direccion)}
       ${filaEnv('Código postal', e.cp)}
       ${filaEnv('Teléfono', e.telefono)}
-      <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Cargó: ' + esc(c.vendedora) : ''}</div>
+      <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Encargo de ' + esc(c.vendedora) : ''}</div>
     </div></div>
   ` : '';
 
@@ -2667,7 +2667,7 @@ function armarHtmlComprobante(c) {
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
       .hoja { width: 125.6mm; height: 188mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
-      .marco { height: 193mm; margin-top: -5mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
+      .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
       .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
       .l2 { margin: 3px auto 0; width: 62%; border-top: 1px solid #111; padding-top: 2px; }
@@ -2718,13 +2718,13 @@ function armarHtmlComprobante(c) {
       .nota { margin-top: 4px; font-size: 7.5px; line-height: 1.25; color: #444; text-align: center; }
       /* (19/10/2026) Hoja del taller: formato aprobado (grande, blanco y negro) */
       .tallerv2 { padding: 8mm 7mm; display: flex; flex-direction: column; }
-      .tallerv2 .t-sobre { text-align: center; font-size: 68px; font-weight: 900; line-height: 1; margin: 2px 0 4px; }
-      .tallerv2 .t-fecha { text-align: center; font-size: 25px; font-weight: 700; margin-bottom: 2px; }
-      .tallerv2 .t-listo { text-align: center; font-size: 20px; font-weight: 600; color: #000; margin-bottom: 8px; }
-      .tallerv2 .t-cliente { text-align: center; font-size: 26px; font-weight: 700; margin-bottom: 8px; word-break: break-word; }
-      .tallerv2 .t-linea { border-top: 0.4mm dashed #000; margin: 2px 0 8px; }
+      .tallerv2 .t-sobre { text-align: center; font-size: 54px; font-weight: 900; line-height: 1; margin: 0 0 2px; }
+      .tallerv2 .t-fecha { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 1px; }
+      .tallerv2 .t-listo { text-align: center; font-size: 17px; font-weight: 600; color: #000; margin-bottom: 3px; }
+      .tallerv2 .t-cliente { text-align: center; font-size: 24px; font-weight: 700; margin-bottom: 4px; word-break: break-word; }
+      .tallerv2 .t-linea { border-top: 0.4mm dashed #000; margin: 0 0 5px; }
       .tallerv2 .t-desc { border: 0.4mm solid #111; border-radius: 2mm; padding: 8px 10px; font-size: 25px; font-weight: 600; line-height: 1.3; flex: 1; min-height: 24mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
-      .tallerv2 .t-fotos { flex: 0 0 auto; height: 58mm; min-height: 0; display: flex; gap: 2mm; align-items: stretch; justify-content: center; }
+      .tallerv2 .t-fotos { flex: 0 0 auto; height: 52mm; min-height: 0; display: flex; gap: 2mm; align-items: stretch; justify-content: center; }
       .tallerv2 .t-fotos img { flex: 1; min-width: 0; height: 100%; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .tallerv2 .t-fotos.n1 img { max-width: 100%; }
       .tallerv2 .t-cap { text-align: center; font-size: 14px; color: #000; margin-top: 3px; }
@@ -2736,7 +2736,7 @@ function armarHtmlComprobante(c) {
       .envio .env-fila span { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #000; text-transform: uppercase; }
       .envio .env-fila b { display: block; font-size: 23px; font-weight: 700; line-height: 1.2; min-height: 8mm; word-break: break-word; }
       .envio .env-pie { margin-top: auto; text-align: center; font-size: 13px; font-weight: 700; padding-bottom: 6mm; }
-      .tallerv2 .t-cargo { text-align: center; font-size: 20px; font-weight: 700; color: #000; margin: 0 0 6px; }
+      .tallerv2 .t-cargo { text-align: center; font-size: 40px; font-weight: 800; color: #000; line-height: 1.05; margin: 0 0 3px; }
       /* NUEVO (19/10/2026): recibo de un movimiento de la Caja del Día (marca de agua suave) */
       .recibo { position: relative; }
       .recibo .marca { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; z-index: 0; padding-top: 2mm; }
