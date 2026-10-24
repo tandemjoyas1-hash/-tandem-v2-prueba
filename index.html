@@ -5456,7 +5456,7 @@ function renderFilasMovimientosCD(movimientos) {
   }
   const filasMovimientos = movimientos.map(m => `
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
-      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span><span title="Imprimir" style="float:right; font-size:15px; margin-right:12px; cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></div>
+      <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.tiene_foto ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span><span title="Imprimir" style="float:right; font-size:15px; margin-right:12px; cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></div>
       ${m.ingresa_egresa === 'INGRESA' && !m.codigo ? `<div style="color:#c0392b; font-weight:700; font-size:12px; margin-top:2px;">⚠️ Falta tipo de producto — tocá para elegirlo</div>` : ''}
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
@@ -5469,7 +5469,7 @@ function renderFilasMovimientosCD(movimientos) {
       <td>${m.vendedora || ''}</td>
       <td>${m.clientes ? m.clientes.nombre : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
-      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.foto_referencia ? ' <span title="Tiene foto de referencia">📷</span>' : ''}${m.ingresa_egresa === 'INGRESA' && !m.codigo ? '<br><span style="color:#c0392b; font-weight:700; font-size:12px;">⚠️ Falta tipo de producto</span>' : ''}</td>
+      <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.tiene_foto ? ' <span title="Tiene foto de referencia">📷</span>' : ''}${m.ingresa_egresa === 'INGRESA' && !m.codigo ? '<br><span style="color:#c0392b; font-weight:700; font-size:12px;">⚠️ Falta tipo de producto</span>' : ''}</td>
       <td>${m.medio_pago || ''} <span title="Imprimir" style="cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></td>
       <td class="col-monto ${m.ingresa_egresa === 'INGRESA' ? 'ingresa' : 'egresa'}">
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
@@ -5916,7 +5916,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion, foto_referencia)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion, tiene_foto)')
     .eq('fecha', fecha)
     .order('created_at');
 
