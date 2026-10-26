@@ -5925,6 +5925,17 @@ async function cargarCajaDelDia() {
     return;
   }
 
+  // NUEVO (26/10/2026): cierres de caja parciales del día (cada uno corta el conteo del efectivo)
+  let cierresDelDia = [];
+  try {
+    const { data: cierres } = await sb
+      .from('cierres_caja')
+      .select('id, cerrado_at, vendedora, esperado, contado, diferencia, nota')
+      .eq('fecha', fecha)
+      .order('cerrado_at');
+    cierresDelDia = cierres || [];
+  } catch (e) { cierresDelDia = []; }
+
   if (!movimientos || movimientos.length === 0) {
     resBox.innerHTML = `<div class="vacio">Sin movimientos registrados ese día</div>`;
     return;
@@ -5970,6 +5981,39 @@ async function cargarCajaDelDia() {
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
 
+  // NUEVO (26/10/2026): "tramo" actual = desde el último cierre parcial del día.
+  // Esperado del tramo = lo que se CONTÓ en el último cierre + efectivo que entró/salió después.
+  // (La apertura y las diferencias registradas — códigos 100 y 500 — no se suman al tramo.)
+  const ultimoCierre = cierresDelDia.length ? cierresDelDia[cierresDelDia.length - 1] : null;
+  let esperadoTramo = efectivoNetoHoy;
+  if (ultimoCierre) {
+    const tCorte = new Date(ultimoCierre.cerrado_at).getTime();
+    let netoDespues = 0;
+    movimientos.forEach(m => {
+      const cod = Number(m.codigo);
+      if (cod === 100 || cod === 500) return;
+      if (m.medio_pago !== 'EFECTIVO') return;
+      if (new Date(m.created_at).getTime() <= tCorte) return;
+      netoDespues += (m.ingresa_egresa === 'INGRESA' ? 1 : -1) * (Number(m.monto) || 0);
+    });
+    esperadoTramo = Number(ultimoCierre.contado) + netoDespues;
+  }
+  window._esperadoTramoActual = esperadoTramo;
+  window._desdeTramoActual = ultimoCierre ? ultimoCierre.cerrado_at : null;
+  const horaCierre = iso => new Date(iso).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+  const filasCierres = cierresDelDia.map(c => {
+    const dif = Number(c.diferencia) || 0;
+    const colorDif = dif === 0 ? '#2f6d1f' : '#9a3a1e';
+    const textoDif = dif === 0 ? '✅ sin diferencia' : (dif > 0 ? `⚠️ sobraron $${dif.toLocaleString('es-AR')}` : `⚠️ faltaron $${Math.abs(dif).toLocaleString('es-AR')}`);
+    return `
+      <div class="lista-sobre" style="padding:10px;">
+        <div style="font-weight:700;">🔒 Cierre de las ${horaCierre(c.cerrado_at)} <span style="font-weight:400; color:#8a8378;">· ${c.vendedora || ''}</span></div>
+        <div style="font-size:13px; margin-top:2px;">Debía haber $${Number(c.esperado).toLocaleString('es-AR')} · contó $${Number(c.contado).toLocaleString('es-AR')}</div>
+        <div style="font-size:13px; font-weight:700; color:${colorDif};">${textoDif}</div>
+        ${c.nota ? `<div style="font-size:12px; color:#6b6255; margin-top:2px;">📝 ${String(c.nota).replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}</div>` : ''}
+      </div>`;
+  }).join('');
+
   resBox.innerHTML = `
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
       <div class="lista-sobre" style="text-align:center; padding:12px;">
@@ -6004,14 +6048,21 @@ async function cargarCajaDelDia() {
     <div class="lista-movil-caja" id="cd-lista-movimientos">${filasMovimientos}</div>
     <div id="cd-tabla-movimientos">${tablaCaja}</div>
 
+    ${filasCierres ? `<label style="margin-top:16px;">🔒 Cierres de caja de hoy</label>${filasCierres}` : ''}
+
     <div style="text-align:center; margin-top:20px;">
-      <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:13px; color:#8a8378;">
-        🔍 ¿Cambio de turno o fin del día? Contar la caja física
+      <a href="#" onclick="document.getElementById('cd-contar-box').style.display='block'; this.style.display='none'; return false;" style="font-size:14px; font-weight:600; color:#3b6d11;">
+        🔒 Cerrar caja (cierre parcial o del final del día)
       </a>
     </div>
 
     <div id="cd-contar-box" class="lista-sobre" style="display:none; margin-top:10px;">
-      <div style="font-weight:700; margin-bottom:8px;">🔍 Contar caja física</div>
+      <div style="font-weight:700; margin-bottom:4px;">🔒 Cerrar caja</div>
+      <div style="font-size:13px; color:#6b6255; margin-bottom:8px;">
+        ${ultimoCierre
+          ? `Cuenta <strong>desde el último cierre (${horaCierre(ultimoCierre.cerrado_at)})</strong>. Debería haber: <strong>$${esperadoTramo.toLocaleString('es-AR')}</strong> en efectivo.`
+          : `Es el primer cierre del día. Debería haber: <strong>$${esperadoTramo.toLocaleString('es-AR')}</strong> en efectivo.`}
+      </div>
       <label>¿Cuánto efectivo hay realmente en el cajón?</label>
       <input type="number" id="cd-contado" placeholder="0" oninput="if(this.value) document.getElementById('cd-billetes-box').style.display='none';">
 
@@ -6031,6 +6082,9 @@ async function cargarCajaDelDia() {
         <button class="btn btn-outline" style="margin-top:8px;" onclick="usarTotalBilletes()">Usar este total</button>
       </div>
 
+      <label style="margin-top:10px;">Nota (opcional)</label>
+      <input type="text" id="cd-cierre-nota" placeholder="Ej: cambio de turno / se retiró plata">
+
       <button class="btn btn-outline" style="margin-top:10px;" onclick="compararCaja()">Comparar</button>
       <div id="cd-diferencia-msg"></div>
     </div>
@@ -6043,11 +6097,18 @@ async function compararCaja() {
   const contado = parseFloat(document.getElementById('cd-contado').value);
   if (isNaN(contado)) { msgBox.innerHTML = `<div class="msg msg-error">Poné cuánto contaste.</div>`; return; }
 
-  const esperado = window._efectivoNetoHoyActual || 0;
+  // CAMBIADO (26/10/2026): se compara contra el efectivo esperado del TRAMO actual
+  // (desde el último cierre parcial del día; si no hubo ninguno, es todo el día como antes).
+  const esperado = (typeof window._esperadoTramoActual === 'number') ? window._esperadoTramoActual : (window._efectivoNetoHoyActual || 0);
   const diferencia = contado - esperado;
+  const puedeGuardar = window._fechaCajaActual === fechaHoyISO();
+  const avisoFecha = puedeGuardar ? '' : `<div style="font-size:12px; margin-top:6px;">Los cierres solo se guardan con la fecha de hoy.</div>`;
 
   if (diferencia === 0) {
-    msgBox.innerHTML = `<div class="msg msg-ok">✅ Coincide perfecto, no hay diferencia.</div>`;
+    msgBox.innerHTML = `
+      <div class="msg msg-ok">✅ Coincide perfecto, no hay diferencia.
+        ${puedeGuardar ? `<div style="margin-top:8px;"><button class="btn btn-verde" onclick="guardarCierreCaja(${esperado}, ${contado}, false)">🔒 Guardar cierre</button></div>` : avisoFecha}
+      </div>`;
     return;
   }
 
@@ -6055,13 +6116,67 @@ async function compararCaja() {
   msgBox.innerHTML = `
     <div class="msg msg-error">
       ⚠️ ${tipo === 'sobra' ? 'Sobran' : 'Faltan'} $${Math.abs(diferencia).toLocaleString('es-AR')}
+      ${puedeGuardar ? `
       <div style="margin-top:8px;">
-        <button class="btn btn-outline" onclick="registrarDiferenciaCaja(${diferencia})">Registrar esta diferencia</button>
+        <button class="btn btn-verde" onclick="guardarCierreCaja(${esperado}, ${contado}, false)">🔒 Guardar cierre (deja la diferencia anotada)</button>
       </div>
+      <div style="margin-top:8px;">
+        <button class="btn btn-outline" onclick="guardarCierreCaja(${esperado}, ${contado}, true)">🔒 Guardar cierre y ajustar la caja del día</button>
+      </div>` : avisoFecha}
     </div>
   `;
 }
 window.compararCaja = compararCaja;
+
+// NUEVO (26/10/2026): guarda un cierre de caja (parcial o final). Cada cierre corta el conteo:
+// el siguiente cierre del día arranca con lo que se contó acá. Si 'ajustar' es true, además
+// registra la diferencia como movimiento de caja (código 500), igual que "Registrar diferencia".
+let _guardandoCierreCaja = false;
+async function guardarCierreCaja(esperado, contado, ajustar) {
+  const msgBox = document.getElementById('cd-diferencia-msg');
+  if (_guardandoCierreCaja) return;
+  if (window._fechaCajaActual !== fechaHoyISO()) {
+    msgBox.innerHTML = `<div class="msg msg-error">Los cierres solo se guardan con la fecha de hoy. Recargá la página.</div>`;
+    return;
+  }
+  _guardandoCierreCaja = true;
+  msgBox.innerHTML = `<div class="msg">⏳ Guardando... puede tardar unos segundos</div>`;
+  try {
+    const notaEl = document.getElementById('cd-cierre-nota');
+    const nota = notaEl && notaEl.value.trim() ? notaEl.value.trim() : null;
+    const diferencia = contado - esperado;
+    const { data: guardado, error } = await sb.from('cierres_caja').insert({
+      fecha: window._fechaCajaActual,
+      desde_at: window._desdeTramoActual || null,
+      vendedora: usuarioActual.nombre,
+      esperado: esperado,
+      contado: contado,
+      diferencia: diferencia,
+      nota: nota
+    }).select('id').single();
+    if (error || !guardado) throw new Error(error ? error.message : 'No se pudo guardar el cierre');
+
+    if (ajustar && diferencia !== 0) {
+      const esFaltante = diferencia < 0;
+      const { error: errMov } = await sb.from('movimientos_caja').insert({
+        vendedora: usuarioActual.nombre,
+        codigo: 500,
+        descripcion: 'Diferencia de caja detectada (' + (esFaltante ? 'faltante' : 'sobrante') + ') en cierre',
+        ingresa_egresa: esFaltante ? 'EGRESA' : 'INGRESA',
+        medio_pago: 'EFECTIVO',
+        monto: Math.abs(diferencia),
+        fecha: window._fechaCajaActual
+      });
+      if (errMov) throw new Error('El cierre se guardó, pero no se pudo ajustar la caja: ' + errMov.message);
+    }
+    _guardandoCierreCaja = false;
+    await cargarCajaDelDia();
+  } catch (e) {
+    _guardandoCierreCaja = false;
+    msgBox.innerHTML = `<div class="msg msg-error">❌ ${e.message}</div>`;
+  }
+}
+window.guardarCierreCaja = guardarCierreCaja;
 
 function actualizarTotalBilletes() {
   const inputs = document.querySelectorAll('.cd-billete-cantidad');
