@@ -5450,20 +5450,20 @@ function descSobreExtra(m) {
   return '🔧 ' + m.sobres.descripcion;
 }
 
-function renderFilasMovimientosCD(movimientos) {
+function renderFilasMovimientosCD(movimientos, cierres) {
   if (!movimientos || movimientos.length === 0) {
     return { lista: `<div class="vacio">No hay movimientos con ese nombre</div>`, tabla: '' };
   }
-  const filasMovimientos = movimientos.map(m => `
+  const filasMovimientosArr = movimientos.map(m => `
     <div class="lista-sobre" style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.tiene_foto ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span><span title="Imprimir" style="float:right; font-size:15px; margin-right:12px; cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></div>
       ${m.ingresa_egresa === 'INGRESA' && !m.codigo ? `<div style="color:#c0392b; font-weight:700; font-size:12px; margin-top:2px;">⚠️ Falta tipo de producto — tocá para elegirlo</div>` : ''}
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
     </div>
-  `).join('');
+  `);
 
-  const filasTabla = movimientos.map(m => `
+  const filasTablaArr = movimientos.map(m => `
     <tr style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
       <td>${m.vendedora || ''}</td>
@@ -5475,7 +5475,31 @@ function renderFilasMovimientosCD(movimientos) {
         ${m.ingresa_egresa === 'INGRESA' ? '+' : '−'} $${Number(m.monto).toLocaleString('es-AR')}
       </td>
     </tr>
-  `).join('');
+  `);
+
+  // Líneas divisorias de cierres de caja (solo si se pasan: o sea, sin filtro de búsqueda)
+  const cierresOrd = (cierres || []).slice().sort((a, b) => new Date(a.cerrado_at) - new Date(b.cerrado_at));
+  const $f = n => '$' + Number(n || 0).toLocaleString('es-AR');
+  const textoCierre = c => {
+    const hora = new Date(c.cerrado_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+    const dif = Number(c.diferencia || 0);
+    const difTxt = dif === 0 ? '✅ sin diferencia' : (dif > 0 ? '⚠️ sobraron ' + $f(dif) : '⚠️ faltaron ' + $f(Math.abs(dif)));
+    return `🔒 CIERRE DE CAJA ${hora} — contó ${$f(c.contado)} · ${difTxt}${c.vendedora ? ' · ' + c.vendedora : ''}`;
+  };
+  const divLista = c => `<div style="margin:10px 0; padding:8px 10px; background:#2f2a24; color:#fff; border-radius:8px; font-size:13px; font-weight:700; text-align:center;">${textoCierre(c)}<div style="font-weight:400; font-size:11px; opacity:.8;">Revisá errores solo de acá para abajo</div></div>`;
+  const divTabla = c => `<tr><td colspan="7" style="background:#2f2a24; color:#fff; font-weight:700; text-align:center; padding:8px;">${textoCierre(c)} — revisá errores solo de acá para abajo</td></tr>`;
+  const intercalar = (arr, fnDiv) => {
+    const out = [];
+    let i = 0;
+    movimientos.forEach((m, idx) => {
+      while (i < cierresOrd.length && new Date(cierresOrd[i].cerrado_at) <= new Date(m.created_at)) { out.push(fnDiv(cierresOrd[i])); i++; }
+      out.push(arr[idx]);
+    });
+    while (i < cierresOrd.length) { out.push(fnDiv(cierresOrd[i])); i++; }
+    return out.join('');
+  };
+  const filasMovimientos = intercalar(filasMovimientosArr, divLista);
+  const filasTabla = intercalar(filasTablaArr, divTabla);
 
   const tabla = `
     <div class="tabla-caja">
@@ -5500,7 +5524,7 @@ function filtrarCajaDelDia() {
     const desc = (m.descripcion || '').toLowerCase();
     return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
   });
-  const { lista, tabla } = renderFilasMovimientosCD(filtrados);
+  const { lista, tabla } = renderFilasMovimientosCD(filtrados, q === '' ? (window._cierresCajaActual || []) : []);
   const contador = document.getElementById('cd-contador');
   if (contador) contador.textContent = `Movimientos (${filtrados.length}${q ? ' de ' + todos.length : ''})`;
   const listaBox = document.getElementById('cd-lista-movimientos');
@@ -5934,7 +5958,8 @@ async function cargarCajaDelDia() {
       .eq('fecha', fecha)
       .order('cerrado_at');
     cierresDelDia = cierres || [];
-  } catch (e) { cierresDelDia = []; }
+    window._cierresCajaActual = cierresDelDia;
+  } catch (e) { cierresDelDia = []; window._cierresCajaActual = []; }
 
   if (!movimientos || movimientos.length === 0) {
     resBox.innerHTML = `<div class="vacio">Sin movimientos registrados ese día</div>`;
@@ -5976,7 +6001,7 @@ async function cargarCajaDelDia() {
       }).join('');
 
   window._movimientosCajaActual = movimientos;
-  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos);
+  const { lista: filasMovimientos, tabla: tablaCaja } = renderFilasMovimientosCD(movimientos, cierresDelDia);
 
   window._efectivoNetoHoyActual = efectivoNetoHoy;
   window._fechaCajaActual = fecha;
