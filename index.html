@@ -727,11 +727,16 @@ function pantallaNuevaEntrada() {
       <div id="ne-aviso-tel" style="display:none; background:#c0392b; color:#fff; font-weight:700; padding:10px 12px; border-radius:8px; margin-top:6px;">📵 Falta el teléfono: no le va a llegar el aviso de WhatsApp.<div style="font-weight:400; font-size:12px; margin-top:2px;">Podés guardar igual, pero si lo tenés, cargalo arriba y destildá esta opción.</div></div>
 
       <label>Tipo de cliente</label>
-      <select id="ne-tipo-cliente">
+      <select id="ne-tipo-cliente" onchange="actualizarCampoParaCliente(true)">
         <option value="CONSUMIDOR_FINAL">Consumidor final</option>
         <option value="MAYORISTA">Mayorista</option>
         <option value="TALLER">Taller</option>
       </select>
+      <div id="ne-para-box" style="display:none;">
+        <label>👤 Para el cliente de (opcional — nombre del cliente final del mayorista; sale en las hojas y sirve para buscar)</label>
+        <input type="text" id="ne-para-cliente-de" placeholder="Ej: María Gómez" autocomplete="off" oninput="guardarBorradorEntrada()">
+        <small>Los avisos por WhatsApp van siempre al titular de arriba.</small>
+      </div>
 
       <label>Trabajo / descripción (y precio de este ítem)</label>
       <div class="ne-item-fila" style="display:flex; gap:8px; align-items:flex-start;">
@@ -888,6 +893,7 @@ function guardarBorradorEntrada() {
     cliente: g('ne-cliente'),
     telefono: g('ne-telefono'),
     tipoCliente: g('ne-tipo-cliente'),
+    paraClienteDe: g('ne-para-cliente-de'),
     trabajo: g('ne-trabajo'),
     precio0: g('ne-item-precio-0'),
     extras: [...document.querySelectorAll('#ne-items-extra .ne-item-extra')].map(f => ({ d: f.querySelector('textarea').value, p: f.querySelector('input').value })),
@@ -1629,6 +1635,8 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-cliente').value = _borradorEntrada.cliente;
   document.getElementById('ne-telefono').value = _borradorEntrada.telefono;
   document.getElementById('ne-tipo-cliente').value = _borradorEntrada.tipoCliente;
+  document.getElementById('ne-para-cliente-de').value = _borradorEntrada.paraClienteDe || '';
+  actualizarCampoParaCliente();
   document.getElementById('ne-trabajo').value = _borradorEntrada.trabajo;
   autoCrecerTexto(document.getElementById('ne-trabajo'));
   document.getElementById('ne-item-precio-0').value = _borradorEntrada.precio0 || '';
@@ -2125,9 +2133,20 @@ function buscarClienteEnEntrada() {
 }
 window.buscarClienteEnEntrada = buscarClienteEnEntrada;
 
+// (26/10/2026) El campo "Para el cliente de" solo aparece si el cliente es mayorista.
+function actualizarCampoParaCliente(guardar) {
+  const t = document.getElementById('ne-tipo-cliente');
+  const box = document.getElementById('ne-para-box');
+  if (!t || !box) return;
+  box.style.display = t.value === 'MAYORISTA' ? 'block' : 'none';
+  if (guardar) { try { guardarBorradorEntrada(); } catch (e) {} }
+}
+window.actualizarCampoParaCliente = actualizarCampoParaCliente;
+
 function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
   document.getElementById('ne-cliente').value = nombre;
   if (tipoCliente) document.getElementById('ne-tipo-cliente').value = tipoCliente;
+  actualizarCampoParaCliente();
   if (telefono) document.getElementById('ne-telefono').value = telefono;
   document.getElementById('ne-cliente-sugerencias').innerHTML = '';
   if (document.getElementById('ne-canal') && document.getElementById('ne-canal').value === 'REDES_ENVIO') ofrecerDireccionPrevia();
@@ -2402,6 +2421,7 @@ async function guardarNuevaEntrada() {
       foto_referencia: null,
       para_el_dia: paraElDia,
       canal: canal,
+      para_cliente_de: (tipoCliente === 'MAYORISTA' ? (document.getElementById('ne-para-cliente-de').value || '').trim() : '') || null,
       diseno_unico: document.getElementById('ne-diseno-unico').checked,
       envio_nombre: envioDatos ? envioDatos.nombre : null,
       envio_provincia: envioDatos ? envioDatos.provincia : null,
@@ -2524,6 +2544,7 @@ async function guardarNuevaEntrada() {
     vendedora: usuarioActual.nombre,
     canal: canal,
     cliente: nombreCliente,
+    paraClienteDe: (tipoCliente === 'MAYORISTA' ? (document.getElementById('ne-para-cliente-de').value || '').trim() : ''),
     telefono: telefono,
     trabajo: trabajo,
     cantidad: cantidad,
@@ -2549,6 +2570,8 @@ async function guardarNuevaEntrada() {
   borrarBorradorEntrada();
   document.getElementById('ne-sobre').value = '';
   document.getElementById('ne-cliente').value = '';
+  document.getElementById('ne-para-cliente-de').value = '';
+  actualizarCampoParaCliente();
   document.getElementById('ne-trabajo').value = '';
   limpiarItemsEntrada();
   document.getElementById('ne-destino').value = '';
@@ -2669,7 +2692,9 @@ function armarHtmlComprobante(c) {
       <div class="cv-doblar"><span>doblar acá</span></div>
       <div class="cv-mitad cv-datos">
         ${fila('Fecha', c.fechaHora)}
-        ${fila('Señor/a', c.cliente)}
+        ${c.paraClienteDe
+          ? `<div class="fila" style="display:block;"><span>Señor/a</span><div style="font-size:22px;font-weight:900;line-height:1.1;">${esc(c.cliente)}</div><div style="font-size:16px;font-weight:700;margin-top:1px;">Para: ${esc(c.paraClienteDe)}</div></div>`
+          : fila('Señor/a', c.cliente)}
         ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
         <div class="cv-trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
         ${hayTotal ? fila('Total', plata(c.total)) : ''}
@@ -2690,6 +2715,7 @@ function armarHtmlComprobante(c) {
       <div class="t-listo">Taller: listo el ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
       ${c.vendedora ? '<div class="t-cargo"><small>ENCARGADO POR</small>' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
+      ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
       <div class="t-linea"></div>
       <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
       <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
@@ -3014,7 +3040,7 @@ window.abrirImprimirMovimiento = abrirImprimirMovimiento;
 async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloCliente, soloEnvio) {
   const { data: s, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, clientes(nombre, telefono)')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
   if (soloEnvio && !(s.envio_direccion || s.envio_nombre)) { alert('Este pedido todavía no tiene datos de envío. Completalos con ✏️ Editar sobre y volvé a imprimir.'); return; }
@@ -3043,6 +3069,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     vendedora: quienCargo || (pagos && pagos[0] && pagos[0].vendedora) || '',
     canal: s.canal,
     cliente: s.clientes ? s.clientes.nombre : '',
+    paraClienteDe: s.para_cliente_de || '',
     telefono: s.clientes ? s.clientes.telefono : '',
     trabajo: s.descripcion,
     cantidad: 1,
@@ -3067,7 +3094,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, clientes(nombre)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, clientes(nombre)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3083,6 +3110,9 @@ async function pantallaEditarSobre(sobreId) {
       <input type="hidden" id="es-cliente-id" value="${esc(s.cliente_id || '')}">
       <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
       <div id="es-cliente-sugerencias"></div>
+
+      <label style="margin-top:12px;">👤 Para el cliente de (opcional — solo mayoristas)</label>
+      <input type="text" id="es-para-cliente-de" value="${esc(s.para_cliente_de || '')}" placeholder="Ej: María Gómez" autocomplete="off">
 
       <label style="margin-top:12px;">📝 Descripción del trabajo</label>
       <textarea id="es-descripcion" rows="4" style="width:100%; font-size:16px; padding:8px; box-sizing:border-box;">${esc(s.descripcion || '')}</textarea>
@@ -3173,7 +3203,7 @@ async function guardarEdicionSobre(sobreId, numero) {
   }
 
   const ev = id => (document.getElementById(id).value || '').trim() || null;
-  const cambios = { precio_total: total, para_el_dia: paraElDia,
+  const cambios = { precio_total: total, para_el_dia: paraElDia, para_cliente_de: ev('es-para-cliente-de'),
     envio_nombre: ev('es-env-nombre'), envio_provincia: ev('es-env-provincia'), envio_localidad: ev('es-env-localidad'),
     envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono') };
   if (clienteId) cambios.cliente_id = clienteId;
@@ -5701,6 +5731,7 @@ function renderFilasMovimientosCD(movimientos, cierres) {
       <div class="nro">${m.ingresa_egresa === 'INGRESA' ? '⬆️' : '⬇️'} $${Number(m.monto).toLocaleString('es-AR')} — ${m.medio_pago || ''}${Number(m.codigo) === 550 ? ' 🏧 (retiro)' : ''}${m.sobres && m.sobres.tiene_foto ? ' <span title="Tiene foto de referencia">📷</span>' : ''} <span style="float:right; font-size:12px; color:#8a8378;">✏️</span><span title="Imprimir" style="float:right; font-size:15px; margin-right:12px; cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></div>
       ${m.ingresa_egresa === 'INGRESA' && !m.codigo ? `<div style="color:#c0392b; font-weight:700; font-size:12px; margin-top:2px;">⚠️ Falta tipo de producto — tocá para elegirlo</div>` : ''}
       <div class="cli">${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})} · ${m.vendedora || ''}${m.clientes ? ' · 👤 ' + m.clientes.nombre : ''}${m.tipo_cliente ? ' (' + etiquetaTipoCliente(m.tipo_cliente) + ')' : ''}</div>
+      ${m.sobres && m.sobres.para_cliente_de ? '<div style="font-size:14px; font-weight:700; color:#2e6e1e;">➜ Para: ' + esc(m.sobres.para_cliente_de) + '</div>' : ''}
       <div class="desc">${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255;">' + descSobreExtra(m) + '</span>' : ''}</div>
     </div>
   `);
@@ -5709,7 +5740,7 @@ function renderFilasMovimientosCD(movimientos, cierres) {
     <tr style="cursor:pointer;" onclick='pantallaEditarMovimiento(${JSON.stringify(m.id)})'>
       <td>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</td>
       <td>${m.vendedora || ''}</td>
-      <td>${m.clientes ? m.clientes.nombre : ''}</td>
+      <td>${m.clientes ? m.clientes.nombre : ''}${m.sobres && m.sobres.para_cliente_de ? '<br><b style="color:#2e6e1e;">➜ Para: ' + esc(m.sobres.para_cliente_de) + '</b>' : ''}</td>
       <td>${etiquetaTipoCliente(m.tipo_cliente)}</td>
       <td>${m.descripcion || ''}${descSobreExtra(m) ? '<br><span style="color:#6b6255; font-size:12px;">' + descSobreExtra(m) + '</span>' : ''}${Number(m.codigo) === 550 ? ' 🏧' : ''}${m.sobres && m.sobres.tiene_foto ? ' <span title="Tiene foto de referencia">📷</span>' : ''}${m.ingresa_egresa === 'INGRESA' && !m.codigo ? '<br><span style="color:#c0392b; font-weight:700; font-size:12px;">⚠️ Falta tipo de producto</span>' : ''}</td>
       <td>${m.medio_pago || ''} <span title="Imprimir" style="cursor:pointer;" onclick='event.stopPropagation(); abrirImprimirMovimiento(${JSON.stringify(m.id)})'>🖨️</span></td>
@@ -5764,7 +5795,8 @@ function filtrarCajaDelDia() {
     const nombreCliente = m.clientes ? m.clientes.nombre.toLowerCase() : '';
     const vendedora = (m.vendedora || '').toLowerCase();
     const desc = (m.descripcion || '').toLowerCase();
-    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q);
+    const paraDe = ((m.sobres && m.sobres.para_cliente_de) || '').toLowerCase();
+    return nombreCliente.includes(q) || vendedora.includes(q) || desc.includes(q) || paraDe.includes(q);
   });
   const { lista, tabla } = renderFilasMovimientosCD(filtrados, q === '' ? (window._cierresCajaActual || []) : []);
   const contador = document.getElementById('cd-contador');
@@ -6182,7 +6214,7 @@ async function cargarCajaDelDia() {
 
   const { data: movimientos, error } = await sb
     .from('movimientos_caja')
-    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion, tiene_foto)')
+    .select('id, vendedora, descripcion, ingresa_egresa, medio_pago, monto, cantidad, codigo, tipo_cliente, created_at, clientes(nombre), sobres(numero, descripcion, tiene_foto, para_cliente_de)')
     .eq('fecha', fecha)
     .order('created_at');
 
