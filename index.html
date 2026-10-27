@@ -4666,23 +4666,40 @@ async function cargarTodosLosSobres() {
 }
 window.cargarTodosLosSobres = cargarTodosLosSobres;
 
-// NUEVO (26/10/2026): guarda el N° de seguimiento; la base de datos encola el aviso por WhatsApp
-// (plantilla envio_seguimiento) solo si el cliente es por menor y el trigger está encendido.
+// NUEVO (27/10/2026): datos del envío. Correo Argentino = N° de seguimiento; otras empresas = texto libre para el cliente.
+// La base de datos encola el aviso por WhatsApp solo si el cliente es por menor y ese aviso está encendido.
+function cambiarEmpresaEnvio() {
+  const sel = document.getElementById('bs-empresa');
+  if (!sel) return;
+  const correo = sel.value === 'CORREO';
+  document.getElementById('bs-box-correo').style.display = correo ? 'block' : 'none';
+  document.getElementById('bs-box-otro').style.display = correo ? 'none' : 'block';
+}
 async function guardarSeguimiento(sobreId, avisa, yaTenia) {
   const msg = document.getElementById('bs-seguimiento-msg');
   const btn = document.getElementById('bs-btn-seguimiento');
-  const cod = (document.getElementById('bs-seguimiento').value || '').replace(/\s+/g, '').toUpperCase();
-  if (!cod) { msg.innerHTML = `<div class="msg msg-error">Escribí el número de seguimiento.</div>`; return; }
-  if (yaTenia && !confirm('Este pedido ya tenía seguimiento. ¿Guardar el nuevo?')) return;
+  const empresa = document.getElementById('bs-empresa').value;
+  const cambios = { empresa_envio: empresa };
+  if (empresa === 'CORREO') {
+    const cod = (document.getElementById('bs-seguimiento').value || '').replace(/\s+/g, '').toUpperCase();
+    if (!cod) { msg.innerHTML = `<div class="msg msg-error">Escribí el número de seguimiento.</div>`; return; }
+    cambios.seguimiento = cod;
+  } else {
+    const datos = (document.getElementById('bs-envio-datos').value || '').trim();
+    if (!datos) { msg.innerHTML = `<div class="msg msg-error">Escribí los datos para el cliente (sucursal, guía, etc.).</div>`; return; }
+    cambios.envio_datos = datos;
+  }
+  if (yaTenia && !confirm('Este pedido ya tenía datos de envío. ¿Guardar los nuevos?')) return;
   if (btn.disabled) return;
   btn.disabled = true;
   msg.innerHTML = `<div class="msg">⏳ Guardando... puede tardar unos segundos</div>`;
   try {
-    const { error } = await sb.from('sobres').update({ seguimiento: cod }).eq('id', sobreId);
+    const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
     if (error) throw error;
-    const { data: chk } = await sb.from('sobres').select('seguimiento').eq('id', sobreId).single();
-    if (!chk || chk.seguimiento !== cod) throw new Error('No se pudo verificar el guardado');
-    msg.innerHTML = `<div class="msg msg-ok">✅ Seguimiento guardado${avisa ? ' — se avisa al cliente por WhatsApp' : ''}.</div>`;
+    const { data: chk } = await sb.from('sobres').select('empresa_envio, seguimiento, envio_datos').eq('id', sobreId).single();
+    const ok = chk && chk.empresa_envio === empresa && (empresa === 'CORREO' ? chk.seguimiento === cambios.seguimiento : chk.envio_datos === cambios.envio_datos);
+    if (!ok) throw new Error('No se pudo verificar el guardado');
+    msg.innerHTML = `<div class="msg msg-ok">✅ Guardado${avisa ? ' — se avisa al cliente por WhatsApp (si el aviso está encendido)' : ''}.</div>`;
   } catch (e) {
     msg.innerHTML = `<div class="msg msg-error">${e.message || e}</div>`;
   }
@@ -4697,7 +4714,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, salida_taller_at, canal, tipo_cliente, seguimiento, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, salida_taller_at, canal, tipo_cliente, seguimiento, empresa_envio, envio_datos, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -4872,11 +4889,23 @@ async function buscarSobreDetalle() {
 
       ${(s.fecha_salida && s.canal === 'REDES_ENVIO') ? `
       <div class="lista-sobre" style="margin:10px 0;">
-        <div style="font-weight:700; margin-bottom:6px;">📦 Seguimiento del envío (Correo Argentino)</div>
-        <input type="text" id="bs-seguimiento" value="${esc(s.seguimiento || '')}" placeholder="N° de seguimiento (ej: AB123456789CD)">
-        <button type="button" class="btn btn-verde" id="bs-btn-seguimiento" style="margin-top:8px;" onclick="guardarSeguimiento('${s.id}', ${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'true' : 'false'}, ${s.seguimiento ? 'true' : 'false'})">${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'Guardar y avisar' : 'Guardar'}</button>
+        <div style="font-weight:700; margin-bottom:6px;">📦 Datos del envío</div>
+        <label>Empresa de envío</label>
+        <select id="bs-empresa" onchange="cambiarEmpresaEnvio()">
+          ${[['CORREO','Correo Argentino'],['TRANSPORTE','Transporte'],['ENCOMIENDA','Encomienda'],['COLECTIVO','Colectivo'],['OTRO','Otro']].map(([v,n]) => `<option value="${v}" ${((s.empresa_envio || 'CORREO') === v) ? 'selected' : ''}>${n}</option>`).join('')}
+        </select>
+        <div id="bs-box-correo" style="display:${(s.empresa_envio || 'CORREO') === 'CORREO' ? 'block' : 'none'};">
+          <label>N° de seguimiento</label>
+          <input type="text" id="bs-seguimiento" value="${esc(s.seguimiento || '')}" placeholder="Ej: AB123456789CD">
+        </div>
+        <div id="bs-box-otro" style="display:${(s.empresa_envio || 'CORREO') === 'CORREO' ? 'none' : 'block'};">
+          <label>Datos para el cliente (nombre del transporte, sucursal donde retira, N° de guía)</label>
+          <input type="text" id="bs-envio-datos" value="${esc(s.envio_datos || '')}" placeholder="Ej: Retiralo en la sucursal de Rosario. Guía 0001-123456">
+        </div>
+        <button type="button" class="btn btn-verde" id="bs-btn-seguimiento" style="margin-top:8px;" onclick="guardarSeguimiento('${s.id}', ${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'true' : 'false'}, ${(s.seguimiento || s.envio_datos) ? 'true' : 'false'})">${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'Guardar y avisar' : 'Guardar'}</button>
         <div id="bs-seguimiento-msg"></div>
-      </div>` : ''}
+      </div>
+      ` : ''}
 
       <label style="margin-top:14px;">📷 Fotos del sobre</label>
       ${galeriaFotos}
