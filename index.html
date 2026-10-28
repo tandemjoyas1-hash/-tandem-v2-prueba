@@ -811,6 +811,7 @@ function pantallaNuevaEntrada() {
 
       <div id="ne-envio-box" class="lista-sobre" style="display:none; margin-top:10px;">
         <div style="font-weight:700; margin-bottom:4px;">📦 Datos de envío (se imprimen en una hoja aparte)</div>
+        <div id="ne-dir-previa"></div>
         <label>Nombre completo</label>
         <input type="text" id="ne-env-nombre" autocomplete="off">
         <label>Provincia</label>
@@ -2129,6 +2130,7 @@ function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
   if (tipoCliente) document.getElementById('ne-tipo-cliente').value = tipoCliente;
   if (telefono) document.getElementById('ne-telefono').value = telefono;
   document.getElementById('ne-cliente-sugerencias').innerHTML = '';
+  if (document.getElementById('ne-canal') && document.getElementById('ne-canal').value === 'REDES_ENVIO') ofrecerDireccionPrevia();
 }
 window.elegirClienteEnEntrada = elegirClienteEnEntrada;
 
@@ -2219,9 +2221,57 @@ function mostrarDatosEnvio() {
     const n = document.getElementById('ne-env-nombre'), t = document.getElementById('ne-env-telefono');
     if (!n.value) n.value = document.getElementById('ne-cliente').value.trim();
     if (!t.value) t.value = document.getElementById('ne-telefono').value.trim();
+    ofrecerDireccionPrevia();
   }
 }
 window.mostrarDatosEnvio = mostrarDatosEnvio;
+
+// (28/10/2026) Si el cliente ya compró con envío antes, se le ofrece usar su última dirección ("¿es la misma?").
+let _dirPrevia = null;
+async function ofrecerDireccionPrevia() {
+  const box = document.getElementById('ne-dir-previa');
+  if (!box) return;
+  const nombre = (document.getElementById('ne-cliente').value || '').trim();
+  const dirActual = (document.getElementById('ne-env-direccion').value || '').trim();
+  if (nombre.length < 3 || dirActual) { box.innerHTML = ''; _dirPrevia = null; return; }
+  try {
+    const patron = nombre.replace(/[\\%_]/g, m => '\\' + m);
+    const { data: cli } = await sb.from('clientes').select('id').ilike('nombre', patron).limit(1).maybeSingle();
+    if (!cli) { box.innerHTML = ''; _dirPrevia = null; return; }
+    const { data: ult } = await sb.from('sobres')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    // por si en el medio cambió el cliente o ya escribieron una dirección
+    if ((document.getElementById('ne-cliente').value || '').trim() !== nombre || (document.getElementById('ne-env-direccion').value || '').trim()) return;
+    if (!ult) { box.innerHTML = ''; _dirPrevia = null; return; }
+    _dirPrevia = ult;
+    box.innerHTML = `
+      <div style="background:#eef6e6; border:1px solid #b7d79a; border-radius:8px; padding:10px; margin-bottom:8px;">
+        <div style="font-weight:700;">📦 Ya le enviamos antes. ¿Es la misma dirección?</div>
+        <div style="font-size:14px; margin:4px 0;">${esc(ult.envio_nombre || '')}<br>${esc(ult.envio_direccion || '')}, ${esc(ult.envio_localidad || '')}, ${esc(ult.envio_provincia || '')} · CP ${esc(ult.envio_cp || '')}<br>Tel: ${esc(ult.envio_telefono || '')}</div>
+        <button type="button" class="btn btn-verde" onclick="usarDireccionPrevia()">✅ Sí, usar esta</button>
+        <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="descartarDireccionPrevia()">No, cargar otra</button>
+      </div>`;
+  } catch (e) { box.innerHTML = ''; _dirPrevia = null; }
+}
+function usarDireccionPrevia() {
+  const u = _dirPrevia;
+  if (!u) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+  set('ne-env-nombre', u.envio_nombre); set('ne-env-provincia', u.envio_provincia); set('ne-env-localidad', u.envio_localidad);
+  set('ne-env-direccion', u.envio_direccion); set('ne-env-cp', u.envio_cp); set('ne-env-telefono', u.envio_telefono);
+  const box = document.getElementById('ne-dir-previa');
+  if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala antes de guardar.</div>`;
+  try { guardarBorradorEntrada(); } catch (e) {}
+}
+function descartarDireccionPrevia() {
+  _dirPrevia = null;
+  const box = document.getElementById('ne-dir-previa');
+  if (box) box.innerHTML = '';
+}
+window.ofrecerDireccionPrevia = ofrecerDireccionPrevia;
+window.usarDireccionPrevia = usarDireccionPrevia;
+window.descartarDireccionPrevia = descartarDireccionPrevia;
 
 function leerDatosEnvioEntrada() {
   const v = id => (document.getElementById(id).value || '').trim();
