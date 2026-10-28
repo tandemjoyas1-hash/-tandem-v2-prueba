@@ -723,7 +723,8 @@ function pantallaNuevaEntrada() {
 
       <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;"> 📵 El cliente no quiere dejar teléfono</label>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;" onchange="actualizarAvisoTelefonoEntrada()"> 📵 El cliente no quiere dejar teléfono</label>
+      <div id="ne-aviso-tel" style="display:none; background:#c0392b; color:#fff; font-weight:700; padding:10px 12px; border-radius:8px; margin-top:6px;">📵 Falta el teléfono: no le va a llegar el aviso de WhatsApp.<div style="font-weight:400; font-size:12px; margin-top:2px;">Podés guardar igual, pero si lo tenés, cargalo arriba y destildá esta opción.</div></div>
 
       <label>Tipo de cliente</label>
       <select id="ne-tipo-cliente">
@@ -2274,7 +2275,6 @@ async function guardarNuevaEntrada() {
     return;
   }
   document.getElementById('ne-telefono').value = telNormalizado;
-  if (sinTelefono && !esMayoristaOTaller && !confirm('Este cliente NO va a recibir avisos por WhatsApp (ni cuando esté listo).\n\n¿Guardar igual sin teléfono?')) return;
   if (!paraElDia) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta la fecha estimada de entrega.</div>`;
     return;
@@ -2482,7 +2482,9 @@ async function guardarNuevaEntrada() {
     const { data: movImp } = await sb.from('movimientos_caja').select('id').eq('sobre_id', sobreNuevo.id).order('created_at').limit(1).maybeSingle();
     movImpId = movImp ? movImp.id : null;
   } catch (e) {}
+  const _avisoTel = await avisoSinTelefonoHTML([sobreNuevo.id]);
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numeroSobre} guardado correctamente.${destino ? ' Ya bajó a ' + destino + '.' : ''}</div>
+    ${_avisoTel}
     ${movImpId ? `<button type="button" class="btn btn-verde" style="margin-top:8px;" onclick='abrirImprimirMovimiento(${JSON.stringify(movImpId)})'>🖨️ Imprimir (pedido completo, cliente o taller)</button>` : ''}
     <button type="button" class="btn btn-verde" style="margin-top:8px;" onclick="imprimirComprobante()">🖨️ Imprimir comprobante (2 copias)</button>`;
   borrarBorradorEntrada();
@@ -2500,6 +2502,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-sena').value = '';
   document.getElementById('ne-telefono').value = '';
   document.getElementById('ne-sin-telefono').checked = false;
+  actualizarAvisoTelefonoEntrada();
   document.getElementById('ne-tipo-producto').value = '';
   document.getElementById('ne-tipo-producto-busqueda').value = '';
   document.getElementById('ne-tipo-producto-sugerencias').innerHTML = '';
@@ -3304,7 +3307,8 @@ async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
     if (extra && extra.precio) cambios.precio_total = extra.precio;
     await sb.from('sobres').update(cambios).eq('id', sobreId);
     await sb.from('historial_sobres').insert({ sobre_id: sobreId, evento: 'LISTO PARA RETIRAR', detalle: 'Controlado por ' + usuarioActual.nombre });
-    render(`<div class="card"><p class="msg msg-ok">✅ Foto cargada y sobre ${esc(numero)} marcado como listo.</p><button class="btn btn-outline" onclick="pantallaTaller()">← Volver a Taller</button></div>`);
+    const _avTel = await avisoSinTelefonoHTML([sobreId]);
+    render(`<div class="card"><p class="msg msg-ok">✅ Foto cargada y sobre ${esc(numero)} marcado como listo.</p>${_avTel}<button class="btn btn-outline" style="margin-top:8px;" onclick="pantallaTaller()">← Volver a Taller</button></div>`);
   } else if (modo === 'retiro') {
     const { saldo, tipoCliente, nombreCliente, telefonoCliente, medioPago } = extra;
     const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
@@ -3607,13 +3611,58 @@ function pantallaListoLista() {
 }
 window.pantallaListoLista = pantallaListoLista;
 
+// (27/10/2026) Cartel rojo cuando un pedido de CONSUMIDOR FINAL no tiene teléfono: no le llega ningún aviso de WhatsApp.
+// No bloquea nada: avisa y deja cargar el teléfono ahí mismo (se guarda en el cliente).
+function actualizarAvisoTelefonoEntrada() {
+  const chk = document.getElementById('ne-sin-telefono');
+  const box = document.getElementById('ne-aviso-tel');
+  const tipo = document.getElementById('ne-tipo-cliente');
+  if (!chk || !box) return;
+  box.style.display = (chk.checked && (!tipo || tipo.value === 'CONSUMIDOR_FINAL')) ? 'block' : 'none';
+}
+window.actualizarAvisoTelefonoEntrada = actualizarAvisoTelefonoEntrada;
+
+async function avisoSinTelefonoHTML(sobreIds) {
+  try {
+    const ids = (sobreIds || []).filter(Boolean);
+    if (!ids.length) return '';
+    const { data } = await sb.from('sobres').select('id, numero, tipo_cliente, cliente_id, clientes(nombre, telefono)').in('id', ids);
+    const faltan = (data || []).filter(x => x.tipo_cliente === 'CONSUMIDOR_FINAL' && x.cliente_id && !normalizarTelefonoAR(x.clientes && x.clientes.telefono));
+    return faltan.map(x => `
+      <div id="tf-box-${x.id}" style="background:#c0392b; color:#fff; padding:10px 12px; border-radius:8px; margin-top:8px;">
+        <div style="font-weight:700;">📵 Falta el teléfono: no le va a llegar el aviso de WhatsApp</div>
+        <div style="font-size:13px; margin:2px 0 6px;">Pedido #${esc(x.numero)} — ${esc(x.clientes ? x.clientes.nombre : '')}</div>
+        <input type="tel" id="tf-${x.id}" placeholder="Ej: 3511234567 (sin 0 ni 15)" style="width:100%; box-sizing:border-box;">
+        <button type="button" class="btn" style="background:#fff; color:#c0392b; font-weight:700; margin-top:6px;" onclick='guardarTelefonoFaltante(${JSON.stringify(x.id)}, ${JSON.stringify(x.cliente_id)})'>Guardar teléfono</button>
+        <div id="tf-msg-${x.id}"></div>
+      </div>`).join('');
+  } catch (e) { return ''; }
+}
+async function guardarTelefonoFaltante(sobreId, clienteId) {
+  const msg = document.getElementById('tf-msg-' + sobreId);
+  const tel = normalizarTelefonoAR(document.getElementById('tf-' + sobreId).value);
+  if (!tel) { msg.innerHTML = `<div style="margin-top:4px; font-weight:700;">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`; return; }
+  msg.innerHTML = `<div style="margin-top:4px;">Guardando...</div>`;
+  try {
+    const { error } = await sb.from('clientes').update({ telefono: tel }).eq('id', clienteId);
+    if (error) throw error;
+    const { data: chk } = await sb.from('clientes').select('telefono').eq('id', clienteId).single();
+    if (!chk || normalizarTelefonoAR(chk.telefono) !== tel) throw new Error('No se pudo verificar el guardado');
+    const box = document.getElementById('tf-box-' + sobreId);
+    if (box) box.outerHTML = `<div class="msg msg-ok" style="margin-top:8px;">✅ Teléfono guardado. Los próximos avisos le van a llegar.</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div style="margin-top:4px; font-weight:700;">⚠️ ${esc(e.message || e)}</div>`;
+  }
+}
+window.guardarTelefonoFaltante = guardarTelefonoFaltante;
+
 async function marcarListoLote() {
   const resBox = document.getElementById('rg-resultado');
   const numeros = [...new Set(document.getElementById('rg-sobres').value.trim().split(/[\s,]+/).filter(n => n))];
   if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
 
   resBox.innerHTML = `<div class="msg">Guardando...</div>`;
-  const ok = [], errores = [];
+  const ok = [], errores = [], okIds = [];
 
   for (const numero of numeros) {
     const { data: sobre } = await sb
@@ -3639,11 +3688,13 @@ async function marcarListoLote() {
       detalle: 'Controlado por ' + usuarioActual.nombre
     });
     ok.push(numero);
+    okIds.push(sobre.id);
   }
 
   resBox.innerHTML = `
     ${ok.length > 0 ? `<div class="msg msg-ok">✅ Listos: ${ok.join(', ')}</div>` : ''}
     ${errores.length > 0 ? `<div class="msg msg-error">⚠️ No se pudieron marcar: ${errores.join(', ')}</div>` : ''}
+    ${await avisoSinTelefonoHTML(okIds)}
   `;
   document.getElementById('rg-sobres').value = '';
 }
@@ -3800,7 +3851,7 @@ async function marcarListo(sobreId, numero) {
     detalle: 'Controlado por ' + usuarioActual.nombre
   });
 
-  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} marcado como listo.</div>`;
+  msgBox.innerHTML = `<div class="msg msg-ok">✅ Sobre ${numero} marcado como listo.</div>` + await avisoSinTelefonoHTML([sobreId]);
 }
 window.marcarListo = marcarListo;
 
