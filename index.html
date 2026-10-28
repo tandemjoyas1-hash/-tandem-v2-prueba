@@ -4938,7 +4938,7 @@ async function buscarSobreDetalle() {
       </div>
       <div>Precio total: $${(Number(s.precio_total) || 0).toLocaleString('es-AR')} · Pagado: $${pagado.toLocaleString('es-AR')} · Saldo: $${saldo.toLocaleString('es-AR')}</div>
 
-      ${(s.fecha_salida && s.canal === 'REDES_ENVIO') ? `
+      ${(s.canal === 'REDES_ENVIO') ? `
       <div class="lista-sobre" style="margin:10px 0;">
         <div style="font-weight:700; margin-bottom:6px;">📦 Datos del envío</div>
         <label>Empresa de envío</label>
