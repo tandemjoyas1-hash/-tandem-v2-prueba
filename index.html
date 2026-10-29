@@ -2716,6 +2716,7 @@ function armarHtmlComprobante(c) {
       ${c.vendedora ? '<div class="t-cargo"><small>ENCARGADO POR</small>' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
       ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
+      <div style="text-align:center;font-size:20px;font-weight:700;margin:0 0 4px;">${c.telefono ? '📱 ' + esc(c.telefono) : 'Sin número de teléfono'}</div>
       <div class="t-linea"></div>
       <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
       <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
