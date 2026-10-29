@@ -2308,6 +2308,15 @@ async function guardarNuevaEntrada() {
   // Mayoristas y talleres: NUNCA se carga el teléfono de SU cliente final (ellos son los dueños de ese
   // cliente). El sobre queda con el teléfono del mayorista y no sale ningún aviso automático.
   const esMayoristaOTaller = tipoCliente === 'MAYORISTA' || tipoCliente === 'TALLER';
+  if (esMayoristaOTaller) {
+    // NUEVO (29/10/2026): el nombre tiene que ser de un mayorista/taller que YA existe (elegido de la lista).
+    const { data: listaMay } = await sb.from('clientes').select('nombre').eq('oculto', false).in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+    const normEsc = normalizarNombreCliente(nombreCliente);
+    if (!(listaMay || []).some(c => normalizarNombreCliente(c.nombre) === normEsc)) {
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ "${esc(nombreCliente)}" no está en la lista de mayoristas/talleres. Escribí las primeras letras y elegí de la lista. Si es uno nuevo: CTA CTE → ➕ Nuevo mayorista / taller.</div>`;
+      return;
+    }
+  }
   if (esMayoristaOTaller && normalizarTelefonoAR(telefono)) {
     const { data: cliMay } = await sb.from('clientes').select('telefono').eq('oculto', false).ilike('nombre', nombreCliente).limit(1).maybeSingle();
     const telMay = cliMay ? normalizarTelefonoAR(cliMay.telefono) : '';
@@ -4140,10 +4149,80 @@ function pantallaCuentaCorriente() {
       <input type="text" id="cc-buscar" placeholder="Ej: Zipiur" oninput="buscarClienteCC()" autocomplete="off">
       <div id="cc-resultado"></div>
     </div>
+    <div class="card">
+      <button class="btn btn-gris" onclick="nuevoMayoristaPedirPin()">➕ Nuevo mayorista / taller</button>
+      <div id="cc-nuevo-box"></div>
+    </div>
   `);
   document.getElementById('cc-buscar').focus();
 }
 window.pantallaCuentaCorriente = pantallaCuentaCorriente;
+
+// NUEVO (29/10/2026): los mayoristas/talleres ya NO se crean escribiendo el nombre en Entrada.
+// Se crean acá, volviendo a poner el PIN, y avisando si ya existe uno parecido. Si hay duplicados,
+// unirlos lo hace solo el dueño (ADMIN).
+function nuevoMayoristaPedirPin() {
+  document.getElementById('cc-nuevo-box').innerHTML = `
+    <label>Volvé a poner tu PIN para crear un mayorista</label>
+    <input type="tel" inputmode="numeric" maxlength="6" id="nm-pin" placeholder="••">
+    <button class="btn btn-verde" onclick="nuevoMayoristaVerificarPin()">Continuar</button>
+    <div id="nm-msg"></div>`;
+  document.getElementById('nm-pin').focus();
+}
+window.nuevoMayoristaPedirPin = nuevoMayoristaPedirPin;
+
+async function nuevoMayoristaVerificarPin() {
+  const pin = document.getElementById('nm-pin').value.trim();
+  const msg = document.getElementById('nm-msg');
+  if (!/^\d{2,6}$/.test(pin)) { msg.innerHTML = `<div class="msg msg-error">El PIN tiene que ser de 2 a 6 números.</div>`; return; }
+  msg.innerHTML = '<p>Verificando...</p>';
+  let resp;
+  try {
+    resp = await fetch(SUPABASE_FUNCIONES_URL + '/login-pin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario_id: usuarioActual.id, pin: pin })
+    });
+  } catch (e) { msg.innerHTML = `<div class="msg msg-error">No se pudo conectar. Probá de nuevo.</div>`; return; }
+  if (!resp.ok) { msg.innerHTML = `<div class="msg msg-error">PIN incorrecto.</div>`; return; }
+  document.getElementById('cc-nuevo-box').innerHTML = `
+    <label>Nombre del mayorista / taller</label>
+    <input type="text" id="nm-nombre" placeholder="Ej: Zipiur" autocomplete="off">
+    <label>Tipo</label>
+    <select id="nm-tipo"><option value="MAYORISTA">Mayorista</option><option value="TALLER">Taller</option></select>
+    <label>Teléfono (opcional)</label>
+    <input type="tel" id="nm-tel" placeholder="3511234567">
+    <button class="btn btn-verde" onclick="nuevoMayoristaGuardar(false)">Crear</button>
+    <div id="nm-msg"></div>`;
+  document.getElementById('nm-nombre').focus();
+}
+window.nuevoMayoristaVerificarPin = nuevoMayoristaVerificarPin;
+
+async function nuevoMayoristaGuardar(forzar) {
+  const msg = document.getElementById('nm-msg');
+  const nombre = document.getElementById('nm-nombre').value.trim();
+  const tipo = document.getElementById('nm-tipo').value;
+  const tel = normalizarTelefonoAR(document.getElementById('nm-tel').value);
+  if (nombre.length < 2) { msg.innerHTML = `<div class="msg msg-error">Falta el nombre.</div>`; return; }
+  const norm = normalizarNombreCliente(nombre);
+  const { data: todos } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false);
+  const parecidos = (todos || []).filter(c => {
+    const n = normalizarNombreCliente(c.nombre);
+    return n === norm || n.includes(norm) || norm.includes(n) ||
+      (Math.min(n.length, norm.length) >= 5 && distanciaLevenshtein(n, norm) <= 2);
+  });
+  if (parecidos.length && !(forzar && usuarioActual.rol === 'ADMIN')) {
+    const lista = parecidos.slice(0, 8).map(c => `<li>${esc(c.nombre)} (${esc(etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || '')})</li>`).join('');
+    msg.innerHTML = `<div class="msg msg-error">⚠️ Ya existe algo parecido:<ul>${lista}</ul>
+      ${usuarioActual.rol === 'ADMIN'
+        ? `<button class="btn btn-gris" onclick="nuevoMayoristaGuardar(true)">Es otro distinto, crear igual</button>`
+        : `Si es el mismo, usá ese en Entrada. Si de verdad es otro, avisale a Mauricio.`}</div>`;
+    return;
+  }
+  const { error } = await sb.from('clientes').insert({ nombre: limpiarNombreParaGuardar(nombre), tipo_cliente: tipo, telefono: tel || null });
+  if (error) { msg.innerHTML = `<div class="msg msg-error">No se pudo crear: ${esc(error.message)}</div>`; return; }
+  document.getElementById('cc-nuevo-box').innerHTML = `<div class="msg msg-ok">✅ "${esc(limpiarNombreParaGuardar(nombre))}" creado. Ya lo podés elegir en Entrada.</div>`;
+}
+window.nuevoMayoristaGuardar = nuevoMayoristaGuardar;
 
 let _timeoutBusquedaCC = null;
 
