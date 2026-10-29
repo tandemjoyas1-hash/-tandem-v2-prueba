@@ -2545,6 +2545,7 @@ async function guardarNuevaEntrada() {
     canal: canal,
     cliente: nombreCliente,
     paraClienteDe: (tipoCliente === 'MAYORISTA' ? (document.getElementById('ne-para-cliente-de').value || '').trim() : ''),
+    tipoCliente: tipoCliente,
     telefono: telefono,
     trabajo: trabajo,
     cantidad: cantidad,
@@ -2711,6 +2712,10 @@ function armarHtmlComprobante(c) {
     <div class="hoja"><div class="marco tallerv2">
       ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
       <div class="t-sobre">#${esc(c.numero)}</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin:2px 0 6px;">
+        <span style="border:0.5mm solid #111;border-radius:2mm;padding:1mm 3mm;font-size:15px;font-weight:900;">${c.tipoCliente === 'MAYORISTA' ? 'POR MAYOR' : c.tipoCliente === 'TALLER' ? 'CLIENTE TALLER' : 'POR MENOR'}</span>
+        <span style="border:0.5mm solid #111;border-radius:2mm;padding:1mm 3mm;font-size:15px;font-weight:900;${c.canal === 'REDES_ENVIO' ? 'background:#111;color:#fff;' : ''}">${c.canal === 'REDES_ENVIO' ? '📦 CON ENVÍO' : 'SIN ENVÍO'}</span>
+      </div>
       <div class="t-fecha">FECHA DE ENTREGA: ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
       ${c.vendedora ? '<div class="t-cargo"><small>ENCARGADO POR</small>' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
@@ -3040,7 +3045,7 @@ window.abrirImprimirMovimiento = abrirImprimirMovimiento;
 async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloCliente, soloEnvio) {
   const { data: s, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, clientes(nombre, telefono)')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
   if (soloEnvio && !(s.envio_direccion || s.envio_nombre)) { alert('Este pedido todavía no tiene datos de envío. Completalos con ✏️ Editar sobre y volvé a imprimir.'); return; }
@@ -3070,6 +3075,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     canal: s.canal,
     cliente: s.clientes ? s.clientes.nombre : '',
     paraClienteDe: s.para_cliente_de || '',
+    tipoCliente: s.tipo_cliente || '',
     telefono: s.clientes ? s.clientes.telefono : '',
     trabajo: s.descripcion,
     cantidad: 1,
@@ -4861,6 +4867,13 @@ async function confirmarTrabajoRetorno(sobreId, numero) {
 }
 window.confirmarTrabajoRetorno = confirmarTrabajoRetorno;
 
+// (29/10/2026) Etiquetas chicas: tipo de cliente (por mayor / por menor / taller) y si va con envío o no.
+function etiquetasSobreHTML(s) {
+  const tipo = s.tipo_cliente === 'MAYORISTA' ? 'Por mayor' : s.tipo_cliente === 'TALLER' ? 'Cliente taller' : 'Por menor';
+  const conEnvio = s.canal === 'REDES_ENVIO';
+  const est = 'display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;margin:3px 4px 0 0;';
+  return `<div><span style="${est}background:#ece7da;color:#4a4437;">${tipo}</span><span style="${est}${conEnvio ? 'background:#2f6d1f;color:#fff;' : 'background:#ece7da;color:#4a4437;'}">${conEnvio ? '📦 Con envío' : 'Sin envío'}</span></div>`;
+}
 function estadoDeSobre(s) {
   if (s.fecha_salida) return '✅ Retirado';
   if (s.listo) return '🟢 Listo para retirar';
@@ -4875,7 +4888,7 @@ async function cargarTodosLosSobres() {
 
   const { data: sobres, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, salida_taller_at, clientes(nombre)')
+    .select('numero, descripcion, baja_taller, orfebre, listo, fecha_salida, fecha_entrada, salida_taller_at, tipo_cliente, canal, clientes(nombre)')
     .is('fecha_salida', null)
     .order('fecha_entrada');
 
@@ -4886,6 +4899,7 @@ async function cargarTodosLosSobres() {
     <div class="lista-sobre" onclick="document.getElementById('bs-numero').value='${s.numero}'; buscarSobreDetalle(); window.scrollTo({top:0, behavior:'smooth'});" style="cursor:pointer;">
       <div class="nro">#${s.numero} — ${s.clientes ? s.clientes.nombre : ''}</div>
       <div class="cli">${estadoDeSobre(s)}</div>
+      ${etiquetasSobreHTML(s)}
       <div class="desc">${s.descripcion || ''}</div>
     </div>
   `).join('');
@@ -5090,7 +5104,7 @@ async function buscarSobreDetalle() {
         <div id="retorno-msg"></div>
       </div>` : ''}
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
-        <div style="font-weight:600;">${estadoDeSobre(s)}</div>
+        <div><div style="font-weight:600;">${estadoDeSobre(s)}</div>${etiquetasSobreHTML(s)}</div>
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
       </div>
       <div id="bs-cancelar-box" class="lista-sobre" style="display:none; margin-bottom:10px;">
