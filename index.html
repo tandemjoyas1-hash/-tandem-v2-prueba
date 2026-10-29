@@ -2107,7 +2107,7 @@ function buscarClienteEnEntrada() {
     // Traemos todos y comparamos sin tildes/mayúsculas (igual que buscarOCrearCliente), para que
     // "maria" también encuentre a "María" en las sugerencias mientras se escribe.
     const normBuscado = normalizarNombreCliente(nombre);
-    const { data: todos } = await sb.from('clientes').select('nombre, tipo_cliente, telefono');
+    const { data: todos } = await sb.from('clientes').select('nombre, tipo_cliente, telefono').eq('oculto', false);
     const data = (todos || [])
       .filter(c => normalizarNombreCliente(c.nombre).includes(normBuscado))
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
@@ -2236,7 +2236,7 @@ async function ofrecerDireccionPrevia() {
   if (nombre.length < 3 || dirActual) { box.innerHTML = ''; _dirPrevia = null; return; }
   try {
     const patron = nombre.replace(/[\\%_]/g, m => '\\' + m);
-    const { data: cli } = await sb.from('clientes').select('id').ilike('nombre', patron).limit(1).maybeSingle();
+    const { data: cli } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', patron).limit(1).maybeSingle();
     if (!cli) { box.innerHTML = ''; _dirPrevia = null; return; }
     const { data: ult } = await sb.from('sobres')
       .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
@@ -2309,7 +2309,7 @@ async function guardarNuevaEntrada() {
   // cliente). El sobre queda con el teléfono del mayorista y no sale ningún aviso automático.
   const esMayoristaOTaller = tipoCliente === 'MAYORISTA' || tipoCliente === 'TALLER';
   if (esMayoristaOTaller && normalizarTelefonoAR(telefono)) {
-    const { data: cliMay } = await sb.from('clientes').select('telefono').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    const { data: cliMay } = await sb.from('clientes').select('telefono').eq('oculto', false).ilike('nombre', nombreCliente).limit(1).maybeSingle();
     const telMay = cliMay ? normalizarTelefonoAR(cliMay.telefono) : '';
     if (telMay !== normalizarTelefonoAR(telefono)) {
       alert('⚠️ SOBRE DE MAYORISTA / TALLER\n\nNo cargues el teléfono del cliente final: ese cliente es del mayorista, no nuestro.\n\nBorrá el teléfono (o dejá el del mayorista) y, si hace falta, poné el nombre del cliente final en la descripción del trabajo.');
@@ -3128,7 +3128,7 @@ function buscarClienteEditarSobre() {
   const box = document.getElementById('es-cliente-sugerencias');
   if (nombre.length < 2) { box.innerHTML = ''; return; }
   _timeoutBusquedaClienteES = setTimeout(async () => {
-    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(8);
+    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false).ilike('nombre', '%' + nombre + '%').order('nombre').limit(8);
     if (!data || data.length === 0) { box.innerHTML = '<div class="msg">Sin resultados — se puede escribir el nombre igual, pero conviene elegir uno de la lista para no crear un duplicado.</div>'; return; }
     box.innerHTML = data.map(c => `
       <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEditarSobre(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
@@ -3457,7 +3457,7 @@ async function buscarSobresPendientesEtapa(idInput, idResultado, idDestino, esRe
 
     let porCliente = [];
     if (isNaN(termino)) {
-      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      const { data: clientesMatch } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', '%' + termino + '%').limit(10);
       if (clientesMatch && clientesMatch.length > 0) {
         const ids = clientesMatch.map(c => c.id);
         let consulta2 = sb.from('sobres').select('numero, descripcion, clientes(nombre)').is('fecha_salida', null).in('cliente_id', ids).limit(8);
@@ -3983,7 +3983,7 @@ function buscarSobresListosParaRetiro() {
 
     let porCliente = [];
     if (isNaN(termino)) {
-      const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + termino + '%').limit(10);
+      const { data: clientesMatch } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', '%' + termino + '%').limit(10);
       if (clientesMatch && clientesMatch.length > 0) {
         const ids = clientesMatch.map(c => c.id);
         const { data } = await sb.from('sobres').select('id, numero, descripcion, precio_total, tipo_cliente, clientes(nombre, telefono)')
@@ -4162,6 +4162,7 @@ function buscarClienteCC() {
     const { data, error } = await sb
       .from('clientes')
       .select('id, nombre, tipo_cliente')
+      .eq('oculto', false)
       .ilike('nombre', '%' + nombre + '%')
       .order('nombre')
       .limit(10);
@@ -4824,7 +4825,7 @@ async function buscarSobreDetalle() {
     return;
   }
   if (!s) {
-    const { data: clientesMatch } = await sb.from('clientes').select('id').ilike('nombre', '%' + numero + '%').limit(15);
+    const { data: clientesMatch } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', '%' + numero + '%').limit(15);
     let porCliente = [];
     if (clientesMatch && clientesMatch.length > 0) {
       const ids = clientesMatch.map(c => c.id);
@@ -5199,6 +5200,7 @@ async function buscarClienteParaBoleta() {
   const { data: clientes, error } = await sb
     .from('clientes')
     .select('id, nombre, telefono')
+      .eq('oculto', false)
     .ilike('nombre', '%' + nombre + '%')
     .limit(10);
 
@@ -5842,12 +5844,12 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   // más que el nombre, que se escribe distinto cada vez. Si ya existe alguien con ese
   // mismo teléfono, es esa persona seguro, aunque el nombre esté escrito diferente.
   if (telLimpio.length >= 8) {
-    const { data: porTelefono } = await sb.from('clientes').select('id, nombre').eq('telefono', telLimpio).limit(1).maybeSingle();
+    const { data: porTelefono } = await sb.from('clientes').select('id, nombre').eq('oculto', false).eq('telefono', telLimpio).limit(1).maybeSingle();
     if (porTelefono) return porTelefono.id;
   }
 
   // 1) Coincidencia exacta (sin importar mayúsc/minúsc) — camino normal, no molesta a nadie.
-  const { data: exacto } = await sb.from('clientes').select('id').ilike('nombre', nombreCliente).limit(1).maybeSingle();
+  const { data: exacto } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', nombreCliente).limit(1).maybeSingle();
   if (exacto) {
     if (telLimpio) await sb.from('clientes').update({ telefono: telLimpio }).eq('id', exacto.id).is('telefono', null);
     return exacto.id;
@@ -5859,7 +5861,7 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   // "maria" (sin tilde) no encontraba a "María" (con tilde) y se duplicaba el cliente. Corregido
   // el 17/09/2026: se trae la lista completa (son ~400, no pesa nada) y se compara ya sin tildes.
   const normEscrito = normalizarNombreCliente(nombreCliente);
-  const { data: todos } = await sb.from('clientes').select('id, nombre');
+  const { data: todos } = await sb.from('clientes').select('id, nombre').eq('oculto', false);
   const candidatos = todos || [];
   let parecido = null;
   for (const c of candidatos) {
@@ -5984,7 +5986,7 @@ async function cargarChequeoDelDia(fecha, modo) {
         : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
     });
 
-    const { data: todosClientes } = await sb.from('clientes').select('id, nombre');
+    const { data: todosClientes } = await sb.from('clientes').select('id, nombre').eq('oculto', false);
     const listaClientes = (todosClientes || [])
       .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
       .filter(c => c.norm.length >= 4);
@@ -6008,7 +6010,7 @@ async function cargarChequeoDelDia(fecha, modo) {
   }
 
   if (modo === 'cc') {
-    const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+    const { data: clientesCC } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false).in('tipo_cliente', ['MAYORISTA', 'TALLER']);
     const idsCC = (clientesCC || []).map(c => c.id);
     let sobresCC = [], pagosCC = [];
     if (idsCC.length) {
@@ -7555,7 +7557,7 @@ function buscarClienteEnVentaDirecta() {
   if (nombre.length < 2) { box.innerHTML = ''; return; }
 
   _timeoutBusquedaClienteVD = setTimeout(async () => {
-    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').ilike('nombre', '%' + nombre + '%').order('nombre').limit(6);
+    const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false).ilike('nombre', '%' + nombre + '%').order('nombre').limit(6);
     if (!data || data.length === 0) { box.innerHTML = ''; return; }
     box.innerHTML = data.map(c => `
       <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteVentaDirecta(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
