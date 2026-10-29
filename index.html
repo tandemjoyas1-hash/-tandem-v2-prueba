@@ -3094,7 +3094,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, clientes(nombre)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, canal, clientes(nombre)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3123,8 +3123,15 @@ async function pantallaEditarSobre(sobreId) {
       <label style="margin-top:12px;">📅 Fecha de entrega al cliente</label>
       <input type="date" id="es-para-el-dia" value="${s.para_el_dia || ''}">
 
-      <div class="lista-sobre" style="margin-top:14px;">
-        <div style="font-weight:700;">📦 Datos de envío (dejar vacío si no es con envío)</div>
+      <label style="margin-top:12px;">🛒 Canal de venta</label>
+      <select id="es-canal" onchange="document.getElementById('es-envio-box').style.display = this.value === 'REDES_ENVIO' ? 'block' : 'none'">
+        <option value="LOCAL" ${s.canal === 'LOCAL' ? 'selected' : ''}>Local</option>
+        <option value="REDES_ENVIO" ${s.canal === 'REDES_ENVIO' ? 'selected' : ''}>Redes — con envío</option>
+        <option value="REDES_RETIRO" ${s.canal === 'REDES_RETIRO' ? 'selected' : ''}>Redes — retiro en local</option>
+      </select>
+
+      <div class="lista-sobre" id="es-envio-box" style="margin-top:14px; display:${s.canal === 'REDES_ENVIO' ? 'block' : 'none'};">
+        <div style="font-weight:700;">📦 Datos de envío</div>
         <label>Nombre completo</label><input type="text" id="es-env-nombre" value="${esc(s.envio_nombre || '')}">
         <label>Provincia</label><input type="text" id="es-env-provincia" value="${esc(s.envio_provincia || '')}">
         <label>Localidad</label><input type="text" id="es-env-localidad" value="${esc(s.envio_localidad || '')}">
@@ -3203,11 +3210,17 @@ async function guardarEdicionSobre(sobreId, numero) {
   }
 
   const ev = id => (document.getElementById(id).value || '').trim() || null;
-  const cambios = { precio_total: total, para_el_dia: paraElDia, para_cliente_de: ev('es-para-cliente-de'),
+  const canalNuevo = document.getElementById('es-canal').value;
+  if (canalNuevo === 'REDES_ENVIO' && !ev('es-env-direccion')) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Es con envío: completá los datos de envío (al menos la dirección).</div>`;
+    return;
+  }
+  const cambios = { canal: canalNuevo, precio_total: total, para_el_dia: paraElDia, para_cliente_de: ev('es-para-cliente-de'),
     envio_nombre: ev('es-env-nombre'), envio_provincia: ev('es-env-provincia'), envio_localidad: ev('es-env-localidad'),
     envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono') };
   if (clienteId) cambios.cliente_id = clienteId;
-  const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id').eq('id', sobreId).single();
+  const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id, canal').eq('id', sobreId).single();
+  const canalCambio = !!antes && antes.canal !== canalNuevo;
   const descCambio = !!antes && descripcionNueva !== (antes.descripcion || '').trim();
   if (descCambio) cambios.descripcion = descripcionNueva;
 
@@ -3216,6 +3229,8 @@ async function guardarEdicionSobre(sobreId, numero) {
 
   // Mantiene los movimientos de caja de este sobre apuntando al mismo cliente
   if (clienteId) await sb.from('movimientos_caja').update({ cliente_id: clienteId }).eq('sobre_id', sobreId);
+  // Si cambió el canal, los movimientos de caja de este sobre siguen el mismo canal
+  if (canalCambio) await sb.from('movimientos_caja').update({ canal: canalNuevo }).eq('sobre_id', sobreId);
 
   if (senaExtra > 0) {
     const { data: base } = await sb.from('movimientos_caja').select('tipo_cliente, canal, cliente_id, cantidad, codigo, proveedor_id').eq('sobre_id', sobreId).order('created_at').limit(1);
@@ -3239,7 +3254,7 @@ async function guardarEdicionSobre(sobreId, numero) {
 
   await sb.from('historial_sobres').insert({
     sobre_id: sobreId, evento: 'EDICION',
-    detalle: 'Editado por ' + (usuarioActual ? usuarioActual.nombre : '') + (descCambio ? ' — descripción cambiada' : '') + (senaExtra > 0 ? ' — seña agregada: $' + senaExtra + ' (' + senaMedio + ')' : '') + (clienteId ? ' — cliente actualizado' : '') + (total != null ? ' — total: $' + total : '') + (paraElDia ? ' — entrega: ' + paraElDia : '')
+    detalle: 'Editado por ' + (usuarioActual ? usuarioActual.nombre : '') + (descCambio ? ' — descripción cambiada' : '') + (canalCambio ? ' — canal: ' + (antes.canal || '-') + ' → ' + canalNuevo : '') + (senaExtra > 0 ? ' — seña agregada: $' + senaExtra + ' (' + senaMedio + ')' : '') + (clienteId ? ' — cliente actualizado' : '') + (total != null ? ' — total: $' + total : '') + (paraElDia ? ' — entrega: ' + paraElDia : '')
   });
 
   volverADetalleSobre(numero);
