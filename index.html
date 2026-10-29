@@ -2711,8 +2711,7 @@ function armarHtmlComprobante(c) {
     <div class="hoja"><div class="marco tallerv2">
       ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
       <div class="t-sobre">#${esc(c.numero)}</div>
-      <div class="t-fecha">Entrega: ${esc(fechaIsoALinda(c.paraElDia))}</div>
-      <div class="t-listo">Taller: listo el ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
+      <div class="t-fecha">FECHA DE ENTREGA: ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
       ${c.vendedora ? '<div class="t-cargo"><small>ENCARGADO POR</small>' + esc(c.vendedora) + '</div>' : ''}
       <div class="t-cliente">${esc(c.cliente || '')}</div>
       ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
