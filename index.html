@@ -3766,6 +3766,23 @@ async function guardarTelefonoFaltante(sobreId, clienteId) {
 }
 window.guardarTelefonoFaltante = guardarTelefonoFaltante;
 
+// NUEVO (30/10/2026): protección contra "listo" por error (caso sobre 90045: se marcó listo 10 segundos
+// después de bajarlo a taller y el cliente recibió el aviso "tu pedido está listo").
+//  1) Si se bajó a taller hace menos de 5 minutos: NO se puede marcar listo.
+//  2) Si sigue en taller (no volvió al local): se pide confirmación clara.
+// Devuelve { ok: true } o { ok: false, motivo }.
+function chequeoListoSeguro(s, numero) {
+  if (s.baja_taller && !s.salida_taller_at) {
+    const minutos = (Date.now() - new Date(s.baja_taller).getTime()) / 60000;
+    if (minutos < 5) {
+      return { ok: false, motivo: 'se bajó a taller hace ' + Math.max(1, Math.round(minutos)) + ' min — todavía no puede estar listo' };
+    }
+    const seguro = confirm('⚠️ El sobre ' + numero + ' SIGUE EN TALLER y todavía no volvió al local.\n\n¿Seguro que está listo?\n\nAceptar = marcarlo listo (al cliente le llega el aviso por WhatsApp)\nCancelar = no tocarlo');
+    if (!seguro) return { ok: false, motivo: 'sigue en taller, no se marcó (cancelado)' };
+  }
+  return { ok: true };
+}
+
 async function marcarListoLote() {
   const resBox = document.getElementById('rg-resultado');
   const numeros = [...new Set(document.getElementById('rg-sobres').value.trim().split(/[\s,]+/).filter(n => n))];
@@ -3777,7 +3794,7 @@ async function marcarListoLote() {
   for (const numero of numeros) {
     const { data: sobre } = await sb
       .from('sobres')
-      .select('id, baja_taller, listo, fecha_salida')
+      .select('id, baja_taller, salida_taller_at, listo, fecha_salida')
       .eq('numero', normalizarSobre(numero))
       .maybeSingle();
 
@@ -3785,6 +3802,8 @@ async function marcarListoLote() {
     if (sobre.fecha_salida) { errores.push(numero + ' (ya retirado)'); continue; }
     if (!sobre.baja_taller) { errores.push(numero + ' (no bajó a taller todavía)'); continue; }
     if (sobre.listo) { errores.push(numero + ' (ya estaba listo)'); continue; }
+    const chequeo = chequeoListoSeguro(sobre, numero);
+    if (!chequeo.ok) { errores.push(numero + ' (' + chequeo.motivo + ')'); continue; }
 
     const { error } = await sb.from('sobres').update({
       listo: new Date().toISOString(), controlado_por: usuarioActual.nombre
@@ -3922,6 +3941,11 @@ async function marcarListo(sobreId, numero) {
 
   // NUEVO (25/09/2026): un diseño único no puede pasar a "Listo" sin su foto cargada
   // al catálogo. Se chequea acá, justo antes del paso final (no aplica a Retorno/Deriva).
+  const { data: estadoTaller } = await sb.from('sobres').select('baja_taller, salida_taller_at').eq('id', sobreId).single();
+  if (estadoTaller) {
+    const chequeo = chequeoListoSeguro(estadoTaller, numero);
+    if (!chequeo.ok) { msgBox.innerHTML = `<div class="msg msg-error">⚠️ Sobre ${numero}: ${chequeo.motivo}.</div>`; return; }
+  }
   const { data: chequeoDU } = await sb.from('sobres').select('diseno_unico, foto_catalogo_ok').eq('id', sobreId).single();
   if (chequeoDU && chequeoDU.diseno_unico && !chequeoDU.foto_catalogo_ok) {
     msgBox.innerHTML = `
@@ -5105,6 +5129,7 @@ async function buscarSobreDetalle() {
       </div>` : ''}
       <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0;">
         <div><div style="font-weight:600;">${estadoDeSobre(s)}</div>${etiquetasSobreHTML(s)}</div>
+        ${(s.listo && !s.fecha_salida) ? `<button type="button" onclick="deshacerListo('${s.id}', '${s.numero}')" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #8a6d1f; color:#8a6d1f; background:#fff; border-radius:6px; cursor:pointer; margin-right:6px;">↩️ Deshacer "listo"</button>` : ''}
         ${!s.fecha_salida ? `<button type="button" onclick="toggleCancelarSobre()" style="width:auto; margin-top:0; padding:6px 10px; font-size:12px; border:1px solid #b23b3b; color:#b23b3b; background:#fff; border-radius:6px; cursor:pointer;">❌ Cancelar sobre</button>` : ''}
       </div>
       <div id="bs-cancelar-box" class="lista-sobre" style="display:none; margin-bottom:10px;">
@@ -5168,6 +5193,24 @@ async function buscarSobreDetalle() {
   `;
 }
 window.buscarSobreDetalle = buscarSobreDetalle;
+
+// NUEVO (30/10/2026): deshacer un "listo" marcado por error. Vuelve al estado anterior
+// (en taller, o en el local falta controlar) y deja constancia en el historial.
+// No toca WhatsApp: el aviso que ya salió no se puede retirar, y al volver a marcar listo no se repite.
+async function deshacerListo(sobreId, numero) {
+  if (!confirm('¿Deshacer el "listo" del sobre ' + numero + '?\n\nVuelve a su estado anterior (en taller / en el local, falta controlar).\nOJO: si el cliente ya recibió el aviso de WhatsApp, ese mensaje no se puede retirar.')) return;
+  const { data: s } = await sb.from('sobres').select('listo, fecha_salida, salida_taller_at, orfebre').eq('id', sobreId).single();
+  if (!s || !s.listo) { alert('Este sobre no está marcado como listo.'); return; }
+  if (s.fecha_salida) { alert('Este sobre ya fue retirado, no se puede deshacer.'); return; }
+  const { error } = await sb.from('sobres').update({ listo: null, controlado_por: null }).eq('id', sobreId);
+  if (error) { alert('No se pudo deshacer: ' + error.message); return; }
+  await sb.from('historial_sobres').insert({
+    sobre_id: sobreId, evento: 'CORRECCION',
+    detalle: 'Se deshizo "listo para retirar" (marcado por error) — lo hizo ' + usuarioActual.nombre + '. Vuelve a: ' + (s.salida_taller_at ? 'en el local, falta controlar' : 'en taller (' + (s.orfebre || '') + ')')
+  });
+  volverADetalleSobre(numero);
+}
+window.deshacerListo = deshacerListo;
 
 function toggleCancelarSobre() {
   const box = document.getElementById('bs-cancelar-box');
