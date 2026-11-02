@@ -745,6 +745,15 @@ function pantallaNuevaEntrada() {
       </div>
       <div id="ne-items-extra"></div>
       <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="agregarItemEntrada()">➕ Agregar otro ítem (otra descripción y precio)</button>
+      <details id="ne-lista-box" style="margin-top:8px; border:1px dashed #888; border-radius:6px; padding:6px 8px;">
+        <summary style="cursor:pointer; font-weight:700;">📋 Muchos ítems (ej: 30 anillos): pegar lista, uno por línea</summary>
+        <small style="display:block; margin:6px 0;">Cada línea = un ítem. Ej: <i>talle 12 - Ana - logo corazón</i>. Si querés, escribí abajo el producto que se repite (ej: "Anillo de acero") y el precio de cada uno.</small>
+        <input type="text" id="ne-lista-producto" placeholder="Producto que se repite (opcional). Ej: Anillo de acero" autocomplete="off" style="width:100%; box-sizing:border-box; margin-bottom:6px;">
+        <textarea id="ne-lista-texto" rows="6" placeholder="talle 12 - Ana - logo corazón&#10;talle 14 - Luis - logo sol&#10;talle 9 - Marta - logo corazón" style="width:100%; box-sizing:border-box; font-size:16px; padding:8px; font-family:inherit;"></textarea>
+        <input type="number" id="ne-lista-precio" placeholder="$ precio de cada ítem (opcional)" inputmode="decimal" style="width:100%; box-sizing:border-box; margin:6px 0;">
+        <button type="button" class="btn btn-verde" onclick="armarItemsDesdeLista()">Armar ítems</button>
+        <div id="ne-lista-msg" style="margin-top:6px; font-size:13px;"></div>
+      </details>
 
       <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
         <input type="checkbox" id="ne-diseno-unico" style="width:auto; margin:0;">
@@ -2202,6 +2211,27 @@ function agregarItemEntrada(desc, precio) {
 }
 window.agregarItemEntrada = agregarItemEntrada;
 
+function armarItemsDesdeLista() {
+  const msg = document.getElementById('ne-lista-msg');
+  const lineas = (document.getElementById('ne-lista-texto').value || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const producto = (document.getElementById('ne-lista-producto').value || '').trim();
+  const precio = parseFloat(document.getElementById('ne-lista-precio').value) || 0;
+  if (!lineas.length) { if (msg) msg.innerHTML = '<span style="color:#b23b3b;">Pegá al menos una línea.</span>'; return; }
+  if (lineas.length > 200) { if (msg) msg.innerHTML = '<span style="color:#b23b3b;">Máximo 200 ítems por sobre.</span>'; return; }
+  const hayCargados = leerItemsEntrada().length > 0;
+  if (hayCargados && !confirm('Esto reemplaza los ítems que ya cargaste arriba. ¿Seguir?')) return;
+  limpiarItemsEntrada();
+  const texto = l => (producto ? producto + ' — ' : '') + l;
+  const t0 = document.getElementById('ne-trabajo');
+  t0.value = texto(lineas[0]); autoCrecerTexto(t0);
+  document.getElementById('ne-item-precio-0').value = precio || '';
+  lineas.slice(1).forEach(l => agregarItemEntrada(texto(l), precio || ''));
+  recalcularTotalItems();
+  if (msg) msg.innerHTML = '<span style="color:#2a7a3b;">✔ ' + lineas.length + ' ítems armados. Revisalos arriba y completá el resto.</span>';
+  document.getElementById('ne-lista-texto').value = '';
+}
+window.armarItemsDesdeLista = armarItemsDesdeLista;
+
 function leerItemsEntrada() {
   const items = [];
   const d0 = document.getElementById('ne-trabajo').value.trim();
@@ -2658,7 +2688,36 @@ function armarHtmlComprobante(c) {
     ? itemsLista.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:0.2mm dotted #999;padding:0.8mm 0;"><span>• ${esc(it.descripcion)}</span><span style="white-space:nowrap;">${Number(it.precio) > 0 ? plata(it.precio) : ''}</span></div>`).join('') : null;
   const itemsTaller = itemsLista && itemsLista.length > 1
     ? itemsLista.map(it => `<div style="padding:0.8mm 0;border-bottom:0.2mm dotted #999;">• ${esc(it.descripcion)}</div>`).join('') : null;
-  const largoItems = itemsLista ? itemsLista.reduce((a, it) => a + String(it.descripcion).length + 4, 0) : 0;
+  let largoItems = itemsLista ? itemsLista.reduce((a, it) => a + String(it.descripcion).length + 4, 0) : 0;
+  // (02/11/2026) Más de 6 ítems (ej: 30 anillos): hojas principales con resumen + planilla numerada para el taller.
+  const itemsMuchos = itemsLista && itemsLista.length > 6 ? itemsLista : null;
+  let hojasPlanilla = '';
+  let resumenCliente = null, resumenTaller = null;
+  if (itemsMuchos) {
+    largoItems = 0;
+    const nIt = itemsMuchos.length;
+    resumenCliente = `<div style="font-size:26px;font-weight:900;text-align:center;">${nIt} ÍTEMS</div><div style="font-size:12px;text-align:center;margin-top:1mm;">El detalle de cada uno está en la planilla del taller.</div>`;
+    resumenTaller = `<div style="font-size:38px;font-weight:900;text-align:center;line-height:1.1;">${nIt} ÍTEMS</div><div style="font-size:19px;font-weight:700;text-align:center;margin-top:2mm;">Ver PLANILLA en la hoja siguiente</div>`;
+    const paginas = []; let actual = [], usado = 0;
+    itemsMuchos.forEach((it, i) => {
+      const alto = Math.ceil(String(it.descripcion).length / 60) * 5.2 + 3.6;
+      if (usado + alto > 138 && actual.length) { paginas.push(actual); actual = []; usado = 0; }
+      actual.push({ n: i + 1, d: it.descripcion }); usado += alto;
+    });
+    if (actual.length) paginas.push(actual);
+    hojasPlanilla = paginas.map((pg, pi) => `
+    <div class="hoja"><div class="marco" style="padding:5mm;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;border-bottom:0.5mm solid #111;padding-bottom:1.5mm;margin-bottom:1mm;">
+        <b style="font-size:28px;">#${esc(c.numero)}</b>
+        <span style="font-size:13px;font-weight:700;text-align:center;flex:1;">${esc(c.cliente || '')}<br>Entrega: ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</span>
+        <span style="font-size:11px;font-weight:700;">PLANILLA ${pi + 1}/${paginas.length}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <tr style="font-size:10px;letter-spacing:1px;"><th style="width:9mm;">N°</th><th style="text-align:left;">DETALLE</th><th style="width:12mm;">LISTO</th></tr>
+        ${pg.map(r => `<tr><td style="text-align:center;font-weight:900;border-bottom:0.3mm solid #888;padding:1mm 0;">${r.n}</td><td style="border-bottom:0.3mm solid #888;padding:1mm 1mm;font-weight:600;word-break:break-word;">${esc(r.d)}</td><td style="text-align:center;border-bottom:0.3mm solid #888;"><span style="display:inline-block;width:5mm;height:5mm;border:0.4mm solid #111;"></span></td></tr>`).join('')}
+      </table>
+    </div></div>`).join('');
+  }
   const hayTotal = Number(c.total) > 0;
   const hayPagos = hayTotal || Number(c.sena) > 0;
   const saldo = hayTotal ? Math.max(0, Number(c.total) - (Number(c.sena) || 0)) : null;
@@ -2717,7 +2776,7 @@ function armarHtmlComprobante(c) {
           ? `<div class="fila" style="display:block;"><span>Señor/a</span><div style="font-size:22px;font-weight:900;line-height:1.1;">${esc(c.cliente)}</div><div style="font-size:16px;font-weight:700;margin-top:1px;">Para: ${esc(c.paraClienteDe)}</div></div>`
           : fila('Señor/a', c.cliente)}
         ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
-        <div class="cv-trabajo"${itemsCliente ? ` style="font-size:${largoItems > 380 ? 9 : largoItems > 260 ? 10.5 : largoItems > 180 ? 12.5 : largoItems > 120 ? 15 : 17}px;font-weight:600;line-height:1.1;"` : ''}>${itemsCliente || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+        <div class="cv-trabajo"${itemsCliente ? ` style="font-size:${largoItems > 380 ? 9 : largoItems > 260 ? 10.5 : largoItems > 180 ? 12.5 : largoItems > 120 ? 15 : 17}px;font-weight:600;line-height:1.1;"` : ''}>${resumenCliente || itemsCliente || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
         ${hayTotal ? fila('Total', plata(c.total)) : ''}
         ${hayPagos ? fila('Seña', plata(c.sena)) : ''}
         ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
@@ -2742,7 +2801,7 @@ function armarHtmlComprobante(c) {
       ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
       <div style="text-align:center;font-size:20px;font-weight:700;margin:0 0 4px;">${c.telefono ? '📱 ' + esc(c.telefono) : 'Sin número de teléfono'}</div>
       <div class="t-linea"></div>
-      <div class="t-desc" style="font-size:${itemsTaller ? (largoItems > 330 ? 15 : largoItems > 230 ? 17 : largoItems > 150 ? 20 : 23) : String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${itemsTaller || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+      <div class="t-desc" style="font-size:${itemsTaller ? (largoItems > 330 ? 15 : largoItems > 230 ? 17 : largoItems > 150 ? 20 : 23) : String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${resumenTaller || itemsTaller || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
       <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
       ${fotosMostrar.length ? '<div class="t-cap">Foto de referencia' + (fotosExtra > 0 ? ' (+' + fotosExtra + ' más en el sistema)' : '') + '</div>' : ''}
     </div></div>
@@ -2886,6 +2945,7 @@ function armarHtmlComprobante(c) {
       ${c.hojaRecibo || ''}
       ${(c.soloTaller || c.hojaRecibo || c.soloEnvio) ? '' : hojaCliente}
       ${(c.soloRecibo || c.soloCliente || c.soloEnvio) ? '' : hojaTaller}
+      ${(c.soloRecibo || c.soloCliente || c.soloEnvio) ? '' : hojasPlanilla}
       ${(c.soloRecibo || c.soloCliente) ? '' : hojaEnvio}
     </body></html>`;
 }
