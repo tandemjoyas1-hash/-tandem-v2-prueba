@@ -2301,7 +2301,7 @@ async function guardarNuevaEntrada() {
   const msgBox = document.getElementById('ne-msg');
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
-  const tipoCliente = document.getElementById('ne-tipo-cliente').value;
+  let tipoCliente = document.getElementById('ne-tipo-cliente').value;
   const itemsEntrada = leerItemsEntrada();
   const trabajo = itemsEntrada.map(it => it.descripcion).filter(Boolean).join(' + ');
   const paraElDia = document.getElementById('ne-para-el-dia').value || null;
@@ -2326,6 +2326,18 @@ async function guardarNuevaEntrada() {
   // Teléfono obligatorio y bien escrito: sin él no le llega el WhatsApp al cliente.
   // Mayoristas y talleres: NUNCA se carga el teléfono de SU cliente final (ellos son los dueños de ese
   // cliente). El sobre queda con el teléfono del mayorista y no sale ningún aviso automático.
+  // NUEVO (02/11/2026): si el nombre es de un mayorista/taller que ya existe, el sobre toma SU tipo
+  // automáticamente (aunque en el formulario haya quedado "por menor").
+  if (tipoCliente === 'CONSUMIDOR_FINAL') {
+    const { data: listaTipo } = await sb.from('clientes').select('nombre, tipo_cliente').eq('oculto', false).in('tipo_cliente', ['MAYORISTA', 'TALLER']);
+    const normTipo = normalizarNombreCliente(nombreCliente);
+    const encontrado = (listaTipo || []).find(c => normalizarNombreCliente(c.nombre) === normTipo);
+    if (encontrado) {
+      tipoCliente = encontrado.tipo_cliente;
+      const selTipo = document.getElementById('ne-tipo-cliente');
+      if (selTipo) { selTipo.value = tipoCliente; if (typeof actualizarCampoParaCliente === 'function') actualizarCampoParaCliente(); }
+    }
+  }
   const esMayoristaOTaller = tipoCliente === 'MAYORISTA' || tipoCliente === 'TALLER';
   if (esMayoristaOTaller) {
     // NUEVO (29/10/2026): el nombre tiene que ser de un mayorista/taller que YA existe (elegido de la lista).
