@@ -2546,6 +2546,7 @@ async function guardarNuevaEntrada() {
     cliente: nombreCliente,
     paraClienteDe: (tipoCliente === 'MAYORISTA' ? (document.getElementById('ne-para-cliente-de').value || '').trim() : ''),
     tipoCliente: tipoCliente,
+    items: itemsEntrada.length > 1 ? itemsEntrada : null,
     telefono: telefono,
     trabajo: trabajo,
     cantidad: cantidad,
@@ -2639,6 +2640,13 @@ function armarHtmlComprobante(c) {
     return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
   };
   const canales = { LOCAL: 'Local', REDES_ENVIO: 'Redes — con envío', REDES_RETIRO: 'Redes — retiro en local' };
+  // (02/11/2026) Si el sobre tiene varios ítems, se imprimen como lista (uno por renglón) en vez de una descripción corrida.
+  const itemsLista = Array.isArray(c.items) && c.items.length > 1 ? c.items.filter(it => it && it.descripcion) : null;
+  const itemsCliente = itemsLista && itemsLista.length > 1
+    ? itemsLista.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:0.2mm dotted #999;padding:0.8mm 0;"><span>• ${esc(it.descripcion)}</span><span style="white-space:nowrap;">${Number(it.precio) > 0 ? plata(it.precio) : ''}</span></div>`).join('') : null;
+  const itemsTaller = itemsLista && itemsLista.length > 1
+    ? itemsLista.map(it => `<div style="padding:0.8mm 0;border-bottom:0.2mm dotted #999;">• ${esc(it.descripcion)}</div>`).join('') : null;
+  const largoItems = itemsLista ? itemsLista.reduce((a, it) => a + String(it.descripcion).length + 4, 0) : 0;
   const hayTotal = Number(c.total) > 0;
   const hayPagos = hayTotal || Number(c.sena) > 0;
   const saldo = hayTotal ? Math.max(0, Number(c.total) - (Number(c.sena) || 0)) : null;
@@ -2697,7 +2705,7 @@ function armarHtmlComprobante(c) {
           ? `<div class="fila" style="display:block;"><span>Señor/a</span><div style="font-size:22px;font-weight:900;line-height:1.1;">${esc(c.cliente)}</div><div style="font-size:16px;font-weight:700;margin-top:1px;">Para: ${esc(c.paraClienteDe)}</div></div>`
           : fila('Señor/a', c.cliente)}
         ${fila('Para el día', fechaIsoALinda(c.paraElDia))}
-        <div class="cv-trabajo">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+        <div class="cv-trabajo"${itemsCliente ? ` style="font-size:${largoItems > 380 ? 9 : largoItems > 260 ? 10.5 : largoItems > 180 ? 12.5 : largoItems > 120 ? 15 : 17}px;font-weight:600;line-height:1.1;"` : ''}>${itemsCliente || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
         ${hayTotal ? fila('Total', plata(c.total)) : ''}
         ${hayPagos ? fila('Seña', plata(c.sena)) : ''}
         ${hayTotal ? `<div class="saldo"><span>SALDO A PAGAR</span><b>${plata(saldo)}</b></div>` : ''}
@@ -2722,7 +2730,7 @@ function armarHtmlComprobante(c) {
       ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
       <div style="text-align:center;font-size:20px;font-weight:700;margin:0 0 4px;">${c.telefono ? '📱 ' + esc(c.telefono) : 'Sin número de teléfono'}</div>
       <div class="t-linea"></div>
-      <div class="t-desc" style="font-size:${String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+      <div class="t-desc" style="font-size:${itemsTaller ? (largoItems > 330 ? 15 : largoItems > 230 ? 17 : largoItems > 150 ? 20 : 23) : String(c.trabajo || '').length > 280 ? 18 : String(c.trabajo || '').length > 190 ? 22 : String(c.trabajo || '').length > 120 ? 26 : String(c.trabajo || '').length > 60 ? 31 : 36}px;">${itemsTaller || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
       <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
       ${fotosMostrar.length ? '<div class="t-cap">Foto de referencia' + (fotosExtra > 0 ? ' (+' + fotosExtra + ' más en el sistema)' : '') + '</div>' : ''}
     </div></div>
@@ -3059,6 +3067,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
 
   const { data: fotosExtra } = await sb
     .from('fotos_sobre').select('url').eq('sobre_id', sobreId).order('created_at').limit(3);
+  const { data: itemsRep } = await sb.from('items_sobre').select('descripcion, precio').eq('sobre_id', sobreId);
 
   // Quién cargó el sobre (para saber a quién consultar si algo de la descripción está mal)
   let quienCargo = '';
@@ -3076,6 +3085,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     cliente: s.clientes ? s.clientes.nombre : '',
     paraClienteDe: s.para_cliente_de || '',
     tipoCliente: s.tipo_cliente || '',
+    items: (itemsRep && itemsRep.length > 1) ? itemsRep : null,
     telefono: s.clientes ? s.clientes.telefono : '',
     trabajo: s.descripcion,
     cantidad: 1,
