@@ -2841,8 +2841,10 @@ function armarHtmlComprobante(c) {
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
       .hoja { width: 125.6mm; height: 188mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
-      /* (03/11/2026) Hoja del taller al 70% (87,9 x 131,6 mm) para que entre en el sobre de 9 x 14 cm: se imprime en la esquina de arriba a la izquierda y el marco es la línea de corte. */
-      .hoja-taller { zoom: 0.7; }
+      /* (03/11/2026) Hoja del taller en su propio papel de 9 x 14 cm (90 x 140 mm), que es el tamaño del sobre y de las hojas que corta el local.
+         La hoja se achica al 68% y queda centrada con aire a los costados para que la impresora no recorte el borde. */
+      @page taller { size: 90mm 140mm; margin: 0; }
+      .hoja-taller { page: taller; zoom: 0.68; margin: 9mm 0 0 3.4mm; height: 188mm; }
       .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
       .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
