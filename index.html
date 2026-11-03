@@ -2183,6 +2183,8 @@ function normalizarTelefonoAR(tel) {
     // Saca el "15" que va después del código de área (2, 3 o 4 dígitos)
     for (const n of [2, 3, 4]) { if (d.substr(n, 2) === '15') { d = d.slice(0, n) + d.slice(n + 2); break; } }
   }
+  // Teléfono fijo sin código de área (7 números): se asume Córdoba (351).
+  if (d.length === 7) d = '351' + d;
   return d.length === 10 ? d : '';
 }
 
@@ -2390,7 +2392,7 @@ async function guardarNuevaEntrada() {
   const sinTelefono = document.getElementById('ne-sin-telefono').checked || esMayoristaOTaller;
   const telNormalizado = normalizarTelefonoAR(telefono);
   if (!sinTelefono && !telNormalizado) {
-    alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números).');
+    alert('⚠️ FALTA EL TELÉFONO O ESTÁ MAL ESCRITO\n\nPoné código de área SIN 0 + número SIN 15.\nEj: 3511234567 (10 números). Fijo de Córdoba: alcanza con los 7 números.');
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Teléfono inválido. Ej: 3511234567 (código de área sin 0 + número sin 15).</div>`;
     return;
   }
