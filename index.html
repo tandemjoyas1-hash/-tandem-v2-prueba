@@ -286,6 +286,7 @@ function pintarUsuarioActual() {
   return `
     <div class="usuario-actual">
       <span>👤 <strong>${usuarioActual.nombre}</strong> (${usuarioActual.rol})</span>
+      <button onclick="pantallaCambiarPin()" title="Cambiar mi PIN">🔑 PIN</button>
       <button onclick="cerrarSesion()">Cambiar</button>
     </div>
     <div class="nav">
@@ -306,6 +307,58 @@ function pintarUsuarioActual() {
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
     </div>`;
 }
+
+// (03/11/2026) Cada persona cambia su propio PIN: hace falta el PIN actual + uno nuevo de 4 a 6 números.
+function pantallaCambiarPin() {
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h1>🔑 Cambiar mi PIN</h1>
+      <div class="sub">El PIN nuevo tiene que tener de 4 a 6 números y no ser fácil (nada de 1234 ni 1111).</div>
+      <label>PIN actual</label>
+      <input type="password" inputmode="numeric" maxlength="6" id="cp-actual" autocomplete="off">
+      <label>PIN nuevo</label>
+      <input type="password" inputmode="numeric" maxlength="6" id="cp-nuevo" autocomplete="off">
+      <label>Repetí el PIN nuevo</label>
+      <input type="password" inputmode="numeric" maxlength="6" id="cp-repetir" autocomplete="off">
+      <button class="btn btn-verde" id="cp-btn" onclick="guardarCambioPin()">Guardar PIN nuevo</button>
+      <div id="cp-msg"></div>
+    </div>
+  `);
+  document.getElementById('cp-actual').focus();
+}
+window.pantallaCambiarPin = pantallaCambiarPin;
+
+async function guardarCambioPin() {
+  const msg = document.getElementById('cp-msg');
+  const actual = document.getElementById('cp-actual').value.trim();
+  const nuevo = document.getElementById('cp-nuevo').value.trim();
+  const repetir = document.getElementById('cp-repetir').value.trim();
+  const error = t => { msg.innerHTML = `<div class="msg msg-error">${t}</div>`; };
+  if (!/^\d{2,6}$/.test(actual)) return error('Escribí tu PIN actual.');
+  if (!/^\d{4,6}$/.test(nuevo)) return error('El PIN nuevo tiene que tener de 4 a 6 números.');
+  if (nuevo !== repetir) return error('El PIN nuevo y la repetición no coinciden.');
+  const btn = document.getElementById('cp-btn');
+  btn.disabled = true;
+  msg.innerHTML = '<p>Guardando...</p>';
+  try {
+    const { data } = await sb.auth.getSession();
+    const token = data && data.session ? data.session.access_token : '';
+    const r = await fetch(SUPABASE_FUNCIONES_URL + '/cambiar-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ pin_actual: actual, pin_nuevo: nuevo })
+    });
+    const cuerpo = await r.json();
+    if (!r.ok) { btn.disabled = false; return error(cuerpo.error || 'No se pudo cambiar el PIN.'); }
+    msg.innerHTML = '<div class="msg msg-ok">✅ Listo, tu PIN nuevo ya quedó. Usalo la próxima vez que entres.</div>';
+    ['cp-actual', 'cp-nuevo', 'cp-repetir'].forEach(id => { document.getElementById(id).value = ''; });
+  } catch (e) {
+    btn.disabled = false;
+    error('No se pudo conectar. Probá de nuevo.');
+  }
+}
+window.guardarCambioPin = guardarCambioPin;
 
 function cerrarSesion() {
   usuarioActual = null;
@@ -355,11 +408,11 @@ async function pantallaLogin() {
       <div class="sub">Punto de venta Tandem</div>
       <label>¿Quién sos?</label>
       <select id="sel-usuario">${opciones}</select>
-      <label>Tu PIN (2 números)</label>
-      <input type="tel" inputmode="numeric" maxlength="6" id="pin-input" placeholder="••">
+      <label>Tu PIN</label>
+      <input type="tel" inputmode="numeric" maxlength="6" id="pin-input" placeholder="••••">
       <button class="btn btn-verde" onclick="intentarLogin()">Entrar</button>
       <div id="login-msg"></div>
-      <small>Si es tu primera vez, escribí el PIN que quieras usar de ahora en más.</small>
+      <small>Si es tu primera vez o te olvidaste el PIN, pedíselo a Mauricio.</small>
     </div>
   `);
 }
