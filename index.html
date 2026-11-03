@@ -2789,7 +2789,7 @@ function armarHtmlComprobante(c) {
   // (19/10/2026) Hoja del taller con el formato aprobado: N° de pedido grande, fecha, cliente,
   // recuadro con el trabajo y la foto de referencia grande abajo. Todo en blanco y negro, sin precios.
   const hojaTaller = `
-    <div class="hoja"><div class="marco tallerv2">
+    <div class="hoja hoja-taller"><div class="marco tallerv2">
       ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
       <div class="t-sobre">#${esc(c.numero)}</div>
       <div style="display:flex;justify-content:center;margin:2px 0 6px;">
@@ -2841,6 +2841,8 @@ function armarHtmlComprobante(c) {
       body { font-family: Arial, Helvetica, sans-serif; color: #111; }
       .hoja { width: 125.6mm; height: 188mm; padding: 0; page-break-after: always; break-after: page; overflow: hidden; }
       .hoja:last-child { page-break-after: auto; break-after: auto; }
+      /* (03/11/2026) Hoja del taller al 70% (87,9 x 131,6 mm) para que entre en el sobre de 9 x 14 cm: se imprime en la esquina de arriba a la izquierda y el marco es la línea de corte. */
+      .hoja-taller { zoom: 0.7; }
       .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 4mm 6mm; overflow: hidden; }
       .logo { text-align: center; }
       .l1 { font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 700; letter-spacing: 1.5px; line-height: 1; }
