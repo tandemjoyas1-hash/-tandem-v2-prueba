@@ -770,7 +770,8 @@ function pantallaNuevaEntrada() {
         <option value="Daniel">🔨 Daniel</option>
         <option value="Pachula">🔨 Pachula</option>
         <option value="GRABADO">✏️ Grabado</option>
-        <option value="Laureano">🧪 Laureano</option>
+        <option value="DISEÑO">🎨 Diseño</option>
+        <option value="Laureano">🧪 Banco de Laureano</option>
       </select>
 
       <label>Tipo de producto — escribí y TOCÁ una opción de la lista que aparece</label>
@@ -3554,11 +3555,14 @@ function pantallaTaller() {
       <h1>🔨 Bajar al taller</h1>
       <div class="sub">Escribí uno o varios N° de sobre, separados por espacio</div>
       <input type="text" id="bt-sobres" placeholder="Ej: 4801 4802 4803">
-      <label>Orfebre</label>
+      <label>¿A dónde va? (orfebre o lugar)</label>
       <select id="bt-orfebre">
-        <option>Daniel</option>
-        <option>Pachula</option>
-        <option>GRABADO</option>
+        <option value="">— Elegí a quién se lo das —</option>
+        <option value="Daniel">🔨 Daniel</option>
+        <option value="Pachula">🔨 Pachula</option>
+        <option value="GRABADO">✏️ Grabado</option>
+        <option value="DISEÑO">🎨 Diseño</option>
+        <option value="Laureano">🧪 Banco de Laureano</option>
       </select>
       <button class="btn btn-verde" onclick="bajarATallerLote()">Bajar al taller</button>
       <div id="bt-resultado"></div>
@@ -3665,6 +3669,7 @@ async function bajarATallerLote() {
   const orfebre = document.getElementById('bt-orfebre').value;
 
   if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+  if (!orfebre) { resBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el orfebre (Daniel, Pachula, Grabado, Diseño o Banco de Laureano).</div>`; return; }
 
   _bajarTallerLoteEnCurso = true;
   resBox.innerHTML = `<div class="msg">⏳ Guardando... no vuelvas a tocar el botón</div>`;
@@ -3953,11 +3958,11 @@ async function buscarSobreParaListo() {
       <label>¿Pasa a otro lado? (dejalo en blanco si no)</label>
       <select id="deriva-${s.id}">
         <option value="">— No, sigue el camino normal —</option>
-        <option value="DANIEL">↗ Pasa a Daniel</option>
-        <option value="PACHULA">↗ Pasa a Pachula</option>
+        <option value="Daniel">↗ Pasa a Daniel</option>
+        <option value="Pachula">↗ Pasa a Pachula</option>
         <option value="DISEÑO">🎨 Pasa a Diseño</option>
         <option value="GRABADO">✏️ Pasa a Grabado</option>
-        <option value="LAUREANO">🧪 Pasa a Laureano</option>
+        <option value="Laureano">🧪 Pasa al banco de Laureano</option>
       </select>
       <button class="btn btn-verde" onclick="marcarListo('${s.id}', '${s.numero}')">Cambiar de estado</button>
       <div id="msg-${s.id}"></div>
@@ -5203,11 +5208,11 @@ async function buscarSobreDetalle() {
         <label>¿A dónde va?</label>
         <select id="retorno-destino">
           ${s.orfebre ? `<option value="${esc(s.orfebre)}">Al mismo taller (${esc(s.orfebre)})</option>` : ''}
-          <option value="DANIEL">Daniel</option>
-          <option value="PACHULA">Pachula</option>
+          <option value="Daniel">Daniel</option>
+          <option value="Pachula">Pachula</option>
           <option value="DISEÑO">Diseño</option>
           <option value="GRABADO">Grabado</option>
-          <option value="LAUREANO">Laureano</option>
+          <option value="Laureano">Banco de Laureano</option>
         </select>
         <button class="btn btn-verde" style="margin-top:10px;" onclick="confirmarTrabajoRetorno('${s.id}', '${s.numero}')">Confirmar retorno</button>
         <div id="retorno-msg"></div>
