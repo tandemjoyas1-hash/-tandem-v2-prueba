@@ -6113,10 +6113,22 @@ window.pantallaChequeoDelDia = pantallaChequeoDelDia;
 async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   const telLimpio = normalizarTelefono(telefono);
 
+  // (05/11/2026) "Tandem" / "Tandem Joyas" = pedidos internos: siempre van al cliente interno TANDEM,
+  // sin mirar el teléfono (antes el teléfono lo cruzaba con otra persona, ej. Sofi Weiss).
+  const _nomInterno = normalizarNombreCliente(nombreCliente);
+  if (_nomInterno === 'tandem' || _nomInterno === 'tandem joyas') {
+    const { data: interno } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', 'TANDEM').limit(1).maybeSingle();
+    if (interno) return interno.id;
+  }
+
   // 0) Si nos dieron un teléfono, es la forma MÁS confiable de reconocer al cliente —
   // más que el nombre, que se escribe distinto cada vez. Si ya existe alguien con ese
   // mismo teléfono, es esa persona seguro, aunque el nombre esté escrito diferente.
+  // (05/11/2026) Si el nombre escrito coincide EXACTO con un cliente, manda el nombre (hay clientes que
+  // comparten teléfono, ej. familia o el local). El teléfono solo decide si el nombre no coincide.
   if (telLimpio.length >= 8) {
+    const { data: exactoNombre } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', nombreCliente).limit(1).maybeSingle();
+    if (exactoNombre) return exactoNombre.id;
     const { data: porTelefono } = await sb.from('clientes').select('id, nombre').eq('oculto', false).eq('telefono', telLimpio).limit(1).maybeSingle();
     if (porTelefono) return porTelefono.id;
   }
