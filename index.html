@@ -5630,14 +5630,14 @@ async function armarBoletaPorNumeros() {
   const pagadoPorSobre = {};
   (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
 
-  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map(s => {
+  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map((s, idx) => {
     const pagado = pagadoPorSobre[s.id] || 0;
     const precio = Number(s.precio_total) || 0;
     return `
       <div class="lista-sobre" data-fila-boleta="${s.id}">
         <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
           <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-numero="${s.numero}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
-          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
+          <span><strong>${idx + 1})</strong> <strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
         </label>
         <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
           <span>Precio $</span>
@@ -5767,8 +5767,8 @@ function armarHtmlBoleta(b) {
       <div class="meta"><span>Fecha: ${esc(fecha)}</span><span>${b.sobres.length} sobre${b.sobres.length === 1 ? '' : 's'}${paginas.length > 1 ? ' · hoja ' + (i + 1) + '/' + paginas.length : ''}</span></div>
       <div class="cli">${esc(b.cliente)}</div>
       <table style="font-size:${fs}px;">
-        <tr><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
-        ${pg.map(x => `<tr><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, cpl * (fs >= 15 ? 6 : 3)))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
+        <tr><th>N°</th><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
+        ${pg.map((x, k) => `<tr><td class="c">${i * POR_HOJA + k + 1}</td><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, cpl * (fs >= 15 ? 6 : 3)))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
       </table>
       ${ultima ? `
         ${hayPagos ? `<div class="sub"><span>Subtotal</span><b>${plata(totalBruto)}</b></div><div class="sub"><span>Ya pagado</span><b>- ${plata(pagadoTotal)}</b></div>` : ''}
@@ -5795,6 +5795,7 @@ function armarHtmlBoleta(b) {
     table { width: 100%; border-collapse: collapse; }
     th { font-size: 8.5px; letter-spacing: 1px; text-align: left; border-bottom: 0.4mm solid #000; padding-bottom: 1mm; }
     td { padding: 1.2mm 0; border-bottom: 0.2mm dotted #777; vertical-align: top; }
+    td.c { width: 1%; white-space: nowrap; padding-right: 2mm; text-align: right; color: #444; font-weight: 700; }
     td.n { font-weight: 900; width: 1%; white-space: nowrap; padding-right: 3mm; } td.p { text-align: right; white-space: nowrap; font-weight: 700; padding-left: 2mm; }
     .sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 1.5mm; }
     .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.5mm solid #000; border-radius: 1.5mm; padding: 1mm 3mm; margin-top: 2.5mm; }
