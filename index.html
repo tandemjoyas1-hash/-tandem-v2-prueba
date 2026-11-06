@@ -5453,7 +5453,12 @@ function pantallaGenerarBoleta() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Generar boleta</h1>
-      <label>Nombre del cliente</label>
+      <label>🧾 Escribí los N° de sobre que tenés en la mano (separados por espacio)</label>
+      <input type="text" id="gb-numeros" placeholder="Ej: 91100 91105 32485" inputmode="numeric">
+      <button class="btn btn-verde" onclick="armarBoletaPorNumeros()">Armar boleta con esos sobres</button>
+      <div id="gb-resultado-num"></div>
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>O buscá por nombre del cliente</label>
       <input type="text" id="gb-buscar" placeholder="Ej: Zipiur">
       <button class="btn btn-verde" onclick="buscarClienteParaBoleta()">Buscar</button>
       <div id="gb-resultado"></div>
@@ -5568,6 +5573,298 @@ async function confirmarGenerarBoleta(clienteId, nombreCliente, telefono) {
 }
 window.confirmarGenerarBoleta = confirmarGenerarBoleta;
 
+// (06/11/2026) Armar la boleta escribiendo los N° de sobre que se tienen en la mano, sin buscar al cliente
+// ni scrollear. Todos tienen que ser del mismo cliente. Quedan tildados y el total se suma solo.
+function saldoFilaBoleta(sobreId) {
+  const pr = document.querySelector('.gb-precio[data-sobre="' + sobreId + '"]');
+  const ex = document.querySelector('.gb-extra-monto[data-sobre="' + sobreId + '"]');
+  const precio = (Number(pr && pr.value) || 0) + (Number(ex && ex.value) || 0);
+  return Math.max(0, precio - (Number(pr && pr.dataset.pagado) || 0));
+}
+function actualizarTotalBoletaNum() {
+  const chks = [...document.querySelectorAll('.chk-boleta:checked')];
+  const t = chks.reduce((a, el) => a + saldoFilaBoleta(el.dataset.sobre), 0);
+  const el = document.getElementById('gb-total-num');
+  if (el) el.textContent = '$' + t.toLocaleString('es-AR') + ' (' + chks.length + ' sobre' + (chks.length === 1 ? '' : 's') + ')';
+}
+window.actualizarTotalBoletaNum = actualizarTotalBoletaNum;
+
+async function armarBoletaPorNumeros() {
+  const resBox = document.getElementById('gb-resultado-num');
+  const numeros = [...new Set(document.getElementById('gb-numeros').value.trim().split(/[\s,]+/).filter(n => n))];
+  if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: sobres, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, cliente_id, fecha_salida, clientes(nombre, telefono)')
+    .in('numero', numeros);
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const encontrados = (sobres || []);
+  const noExisten = numeros.filter(n => !encontrados.some(s => String(s.numero) === String(n)));
+  const yaRetirados = encontrados.filter(s => s.fecha_salida).map(s => s.numero);
+  const validos = encontrados.filter(s => !s.fecha_salida);
+  let avisos = '';
+  if (noExisten.length) avisos += `<div class="msg msg-error">No existen: ${noExisten.join(', ')}</div>`;
+  if (yaRetirados.length) avisos += `<div class="msg msg-error">Ya fueron retirados (no entran): ${yaRetirados.join(', ')}</div>`;
+  if (validos.length === 0) { resBox.innerHTML = avisos || `<div class="vacio">No hay sobres para la boleta.</div>`; return; }
+
+  const clientesIds = [...new Set(validos.map(s => s.cliente_id))];
+  if (clientesIds.length > 1) {
+    const detalle = validos.map(s => '#' + s.numero + ' → ' + ((s.clientes && s.clientes.nombre) || '(sin cliente)')).join('<br>');
+    resBox.innerHTML = avisos + `<div class="msg msg-error">⚠️ Estos sobres son de clientes distintos. Una boleta es de un solo cliente:<br>${detalle}</div>`;
+    return;
+  }
+  const cli = validos[0].clientes || {};
+  const clienteId = validos[0].cliente_id;
+  const nombreCliente = cli.nombre || '';
+  const telefono = cli.telefono || '';
+
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('sobre_id, monto')
+    .in('sobre_id', validos.map(s => s.id))
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
+  const pagadoPorSobre = {};
+  (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
+
+  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map(s => {
+    const pagado = pagadoPorSobre[s.id] || 0;
+    const precio = Number(s.precio_total) || 0;
+    return `
+      <div class="lista-sobre" data-fila-boleta="${s.id}">
+        <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-numero="${s.numero}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
+          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
+        </label>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+          <span>Precio $</span>
+          <input type="number" class="gb-precio" data-sobre="${s.id}" data-orig="${precio}" data-pagado="${pagado}" value="${precio || ''}" placeholder="poné el precio" style="width:130px;" oninput="actualizarTotalBoletaNum()">
+          ${pagado ? `<span style="font-size:12px;color:#8a8378;">ya pagó $${pagado.toLocaleString('es-AR')}</span>` : ''}
+          <button type="button" class="btn btn-outline" style="width:auto; padding:4px 10px;" onclick="document.getElementById('gb-extra-${s.id}').style.display='flex'; this.style.display='none';">➕ ítem</button>
+        </div>
+        <div id="gb-extra-${s.id}" style="display:none; gap:8px; margin-top:6px; flex-wrap:wrap;">
+          <input type="text" class="gb-extra-desc" data-sobre="${s.id}" placeholder="Descripción del ítem" style="flex:1; min-width:140px;">
+          <input type="number" class="gb-extra-monto" data-sobre="${s.id}" placeholder="$" style="width:100px;" oninput="actualizarTotalBoletaNum()">
+        </div>
+      </div>`;
+  }).join('');
+
+  resBox.innerHTML = `
+    ${avisos}
+    <div style="margin:10px 0; font-weight:700;">Cliente: ${esc(nombreCliente)}</div>
+    ${filas}
+    <div style="margin:10px 0; font-size:18px;">Total: <strong id="gb-total-num"></strong></div>
+    <button class="btn btn-verde"
+      onclick='confirmarBoletaEditable(${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)})'>
+      Generar boleta
+    </button>
+    <div id="gb-msg"></div>
+  `;
+  actualizarTotalBoletaNum();
+}
+window.armarBoletaPorNumeros = armarBoletaPorNumeros;
+
+// Guarda los precios / ítems cargados en la pantalla y genera la boleta. Los precios se guardan en el sobre
+// (así la cuenta corriente queda igual que la boleta).
+async function confirmarBoletaEditable(clienteId, nombreCliente, telefono) {
+  const msgBox = document.getElementById('gb-msg');
+  const sel = [...document.querySelectorAll('.chk-boleta:checked')];
+  if (sel.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Marcá al menos un sobre.</div>`; return; }
+  const sinPrecio = sel.filter(el => saldoFilaBoleta(el.dataset.sobre) <= 0 && !(Number(document.querySelector('.gb-precio[data-sobre="' + el.dataset.sobre + '"]').dataset.pagado) > 0));
+  if (sinPrecio.length && !confirm('Estos sobres no tienen precio: ' + sinPrecio.map(e => '#' + e.dataset.numero).join(', ') + '.\n\n¿Generar la boleta igual (valen $0)?')) return;
+  msgBox.innerHTML = `<div class="msg">Generando...</div>`;
+  try {
+    let total = 0;
+    for (const el of sel) {
+      const id = el.dataset.sobre;
+      const pr = document.querySelector('.gb-precio[data-sobre="' + id + '"]');
+      const desc = (document.querySelector('.gb-extra-desc[data-sobre="' + id + '"]').value || '').trim();
+      const extra = Number(document.querySelector('.gb-extra-monto[data-sobre="' + id + '"]').value) || 0;
+      const nuevo = (Number(pr.value) || 0) + extra;
+      const orig = Number(pr.dataset.orig) || 0;
+      if (extra > 0) {
+        const { error: eI } = await sb.from('items_sobre').insert({ sobre_id: id, descripcion: desc || 'Ítem agregado en la boleta', precio: extra });
+        if (eI) throw eI;
+      }
+      if (nuevo !== orig) {
+        const { error: eU } = await sb.from('sobres').update({ precio_total: nuevo }).eq('id', id);
+        if (eU) throw eU;
+        await sb.from('historial_sobres').insert({ sobre_id: id, evento: 'EDICION', detalle: 'Precio ajustado al armar la boleta: $' + orig + ' → $' + nuevo + (extra > 0 ? ' (ítem agregado: ' + (desc || 'sin descripción') + ' $' + extra + ')' : '') + ' — ' + usuarioActual.nombre });
+      }
+      total += Math.max(0, nuevo - (Number(pr.dataset.pagado) || 0));
+    }
+    const { data: boleta, error } = await sb.from('boletas').insert({ cliente_id: clienteId, total: total, telefono: telefono, estado: 'PENDIENTE' }).select('id, numero').single();
+    if (error) throw error;
+    const { error: eB } = await sb.from('boleta_sobres').insert(sel.map(el => ({ boleta_id: boleta.id, sobre_id: el.dataset.sobre })));
+    if (eB) throw eB;
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta N° ${boleta.numero} generada — Total: $${total.toLocaleString('es-AR')}</div>
+      ${botonesBoleta(boleta.id, 'g')}
+      <div style="margin-top:14px; padding-top:10px; border-top:1px solid #eee;">
+        <div style="font-weight:700;">Cuando retiran: cobrar y cerrar la boleta</div>
+        <label>Medio de pago (para todo el total)</label>
+        <select id="bb-medio">
+          <option>EFECTIVO</option><option>TARJETA FISER</option><option>TRANSFERENCIA SANTANDER</option>
+          <option>MERCADO PAGO FISER</option><option>MERCADO PAGO LAUREANO</option><option>UALA CARLA</option><option>CUENTA CORRIENTE</option>
+        </select>
+        <button class="btn btn-verde" onclick='marcarBoletaRetirada(${JSON.stringify(boleta.id)}, ${JSON.stringify(boleta.numero)}, ${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)}, ${total})'>✅ Confirmar retiro y cobrar</button>
+        <div id="bb-msg"></div>
+      </div>`;
+  } catch (e) {
+    msgBox.innerHTML = `<div class="msg msg-error">No se pudo generar: ${esc(e.message || String(e))}</div>`;
+  }
+}
+window.confirmarBoletaEditable = confirmarBoletaEditable;
+
+// (06/11/2026) BOLETA imprimible (hoja A6, mismo tamaño de página que el comprobante), mensaje de WhatsApp y cobro.
+async function obtenerDatosBoleta(boletaId) {
+  const { data: b } = await sb.from('boletas').select('id, numero, total, telefono, estado, created_at, clientes(id, nombre, telefono)').eq('id', boletaId).single();
+  const { data: rel } = await sb.from('boleta_sobres').select('sobres(id, numero, descripcion, precio_total)').eq('boleta_id', boletaId);
+  const sobres = (rel || []).map(r => r.sobres).filter(Boolean).sort((x, y) => Number(x.numero) - Number(y.numero));
+  const { data: pagos } = await sb.from('movimientos_caja').select('sobre_id, monto').in('sobre_id', sobres.map(x => x.id)).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
+  const pag = {};
+  (pagos || []).forEach(m => { pag[m.sobre_id] = (pag[m.sobre_id] || 0) + Number(m.monto); });
+  return {
+    id: b.id, numero: b.numero, total: Number(b.total) || 0, creada: b.created_at,
+    cliente: b.clientes ? b.clientes.nombre : '', clienteId: b.clientes ? b.clientes.id : null,
+    telefono: b.telefono || (b.clientes && b.clientes.telefono) || '',
+    sobres: sobres.map(x => ({ numero: x.numero, descripcion: x.descripcion || '', precio: Number(x.precio_total) || 0, pagado: pag[x.id] || 0 }))
+  };
+}
+
+function armarHtmlBoleta(b) {
+  const plata = n => '$' + (Number(n) || 0).toLocaleString('es-AR');
+  const recorta = (t, max) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > max ? t.slice(0, max - 1).trim() + '…' : t; };
+  const f = new Date(b.creada || Date.now());
+  const fecha = f.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba' });
+  const hayPagos = b.sobres.some(x => x.pagado > 0);
+  const POR_HOJA = 10;
+  const paginas = [];
+  for (let i = 0; i < b.sobres.length; i += POR_HOJA) paginas.push(b.sobres.slice(i, i + POR_HOJA));
+  if (paginas.length === 0) paginas.push([]);
+  const pagadoTotal = b.sobres.reduce((a, x) => a + Math.min(x.pagado, x.precio), 0);
+  const totalBruto = b.sobres.reduce((a, x) => a + x.precio, 0);
+  // Letra de la tabla: grande si hay pocos sobres, más chica si hay muchos (se elige la mayor que entra en la hoja).
+  const tamanoLetra = (pg) => {
+    const ANCHO_DESC_MM = 62, ALTO_DISPONIBLE_MM = 108;
+    for (let fs = 19; fs >= 10; fs -= 0.5) {
+      const cpl = Math.floor(ANCHO_DESC_MM / (fs * 0.5 * 0.2646));
+      const alto = pg.reduce((a, x) => a + Math.min(fs >= 15 ? 6 : 3, Math.max(1, Math.ceil(String(x.descripcion).length / cpl))) * fs * 1.18 * 0.2646 + 2.6, 0);
+      if (alto <= ALTO_DISPONIBLE_MM) return { fs, cpl };
+    }
+    return { fs: 10, cpl: Math.floor(ANCHO_DESC_MM / (10 * 0.5 * 0.2646)) };
+  };
+  const hojas = paginas.map((pg, i) => {
+    const ultima = i === paginas.length - 1;
+    const { fs, cpl } = tamanoLetra(pg);
+    return `
+    <div class="hoja"><div class="marco">
+      <div class="logo"><div class="l1">TANDEM</div><div class="l2"><span>JOYAS</span></div></div>
+      <div class="dir">Vélez Sarsfield 156 · Córdoba</div>
+      <div class="tit"><b>BOLETA</b><span>N° ${esc(b.numero)}</span></div>
+      <div class="meta"><span>Fecha: ${esc(fecha)}</span><span>${b.sobres.length} sobre${b.sobres.length === 1 ? '' : 's'}${paginas.length > 1 ? ' · hoja ' + (i + 1) + '/' + paginas.length : ''}</span></div>
+      <div class="cli">${esc(b.cliente)}</div>
+      <table style="font-size:${fs}px;">
+        <tr><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
+        ${pg.map(x => `<tr><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, cpl * (fs >= 15 ? 6 : 3)))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
+      </table>
+      ${ultima ? `
+        ${hayPagos ? `<div class="sub"><span>Subtotal</span><b>${plata(totalBruto)}</b></div><div class="sub"><span>Ya pagado</span><b>- ${plata(pagadoTotal)}</b></div>` : ''}
+        <div class="tot"><span>${hayPagos ? 'SALDO A PAGAR' : 'TOTAL'}</span><b>${plata(b.total)}</b></div>` : `<div class="sigue">continúa en la hoja siguiente…</div>`}
+      <div class="nota">Gracias por confiar en Tándem Joyas. Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
+    </div></div>`;
+  }).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Boleta ${esc(b.numero)}</title><style>
+    @page { size: 125.6mm 188mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #000; }
+    .hoja { width: 125.6mm; height: 188mm; page-break-after: always; break-after: page; overflow: hidden; }
+    .hoja:last-child { page-break-after: auto; break-after: auto; }
+    .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; }
+    .logo { text-align: center; line-height: 1; }
+    .l1 { font-size: 20px; font-weight: 900; letter-spacing: 3px; }
+    .l2 { font-size: 9px; letter-spacing: 7px; font-weight: 700; margin-top: 1px; }
+    .dir { text-align: center; font-size: 8.5px; margin-top: 1mm; }
+    .tit { display: flex; justify-content: space-between; align-items: baseline; border-top: 0.4mm solid #000; border-bottom: 0.4mm solid #000; margin: 2mm 0 1.5mm; padding: 0.8mm 0; }
+    .tit b { font-size: 11px; letter-spacing: 1px; } .tit span { font-size: 17px; font-weight: 900; }
+    .meta { font-size: 10px; display: flex; justify-content: space-between; margin-bottom: 0.5mm; }
+    .cli { font-size: 17px; font-weight: 900; line-height: 1.1; margin: 1mm 0 2mm; word-break: break-word; }
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 8.5px; letter-spacing: 1px; text-align: left; border-bottom: 0.4mm solid #000; padding-bottom: 1mm; }
+    td { padding: 1.2mm 0; border-bottom: 0.2mm dotted #777; vertical-align: top; }
+    td.n { font-weight: 900; width: 1%; white-space: nowrap; padding-right: 3mm; } td.p { text-align: right; white-space: nowrap; font-weight: 700; padding-left: 2mm; }
+    .sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 1.5mm; }
+    .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.5mm solid #000; border-radius: 1.5mm; padding: 1mm 3mm; margin-top: 2.5mm; }
+    .tot span { font-size: 10px; font-weight: 700; letter-spacing: 1px; } .tot b { font-size: 19px; font-weight: 900; }
+    .sigue { text-align: right; font-size: 10px; margin-top: 3mm; font-style: italic; }
+    .nota { position: absolute; left: 6mm; right: 6mm; bottom: 5mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
+  </style></head><body>${hojas}</body></html>`;
+}
+
+async function imprimirBoleta(boletaId) {
+  const b = await obtenerDatosBoleta(boletaId);
+  const anterior = document.getElementById('iframe-boleta');
+  if (anterior) anterior.remove();
+  const iframe = document.createElement('iframe');
+  iframe.id = 'iframe-boleta';
+  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow.document;
+  doc.open(); doc.write(armarHtmlBoleta(b)); doc.close();
+  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 250);
+}
+window.imprimirBoleta = imprimirBoleta;
+
+// Mensaje de WhatsApp con el mismo orden que la boleta impresa: un bloque por sobre, con renglones en blanco
+// entre uno y otro (para que no quede todo pegado) y la descripción completa.
+function textoWhatsAppBoleta(b) {
+  const plata = n => '$' + (Number(n) || 0).toLocaleString('es-AR');
+  const fecha = new Date(b.creada || Date.now()).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba' });
+  const hayPagos = b.sobres.some(x => x.pagado > 0);
+  const bloques = b.sobres.map(x => '*#' + x.numero + '*\n' + String(x.descripcion).replace(/\s+/g, ' ').trim() + '\n' + plata(x.precio)).join('\n\n');
+  const pagadoTotal = b.sobres.reduce((a, x) => a + Math.min(x.pagado, x.precio), 0);
+  const totalBruto = b.sobres.reduce((a, x) => a + x.precio, 0);
+  return 'Hola' + (b.cliente ? ' ' + b.cliente : '') + '! 👋\n'
+    + 'Te dejamos el detalle de tu *boleta N° ' + b.numero + '* de Tándem Joyas (' + fecha + '):\n\n'
+    + bloques + '\n\n'
+    + '━━━━━━━━━━━━\n'
+    + (hayPagos ? 'Subtotal: ' + plata(totalBruto) + '\nYa pagado: - ' + plata(pagadoTotal) + '\n' : '')
+    + '*' + (hayPagos ? 'SALDO A PAGAR' : 'TOTAL') + ': ' + plata(b.total) + '*\n\n'
+    + 'Avisanos cuando pases a retirar. ¡Gracias! 💍';
+}
+
+async function copiarMensajeBoleta(boletaId, destinoId) {
+  const b = await obtenerDatosBoleta(boletaId);
+  const texto = textoWhatsAppBoleta(b);
+  const box = document.getElementById(destinoId);
+  let ok = false;
+  try { await navigator.clipboard.writeText(texto); ok = true; } catch (e) {
+    try {
+      const ta = document.createElement('textarea'); ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0;';
+      document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove();
+    } catch (e2) { ok = false; }
+  }
+  box.innerHTML = (ok
+    ? `<div class="msg msg-ok">📋 Mensaje copiado. Pegalo en el WhatsApp del cliente (Ctrl+V).</div>`
+    : `<div class="msg msg-error">No se pudo copiar solo. Seleccioná y copiá el texto de acá abajo.</div>`)
+    + `<textarea readonly rows="10" style="width:100%; font-size:13px;" onclick="this.select()">${esc(texto)}</textarea>`
+    + (botonWhatsApp(b.telefono, texto) || '');
+}
+window.copiarMensajeBoleta = copiarMensajeBoleta;
+window.whatsappBoleta = copiarMensajeBoleta;
+
+function botonesBoleta(boletaId, idSufijo) {
+  return `
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn btn-oro" style="flex:1;" onclick="imprimirBoleta('${boletaId}')">🖨️ Imprimir boleta</button>
+      <button class="btn btn-outline" style="flex:1;" onclick="copiarMensajeBoleta('${boletaId}', 'wa-boleta-${idSufijo}')">📋 Copiar mensaje WhatsApp</button>
+    </div>
+    <div id="wa-boleta-${idSufijo}" style="margin-top:8px;"></div>`;
+}
+
 // --- Buscar boleta existente ---
 function pantallaBuscarBoleta() {
   render(`
@@ -5618,6 +5915,7 @@ async function buscarBoletaDetalle() {
       <div class="nro" style="font-size:18px;">Boleta N° ${boleta.numero} — ${boleta.clientes ? boleta.clientes.nombre : ''}</div>
       <div style="font-weight:700; margin:8px 0;">Total: $${(Number(boleta.total) || 0).toLocaleString('es-AR')} · Estado: ${boleta.estado}</div>
       ${filas}
+      ${botonesBoleta(boleta.id, 'b')}
       ${todosRetirados ? `<div class="msg msg-ok" style="margin-top:10px;">Todos los sobres ya fueron retirados.</div>` : `
         <label style="margin-top:14px;">Medio de pago (para todo el total)</label>
         <select id="bb-medio">
