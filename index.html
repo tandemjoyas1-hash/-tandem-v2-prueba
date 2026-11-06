@@ -5575,9 +5575,15 @@ window.confirmarGenerarBoleta = confirmarGenerarBoleta;
 
 // (06/11/2026) Armar la boleta escribiendo los N° de sobre que se tienen en la mano, sin buscar al cliente
 // ni scrollear. Todos tienen que ser del mismo cliente. Quedan tildados y el total se suma solo.
+function saldoFilaBoleta(sobreId) {
+  const pr = document.querySelector('.gb-precio[data-sobre="' + sobreId + '"]');
+  const ex = document.querySelector('.gb-extra-monto[data-sobre="' + sobreId + '"]');
+  const precio = (Number(pr && pr.value) || 0) + (Number(ex && ex.value) || 0);
+  return Math.max(0, precio - (Number(pr && pr.dataset.pagado) || 0));
+}
 function actualizarTotalBoletaNum() {
   const chks = [...document.querySelectorAll('.chk-boleta:checked')];
-  const t = chks.reduce((a, el) => a + Number(el.dataset.saldo), 0);
+  const t = chks.reduce((a, el) => a + saldoFilaBoleta(el.dataset.sobre), 0);
   const el = document.getElementById('gb-total-num');
   if (el) el.textContent = '$' + t.toLocaleString('es-AR') + ' (' + chks.length + ' sobre' + (chks.length === 1 ? '' : 's') + ')';
 }
@@ -5625,14 +5631,24 @@ async function armarBoletaPorNumeros() {
   (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
 
   const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map(s => {
-    const saldo = Math.max(0, (Number(s.precio_total) || 0) - (pagadoPorSobre[s.id] || 0));
-    const sinPrecio = !(Number(s.precio_total) > 0);
+    const pagado = pagadoPorSobre[s.id] || 0;
+    const precio = Number(s.precio_total) || 0;
     return `
-      <div class="lista-sobre">
+      <div class="lista-sobre" data-fila-boleta="${s.id}">
         <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-saldo="${saldo}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
-          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')} — $${saldo.toLocaleString('es-AR')}${sinPrecio ? ' <strong style="color:#b00;">⚠️ sin precio</strong>' : ''}</span>
+          <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-numero="${s.numero}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
+          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
         </label>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+          <span>Precio $</span>
+          <input type="number" class="gb-precio" data-sobre="${s.id}" data-orig="${precio}" data-pagado="${pagado}" value="${precio || ''}" placeholder="poné el precio" style="width:130px;" oninput="actualizarTotalBoletaNum()">
+          ${pagado ? `<span style="font-size:12px;color:#8a8378;">ya pagó $${pagado.toLocaleString('es-AR')}</span>` : ''}
+          <button type="button" class="btn btn-outline" style="width:auto; padding:4px 10px;" onclick="document.getElementById('gb-extra-${s.id}').style.display='flex'; this.style.display='none';">➕ ítem</button>
+        </div>
+        <div id="gb-extra-${s.id}" style="display:none; gap:8px; margin-top:6px; flex-wrap:wrap;">
+          <input type="text" class="gb-extra-desc" data-sobre="${s.id}" placeholder="Descripción del ítem" style="flex:1; min-width:140px;">
+          <input type="number" class="gb-extra-monto" data-sobre="${s.id}" placeholder="$" style="width:100px;" oninput="actualizarTotalBoletaNum()">
+        </div>
       </div>`;
   }).join('');
 
@@ -5642,7 +5658,7 @@ async function armarBoletaPorNumeros() {
     ${filas}
     <div style="margin:10px 0; font-size:18px;">Total: <strong id="gb-total-num"></strong></div>
     <button class="btn btn-verde"
-      onclick='confirmarGenerarBoleta(${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)})'>
+      onclick='confirmarBoletaEditable(${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)})'>
       Generar boleta
     </button>
     <div id="gb-msg"></div>
@@ -5650,6 +5666,46 @@ async function armarBoletaPorNumeros() {
   actualizarTotalBoletaNum();
 }
 window.armarBoletaPorNumeros = armarBoletaPorNumeros;
+
+// Guarda los precios / ítems cargados en la pantalla y genera la boleta. Los precios se guardan en el sobre
+// (así la cuenta corriente queda igual que la boleta).
+async function confirmarBoletaEditable(clienteId, nombreCliente, telefono) {
+  const msgBox = document.getElementById('gb-msg');
+  const sel = [...document.querySelectorAll('.chk-boleta:checked')];
+  if (sel.length === 0) { msgBox.innerHTML = `<div class="msg msg-error">Marcá al menos un sobre.</div>`; return; }
+  const sinPrecio = sel.filter(el => saldoFilaBoleta(el.dataset.sobre) <= 0 && !(Number(document.querySelector('.gb-precio[data-sobre="' + el.dataset.sobre + '"]').dataset.pagado) > 0));
+  if (sinPrecio.length && !confirm('Estos sobres no tienen precio: ' + sinPrecio.map(e => '#' + e.dataset.numero).join(', ') + '.\n\n¿Generar la boleta igual (valen $0)?')) return;
+  msgBox.innerHTML = `<div class="msg">Generando...</div>`;
+  try {
+    let total = 0;
+    for (const el of sel) {
+      const id = el.dataset.sobre;
+      const pr = document.querySelector('.gb-precio[data-sobre="' + id + '"]');
+      const desc = (document.querySelector('.gb-extra-desc[data-sobre="' + id + '"]').value || '').trim();
+      const extra = Number(document.querySelector('.gb-extra-monto[data-sobre="' + id + '"]').value) || 0;
+      const nuevo = (Number(pr.value) || 0) + extra;
+      const orig = Number(pr.dataset.orig) || 0;
+      if (extra > 0) {
+        const { error: eI } = await sb.from('items_sobre').insert({ sobre_id: id, descripcion: desc || 'Ítem agregado en la boleta', precio: extra });
+        if (eI) throw eI;
+      }
+      if (nuevo !== orig) {
+        const { error: eU } = await sb.from('sobres').update({ precio_total: nuevo }).eq('id', id);
+        if (eU) throw eU;
+        await sb.from('historial_sobres').insert({ sobre_id: id, evento: 'EDICION', detalle: 'Precio ajustado al armar la boleta: $' + orig + ' → $' + nuevo + (extra > 0 ? ' (ítem agregado: ' + (desc || 'sin descripción') + ' $' + extra + ')' : '') + ' — ' + usuarioActual.nombre });
+      }
+      total += Math.max(0, nuevo - (Number(pr.dataset.pagado) || 0));
+    }
+    const { data: boleta, error } = await sb.from('boletas').insert({ cliente_id: clienteId, total: total, telefono: telefono, estado: 'PENDIENTE' }).select('id, numero').single();
+    if (error) throw error;
+    const { error: eB } = await sb.from('boleta_sobres').insert(sel.map(el => ({ boleta_id: boleta.id, sobre_id: el.dataset.sobre })));
+    if (eB) throw eB;
+    msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta N° ${boleta.numero} generada — Total: $${total.toLocaleString('es-AR')}</div>`;
+  } catch (e) {
+    msgBox.innerHTML = `<div class="msg msg-error">No se pudo generar: ${esc(e.message || String(e))}</div>`;
+  }
+}
+window.confirmarBoletaEditable = confirmarBoletaEditable;
 
 // --- Buscar boleta existente ---
 function pantallaBuscarBoleta() {
