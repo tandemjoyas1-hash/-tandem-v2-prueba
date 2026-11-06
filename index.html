@@ -5743,7 +5743,7 @@ function armarHtmlBoleta(b) {
   // Alto disponible para la tabla en cada hoja (se deja lugar para el total). Las hojas se llenan según el largo real
   // de cada descripción (no por cantidad fija) y la letra se agranda todo lo que entre, sin recortar el texto.
   // El ancho que le queda a la descripción depende del tamaño de letra (las columnas de N°, sobre e importe crecen con la letra).
-  const ALTO_TABLA_MM = 108, FS_MIN = 11, FS_MAX = 26;
+  const ALTO_ULT_MM = hayPagos ? 100 : 106, ALTO_PAG_MM = 116, FS_MIN = 11, FS_MAX = 26; // el total va fijo abajo, la tabla usa todo el espacio de arriba
   const maxSobre = Math.max(...b.sobres.map(x => String(x.numero).length + 1), 6);
   const maxImporte = Math.max(...b.sobres.map(x => plata(x.precio).length), 6);
   const anchoDesc = fs => 113.6 - (fs * 0.2646 * 0.62 * (2.2 + maxSobre + maxImporte) + 9);
@@ -5753,13 +5753,14 @@ function armarHtmlBoleta(b) {
   const paginas = [];
   let actual = [];
   b.sobres.forEach(x => {
-    if (actual.length && altoPag(actual.concat([x]), 12.5) > ALTO_TABLA_MM) { paginas.push(actual); actual = []; }
+    if (actual.length && altoPag(actual.concat([x]), 12.5) > ALTO_ULT_MM) { paginas.push(actual); actual = []; }
     actual.push(x);
   });
   if (actual.length || paginas.length === 0) paginas.push(actual);
-  const tamanoLetra = (pg) => {
+  const tamanoLetra = (pg, esUltima) => {
+    const limite = esUltima ? ALTO_ULT_MM : ALTO_PAG_MM;
     for (let fs = FS_MAX; fs >= FS_MIN; fs -= 0.5) {
-      if (altoPag(pg, fs) <= ALTO_TABLA_MM) return { fs, cpl: cplDe(fs) };
+      if (altoPag(pg, fs) <= limite) return { fs, cpl: cplDe(fs) };
     }
     return { fs: FS_MIN, cpl: cplDe(FS_MIN) };
   };
@@ -5768,7 +5769,7 @@ function armarHtmlBoleta(b) {
   let acumulado = 0;
   const hojas = paginas.map((pg, i) => {
     const ultima = i === paginas.length - 1;
-    const { fs } = tamanoLetra(pg);
+    const { fs } = tamanoLetra(pg, ultima);
     const desde = acumulado; acumulado += pg.length;
     return `
     <div class="hoja"><div class="marco">
@@ -5777,14 +5778,16 @@ function armarHtmlBoleta(b) {
       <div class="tit"><b>BOLETA</b><span>N° ${esc(b.numero)}</span></div>
       <div class="meta"><span>Fecha: ${esc(fecha)}</span><span>${b.sobres.length} sobre${b.sobres.length === 1 ? '' : 's'}${paginas.length > 1 ? ' · hoja ' + (i + 1) + '/' + paginas.length : ''}</span></div>
       <div class="cli">${esc(b.cliente)}</div>
-      <table style="font-size:${fs}px;">
+      <div class="cuerpo"><table style="font-size:${fs}px;">
         <tr><th>N°</th><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
         ${pg.map((x, k) => `<tr><td class="c">${desde + k + 1}</td><td class="n">#${esc(x.numero)}</td><td>${esc(String(x.descripcion).replace(/\s+/g, ' ').trim())}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
-      </table>
+      </table></div>
+      <div class="pie">
       ${ultima ? `
         ${hayPagos ? `<div class="sub"><span>Subtotal</span><b>${plata(totalBruto)}</b></div><div class="sub"><span>Ya pagado</span><b>- ${plata(pagadoTotal)}</b></div>` : ''}
         <div class="tot"><span>${hayPagos ? 'SALDO A PAGAR' : 'TOTAL'}</span><b>${plata(b.total)}</b></div>` : `<div class="sigue">continúa en la hoja siguiente…</div>`}
       <div class="nota">Gracias por confiar en Tándem Joyas. Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
+      </div>
     </div></div>`;
   }).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>Boleta ${esc(b.numero)}</title><style>
@@ -5794,7 +5797,9 @@ function armarHtmlBoleta(b) {
     body { font-family: Arial, Helvetica, sans-serif; color: #000; }
     .hoja { width: 125.6mm; height: 188mm; page-break-after: always; break-after: page; overflow: hidden; }
     .hoja:last-child { page-break-after: auto; break-after: auto; }
-    .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; }
+    .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+    .cuerpo { flex: 1; min-height: 0; }
+    .pie { flex: none; }
     .logo { text-align: center; line-height: 1; }
     .l1 { font-size: 20px; font-weight: 900; letter-spacing: 3px; }
     .l2 { font-size: 9px; letter-spacing: 7px; font-weight: 700; margin-top: 1px; }
@@ -5812,8 +5817,18 @@ function armarHtmlBoleta(b) {
     .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.5mm solid #000; border-radius: 1.5mm; padding: 1mm 3mm; margin-top: 2.5mm; }
     .tot span { font-size: 10px; font-weight: 700; letter-spacing: 1px; } .tot b { font-size: 19px; font-weight: 900; }
     .sigue { text-align: right; font-size: 10px; margin-top: 3mm; font-style: italic; }
-    .nota { position: absolute; left: 6mm; right: 6mm; bottom: 5mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
-  </style></head><body>${hojas}</body></html>`;
+    .nota { margin-top: 3mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
+  </style></head><body>${hojas}<script>
+    // Ajuste final con las medidas reales: si la tabla se pasa, achica la letra; si sobra lugar, la agranda hasta llenar la hoja.
+    (function () {
+      document.querySelectorAll('.cuerpo').forEach(function (c) {
+        var t = c.querySelector('table'); if (!t) return;
+        var fs = parseFloat(t.style.fontSize) || 14, lim = c.getBoundingClientRect().height - 3;
+        while (t.getBoundingClientRect().height > lim && fs > 9) { fs -= 0.5; t.style.fontSize = fs + 'px'; }
+        while (fs < 34) { t.style.fontSize = (fs + 0.5) + 'px'; if (t.getBoundingClientRect().height > lim) { t.style.fontSize = fs + 'px'; break; } fs += 0.5; }
+      });
+    })();
+  </script></body></html>`;
 }
 
 async function imprimirBoleta(boletaId) {
