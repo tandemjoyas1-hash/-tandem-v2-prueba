@@ -5746,8 +5746,19 @@ function armarHtmlBoleta(b) {
   if (paginas.length === 0) paginas.push([]);
   const pagadoTotal = b.sobres.reduce((a, x) => a + Math.min(x.pagado, x.precio), 0);
   const totalBruto = b.sobres.reduce((a, x) => a + x.precio, 0);
+  // Letra de la tabla: grande si hay pocos sobres, más chica si hay muchos (se elige la mayor que entra en la hoja).
+  const tamanoLetra = (pg) => {
+    const ANCHO_DESC_MM = 62, ALTO_DISPONIBLE_MM = 108;
+    for (let fs = 19; fs >= 10; fs -= 0.5) {
+      const cpl = Math.floor(ANCHO_DESC_MM / (fs * 0.5 * 0.2646));
+      const alto = pg.reduce((a, x) => a + Math.min(fs >= 15 ? 6 : 3, Math.max(1, Math.ceil(String(x.descripcion).length / cpl))) * fs * 1.18 * 0.2646 + 2.6, 0);
+      if (alto <= ALTO_DISPONIBLE_MM) return { fs, cpl };
+    }
+    return { fs: 10, cpl: Math.floor(ANCHO_DESC_MM / (10 * 0.5 * 0.2646)) };
+  };
   const hojas = paginas.map((pg, i) => {
     const ultima = i === paginas.length - 1;
+    const { fs, cpl } = tamanoLetra(pg);
     return `
     <div class="hoja"><div class="marco">
       <div class="logo"><div class="l1">TANDEM</div><div class="l2"><span>JOYAS</span></div></div>
@@ -5755,9 +5766,9 @@ function armarHtmlBoleta(b) {
       <div class="tit"><b>BOLETA</b><span>N° ${esc(b.numero)}</span></div>
       <div class="meta"><span>Fecha: ${esc(fecha)}</span><span>${b.sobres.length} sobre${b.sobres.length === 1 ? '' : 's'}${paginas.length > 1 ? ' · hoja ' + (i + 1) + '/' + paginas.length : ''}</span></div>
       <div class="cli">${esc(b.cliente)}</div>
-      <table>
+      <table style="font-size:${fs}px;">
         <tr><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
-        ${pg.map(x => `<tr><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, 78))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
+        ${pg.map(x => `<tr><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, cpl * (fs >= 15 ? 6 : 3)))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
       </table>
       ${ultima ? `
         ${hayPagos ? `<div class="sub"><span>Subtotal</span><b>${plata(totalBruto)}</b></div><div class="sub"><span>Ya pagado</span><b>- ${plata(pagadoTotal)}</b></div>` : ''}
@@ -5774,20 +5785,20 @@ function armarHtmlBoleta(b) {
     .hoja:last-child { page-break-after: auto; break-after: auto; }
     .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; }
     .logo { text-align: center; line-height: 1; }
-    .l1 { font-size: 30px; font-weight: 900; letter-spacing: 4px; }
-    .l2 { font-size: 13px; letter-spacing: 9px; font-weight: 700; margin-top: 1px; }
-    .dir { text-align: center; font-size: 10px; margin-top: 2mm; }
-    .tit { display: flex; justify-content: space-between; align-items: baseline; border-top: 0.5mm solid #000; border-bottom: 0.5mm solid #000; margin: 3mm 0 2mm; padding: 1.2mm 0; }
-    .tit b { font-size: 15px; letter-spacing: 1px; } .tit span { font-size: 24px; font-weight: 900; }
-    .meta { font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 1mm; }
-    .cli { font-size: 19px; font-weight: 900; line-height: 1.1; margin: 1mm 0 2mm; word-break: break-word; }
-    table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    .l1 { font-size: 20px; font-weight: 900; letter-spacing: 3px; }
+    .l2 { font-size: 9px; letter-spacing: 7px; font-weight: 700; margin-top: 1px; }
+    .dir { text-align: center; font-size: 8.5px; margin-top: 1mm; }
+    .tit { display: flex; justify-content: space-between; align-items: baseline; border-top: 0.4mm solid #000; border-bottom: 0.4mm solid #000; margin: 2mm 0 1.5mm; padding: 0.8mm 0; }
+    .tit b { font-size: 11px; letter-spacing: 1px; } .tit span { font-size: 17px; font-weight: 900; }
+    .meta { font-size: 10px; display: flex; justify-content: space-between; margin-bottom: 0.5mm; }
+    .cli { font-size: 17px; font-weight: 900; line-height: 1.1; margin: 1mm 0 2mm; word-break: break-word; }
+    table { width: 100%; border-collapse: collapse; }
     th { font-size: 8.5px; letter-spacing: 1px; text-align: left; border-bottom: 0.4mm solid #000; padding-bottom: 1mm; }
     td { padding: 1.2mm 0; border-bottom: 0.2mm dotted #777; vertical-align: top; }
-    td.n { font-weight: 900; width: 14mm; } td.p { text-align: right; white-space: nowrap; font-weight: 700; padding-left: 2mm; }
-    .sub { display: flex; justify-content: space-between; font-size: 12px; margin-top: 2mm; }
-    .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.6mm solid #000; border-radius: 1.5mm; padding: 1.5mm 3mm; margin-top: 3mm; }
-    .tot span { font-size: 12px; font-weight: 700; letter-spacing: 1px; } .tot b { font-size: 26px; font-weight: 900; }
+    td.n { font-weight: 900; width: 1%; white-space: nowrap; padding-right: 3mm; } td.p { text-align: right; white-space: nowrap; font-weight: 700; padding-left: 2mm; }
+    .sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 1.5mm; }
+    .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.5mm solid #000; border-radius: 1.5mm; padding: 1mm 3mm; margin-top: 2.5mm; }
+    .tot span { font-size: 10px; font-weight: 700; letter-spacing: 1px; } .tot b { font-size: 19px; font-weight: 900; }
     .sigue { text-align: right; font-size: 10px; margin-top: 3mm; font-style: italic; }
     .nota { position: absolute; left: 6mm; right: 6mm; bottom: 5mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
   </style></head><body>${hojas}</body></html>`;
