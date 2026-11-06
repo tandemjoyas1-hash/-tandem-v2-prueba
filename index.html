@@ -5630,14 +5630,14 @@ async function armarBoletaPorNumeros() {
   const pagadoPorSobre = {};
   (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
 
-  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map(s => {
+  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map((s, idx) => {
     const pagado = pagadoPorSobre[s.id] || 0;
     const precio = Number(s.precio_total) || 0;
     return `
       <div class="lista-sobre" data-fila-boleta="${s.id}">
         <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
           <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-numero="${s.numero}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
-          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
+          <span><strong>${idx + 1})</strong> <strong>#${s.numero}</strong> — ${esc(s.descripcion || '')}</span>
         </label>
         <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
           <span>Precio $</span>
@@ -5740,25 +5740,37 @@ function armarHtmlBoleta(b) {
   const f = new Date(b.creada || Date.now());
   const fecha = f.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba' });
   const hayPagos = b.sobres.some(x => x.pagado > 0);
-  const POR_HOJA = 10;
+  // Alto disponible para la tabla en cada hoja (se deja lugar para el total). Las hojas se llenan según el largo real
+  // de cada descripción (no por cantidad fija) y la letra se agranda todo lo que entre, sin recortar el texto.
+  // El ancho que le queda a la descripción depende del tamaño de letra (las columnas de N°, sobre e importe crecen con la letra).
+  const ALTO_ULT_MM = hayPagos ? 100 : 106, ALTO_PAG_MM = 116, FS_MIN = 11, FS_MAX = 26; // el total va fijo abajo, la tabla usa todo el espacio de arriba
+  const maxSobre = Math.max(...b.sobres.map(x => String(x.numero).length + 1), 6);
+  const maxImporte = Math.max(...b.sobres.map(x => plata(x.precio).length), 6);
+  const anchoDesc = fs => 113.6 - (fs * 0.2646 * 0.62 * (2.2 + maxSobre + maxImporte) + 9);
+  const cplDe = fs => Math.max(6, Math.floor(anchoDesc(fs) / (fs * 0.5 * 0.2646)));
+  const altoFila = (x, fs) => Math.max(1, Math.ceil(String(x.descripcion).replace(/\s+/g, ' ').trim().length / cplDe(fs))) * fs * 1.18 * 0.2646 + 2.6;
+  const altoPag = (pg, fs) => pg.reduce((a, x) => a + altoFila(x, fs), 0);
   const paginas = [];
-  for (let i = 0; i < b.sobres.length; i += POR_HOJA) paginas.push(b.sobres.slice(i, i + POR_HOJA));
-  if (paginas.length === 0) paginas.push([]);
+  let actual = [];
+  b.sobres.forEach(x => {
+    if (actual.length && altoPag(actual.concat([x]), 12.5) > ALTO_ULT_MM) { paginas.push(actual); actual = []; }
+    actual.push(x);
+  });
+  if (actual.length || paginas.length === 0) paginas.push(actual);
+  const tamanoLetra = (pg, esUltima) => {
+    const limite = esUltima ? ALTO_ULT_MM : ALTO_PAG_MM;
+    for (let fs = FS_MAX; fs >= FS_MIN; fs -= 0.5) {
+      if (altoPag(pg, fs) <= limite) return { fs, cpl: cplDe(fs) };
+    }
+    return { fs: FS_MIN, cpl: cplDe(FS_MIN) };
+  };
   const pagadoTotal = b.sobres.reduce((a, x) => a + Math.min(x.pagado, x.precio), 0);
   const totalBruto = b.sobres.reduce((a, x) => a + x.precio, 0);
-  // Letra de la tabla: grande si hay pocos sobres, más chica si hay muchos (se elige la mayor que entra en la hoja).
-  const tamanoLetra = (pg) => {
-    const ANCHO_DESC_MM = 62, ALTO_DISPONIBLE_MM = 108;
-    for (let fs = 19; fs >= 10; fs -= 0.5) {
-      const cpl = Math.floor(ANCHO_DESC_MM / (fs * 0.5 * 0.2646));
-      const alto = pg.reduce((a, x) => a + Math.min(fs >= 15 ? 6 : 3, Math.max(1, Math.ceil(String(x.descripcion).length / cpl))) * fs * 1.18 * 0.2646 + 2.6, 0);
-      if (alto <= ALTO_DISPONIBLE_MM) return { fs, cpl };
-    }
-    return { fs: 10, cpl: Math.floor(ANCHO_DESC_MM / (10 * 0.5 * 0.2646)) };
-  };
+  let acumulado = 0;
   const hojas = paginas.map((pg, i) => {
     const ultima = i === paginas.length - 1;
-    const { fs, cpl } = tamanoLetra(pg);
+    const { fs } = tamanoLetra(pg, ultima);
+    const desde = acumulado; acumulado += pg.length;
     return `
     <div class="hoja"><div class="marco">
       <div class="logo"><div class="l1">TANDEM</div><div class="l2"><span>JOYAS</span></div></div>
@@ -5766,14 +5778,16 @@ function armarHtmlBoleta(b) {
       <div class="tit"><b>BOLETA</b><span>N° ${esc(b.numero)}</span></div>
       <div class="meta"><span>Fecha: ${esc(fecha)}</span><span>${b.sobres.length} sobre${b.sobres.length === 1 ? '' : 's'}${paginas.length > 1 ? ' · hoja ' + (i + 1) + '/' + paginas.length : ''}</span></div>
       <div class="cli">${esc(b.cliente)}</div>
-      <table style="font-size:${fs}px;">
-        <tr><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
-        ${pg.map(x => `<tr><td class="n">#${esc(x.numero)}</td><td>${esc(recorta(x.descripcion, cpl * (fs >= 15 ? 6 : 3)))}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
-      </table>
+      <div class="cuerpo"><table style="font-size:${fs}px;">
+        <tr><th>N°</th><th>SOBRE</th><th>DETALLE</th><th style="text-align:right">IMPORTE</th></tr>
+        ${pg.map((x, k) => `<tr><td class="c">${desde + k + 1}</td><td class="n">#${esc(x.numero)}</td><td>${esc(String(x.descripcion).replace(/\s+/g, ' ').trim())}</td><td class="p">${plata(x.precio)}</td></tr>`).join('')}
+      </table></div>
+      <div class="pie">
       ${ultima ? `
         ${hayPagos ? `<div class="sub"><span>Subtotal</span><b>${plata(totalBruto)}</b></div><div class="sub"><span>Ya pagado</span><b>- ${plata(pagadoTotal)}</b></div>` : ''}
         <div class="tot"><span>${hayPagos ? 'SALDO A PAGAR' : 'TOTAL'}</span><b>${plata(b.total)}</b></div>` : `<div class="sigue">continúa en la hoja siguiente…</div>`}
       <div class="nota">Gracias por confiar en Tándem Joyas. Para cualquier reclamo es imprescindible la presentación de esta boleta. Pasados los 30 días no se admite ningún reclamo.</div>
+      </div>
     </div></div>`;
   }).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>Boleta ${esc(b.numero)}</title><style>
@@ -5783,7 +5797,9 @@ function armarHtmlBoleta(b) {
     body { font-family: Arial, Helvetica, sans-serif; color: #000; }
     .hoja { width: 125.6mm; height: 188mm; page-break-after: always; break-after: page; overflow: hidden; }
     .hoja:last-child { page-break-after: auto; break-after: auto; }
-    .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; }
+    .marco { height: 181mm; margin-top: 1mm; border: 0.4mm solid #111; border-radius: 3mm; padding: 5mm 6mm; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+    .cuerpo { flex: 1; min-height: 0; }
+    .pie { flex: none; }
     .logo { text-align: center; line-height: 1; }
     .l1 { font-size: 20px; font-weight: 900; letter-spacing: 3px; }
     .l2 { font-size: 9px; letter-spacing: 7px; font-weight: 700; margin-top: 1px; }
@@ -5794,14 +5810,25 @@ function armarHtmlBoleta(b) {
     .cli { font-size: 17px; font-weight: 900; line-height: 1.1; margin: 1mm 0 2mm; word-break: break-word; }
     table { width: 100%; border-collapse: collapse; }
     th { font-size: 8.5px; letter-spacing: 1px; text-align: left; border-bottom: 0.4mm solid #000; padding-bottom: 1mm; }
-    td { padding: 1.2mm 0; border-bottom: 0.2mm dotted #777; vertical-align: top; }
+    td { padding: 1.2mm 0; border-bottom: 0.2mm dotted #777; vertical-align: top; overflow-wrap: anywhere; }
+    td.c { width: 1%; white-space: nowrap; padding-right: 2mm; text-align: right; color: #444; font-weight: 700; }
     td.n { font-weight: 900; width: 1%; white-space: nowrap; padding-right: 3mm; } td.p { text-align: right; white-space: nowrap; font-weight: 700; padding-left: 2mm; }
     .sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 1.5mm; }
     .tot { display: flex; justify-content: space-between; align-items: baseline; border: 0.5mm solid #000; border-radius: 1.5mm; padding: 1mm 3mm; margin-top: 2.5mm; }
     .tot span { font-size: 10px; font-weight: 700; letter-spacing: 1px; } .tot b { font-size: 19px; font-weight: 900; }
     .sigue { text-align: right; font-size: 10px; margin-top: 3mm; font-style: italic; }
-    .nota { position: absolute; left: 6mm; right: 6mm; bottom: 5mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
-  </style></head><body>${hojas}</body></html>`;
+    .nota { margin-top: 3mm; font-size: 8px; text-align: center; line-height: 1.25; border-top: 0.2mm solid #000; padding-top: 1.5mm; }
+  </style></head><body>${hojas}<script>
+    // Ajuste final con las medidas reales: si la tabla se pasa, achica la letra; si sobra lugar, la agranda hasta llenar la hoja.
+    (function () {
+      document.querySelectorAll('.cuerpo').forEach(function (c) {
+        var t = c.querySelector('table'); if (!t) return;
+        var fs = parseFloat(t.style.fontSize) || 14, lim = c.getBoundingClientRect().height - 3;
+        while (t.getBoundingClientRect().height > lim && fs > 9) { fs -= 0.5; t.style.fontSize = fs + 'px'; }
+        while (fs < 34) { t.style.fontSize = (fs + 0.5) + 'px'; if (t.getBoundingClientRect().height > lim) { t.style.fontSize = fs + 'px'; break; } fs += 0.5; }
+      });
+    })();
+  <\/script></body></html>`;
 }
 
 async function imprimirBoleta(boletaId) {
