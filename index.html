@@ -5818,22 +5818,49 @@ async function imprimirBoleta(boletaId) {
 }
 window.imprimirBoleta = imprimirBoleta;
 
-async function whatsappBoleta(boletaId, destinoId) {
-  const b = await obtenerDatosBoleta(boletaId);
+// Mensaje de WhatsApp con el mismo orden que la boleta impresa: un bloque por sobre, con renglones en blanco
+// entre uno y otro (para que no quede todo pegado) y la descripción completa.
+function textoWhatsAppBoleta(b) {
   const plata = n => '$' + (Number(n) || 0).toLocaleString('es-AR');
-  const lineas = b.sobres.map(x => '• #' + x.numero + ' — ' + String(x.descripcion).replace(/\s+/g, ' ').slice(0, 60) + ' — ' + plata(Math.max(0, x.precio - x.pagado))).join('\n');
-  const msg = 'Hola' + (b.cliente ? ' ' + b.cliente : '') + '! Te dejamos el detalle de tu boleta N° ' + b.numero + ' de Tándem Joyas:\n\n' + lineas + '\n\n*Total: ' + plata(b.total) + '*\n\nAvisanos cuando pases a retirar. ¡Gracias!';
-  const box = document.getElementById(destinoId);
-  const html = botonWhatsApp(b.telefono, msg);
-  box.innerHTML = html || `<div class="msg msg-error">Este cliente no tiene teléfono cargado.</div>`;
+  const fecha = new Date(b.creada || Date.now()).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Cordoba' });
+  const hayPagos = b.sobres.some(x => x.pagado > 0);
+  const bloques = b.sobres.map(x => '*#' + x.numero + '*\n' + String(x.descripcion).replace(/\s+/g, ' ').trim() + '\n' + plata(x.precio)).join('\n\n');
+  const pagadoTotal = b.sobres.reduce((a, x) => a + Math.min(x.pagado, x.precio), 0);
+  const totalBruto = b.sobres.reduce((a, x) => a + x.precio, 0);
+  return 'Hola' + (b.cliente ? ' ' + b.cliente : '') + '! 👋\n'
+    + 'Te dejamos el detalle de tu *boleta N° ' + b.numero + '* de Tándem Joyas (' + fecha + '):\n\n'
+    + bloques + '\n\n'
+    + '━━━━━━━━━━━━\n'
+    + (hayPagos ? 'Subtotal: ' + plata(totalBruto) + '\nYa pagado: - ' + plata(pagadoTotal) + '\n' : '')
+    + '*' + (hayPagos ? 'SALDO A PAGAR' : 'TOTAL') + ': ' + plata(b.total) + '*\n\n'
+    + 'Avisanos cuando pases a retirar. ¡Gracias! 💍';
 }
-window.whatsappBoleta = whatsappBoleta;
+
+async function copiarMensajeBoleta(boletaId, destinoId) {
+  const b = await obtenerDatosBoleta(boletaId);
+  const texto = textoWhatsAppBoleta(b);
+  const box = document.getElementById(destinoId);
+  let ok = false;
+  try { await navigator.clipboard.writeText(texto); ok = true; } catch (e) {
+    try {
+      const ta = document.createElement('textarea'); ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0;';
+      document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove();
+    } catch (e2) { ok = false; }
+  }
+  box.innerHTML = (ok
+    ? `<div class="msg msg-ok">📋 Mensaje copiado. Pegalo en el WhatsApp del cliente (Ctrl+V).</div>`
+    : `<div class="msg msg-error">No se pudo copiar solo. Seleccioná y copiá el texto de acá abajo.</div>`)
+    + `<textarea readonly rows="10" style="width:100%; font-size:13px;" onclick="this.select()">${esc(texto)}</textarea>`
+    + (botonWhatsApp(b.telefono, texto) || '');
+}
+window.copiarMensajeBoleta = copiarMensajeBoleta;
+window.whatsappBoleta = copiarMensajeBoleta;
 
 function botonesBoleta(boletaId, idSufijo) {
   return `
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
       <button class="btn btn-oro" style="flex:1;" onclick="imprimirBoleta('${boletaId}')">🖨️ Imprimir boleta</button>
-      <button class="btn btn-outline" style="flex:1;" onclick="whatsappBoleta('${boletaId}', 'wa-boleta-${idSufijo}')">💬 WhatsApp</button>
+      <button class="btn btn-outline" style="flex:1;" onclick="copiarMensajeBoleta('${boletaId}', 'wa-boleta-${idSufijo}')">📋 Copiar mensaje WhatsApp</button>
     </div>
     <div id="wa-boleta-${idSufijo}" style="margin-top:8px;"></div>`;
 }
