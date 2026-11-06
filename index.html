@@ -5453,7 +5453,12 @@ function pantallaGenerarBoleta() {
     ${pintarUsuarioActual()}
     <div class="card">
       <h1>Generar boleta</h1>
-      <label>Nombre del cliente</label>
+      <label>🧾 Escribí los N° de sobre que tenés en la mano (separados por espacio)</label>
+      <input type="text" id="gb-numeros" placeholder="Ej: 91100 91105 32485" inputmode="numeric">
+      <button class="btn btn-verde" onclick="armarBoletaPorNumeros()">Armar boleta con esos sobres</button>
+      <div id="gb-resultado-num"></div>
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <label>O buscá por nombre del cliente</label>
       <input type="text" id="gb-buscar" placeholder="Ej: Zipiur">
       <button class="btn btn-verde" onclick="buscarClienteParaBoleta()">Buscar</button>
       <div id="gb-resultado"></div>
@@ -5567,6 +5572,84 @@ async function confirmarGenerarBoleta(clienteId, nombreCliente, telefono) {
   msgBox.innerHTML = `<div class="msg msg-ok">✅ Boleta N° ${boleta.numero} generada — Total: $${total.toLocaleString('es-AR')}</div>`;
 }
 window.confirmarGenerarBoleta = confirmarGenerarBoleta;
+
+// (06/11/2026) Armar la boleta escribiendo los N° de sobre que se tienen en la mano, sin buscar al cliente
+// ni scrollear. Todos tienen que ser del mismo cliente. Quedan tildados y el total se suma solo.
+function actualizarTotalBoletaNum() {
+  const chks = [...document.querySelectorAll('.chk-boleta:checked')];
+  const t = chks.reduce((a, el) => a + Number(el.dataset.saldo), 0);
+  const el = document.getElementById('gb-total-num');
+  if (el) el.textContent = '$' + t.toLocaleString('es-AR') + ' (' + chks.length + ' sobre' + (chks.length === 1 ? '' : 's') + ')';
+}
+window.actualizarTotalBoletaNum = actualizarTotalBoletaNum;
+
+async function armarBoletaPorNumeros() {
+  const resBox = document.getElementById('gb-resultado-num');
+  const numeros = [...new Set(document.getElementById('gb-numeros').value.trim().split(/[\s,]+/).filter(n => n))];
+  if (numeros.length === 0) { resBox.innerHTML = `<div class="msg msg-error">Escribí al menos un N° de sobre.</div>`; return; }
+  resBox.innerHTML = `<div class="msg">Buscando...</div>`;
+
+  const { data: sobres, error } = await sb
+    .from('sobres')
+    .select('id, numero, descripcion, precio_total, cliente_id, fecha_salida, clientes(nombre, telefono)')
+    .in('numero', numeros);
+  if (error) { resBox.innerHTML = `<div class="msg msg-error">${error.message}</div>`; return; }
+
+  const encontrados = (sobres || []);
+  const noExisten = numeros.filter(n => !encontrados.some(s => String(s.numero) === String(n)));
+  const yaRetirados = encontrados.filter(s => s.fecha_salida).map(s => s.numero);
+  const validos = encontrados.filter(s => !s.fecha_salida);
+  let avisos = '';
+  if (noExisten.length) avisos += `<div class="msg msg-error">No existen: ${noExisten.join(', ')}</div>`;
+  if (yaRetirados.length) avisos += `<div class="msg msg-error">Ya fueron retirados (no entran): ${yaRetirados.join(', ')}</div>`;
+  if (validos.length === 0) { resBox.innerHTML = avisos || `<div class="vacio">No hay sobres para la boleta.</div>`; return; }
+
+  const clientesIds = [...new Set(validos.map(s => s.cliente_id))];
+  if (clientesIds.length > 1) {
+    const detalle = validos.map(s => '#' + s.numero + ' → ' + ((s.clientes && s.clientes.nombre) || '(sin cliente)')).join('<br>');
+    resBox.innerHTML = avisos + `<div class="msg msg-error">⚠️ Estos sobres son de clientes distintos. Una boleta es de un solo cliente:<br>${detalle}</div>`;
+    return;
+  }
+  const cli = validos[0].clientes || {};
+  const clienteId = validos[0].cliente_id;
+  const nombreCliente = cli.nombre || '';
+  const telefono = cli.telefono || '';
+
+  const { data: pagos } = await sb
+    .from('movimientos_caja')
+    .select('sobre_id, monto')
+    .in('sobre_id', validos.map(s => s.id))
+    .eq('ingresa_egresa', 'INGRESA')
+    .neq('medio_pago', 'CUENTA CORRIENTE');
+  const pagadoPorSobre = {};
+  (pagos || []).forEach(p => { pagadoPorSobre[p.sobre_id] = (pagadoPorSobre[p.sobre_id] || 0) + Number(p.monto); });
+
+  const filas = validos.sort((a, b) => Number(a.numero) - Number(b.numero)).map(s => {
+    const saldo = Math.max(0, (Number(s.precio_total) || 0) - (pagadoPorSobre[s.id] || 0));
+    const sinPrecio = !(Number(s.precio_total) > 0);
+    return `
+      <div class="lista-sobre">
+        <label style="font-weight:400; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" class="chk-boleta" data-sobre="${s.id}" data-saldo="${saldo}" style="width:auto;" checked onchange="actualizarTotalBoletaNum()">
+          <span><strong>#${s.numero}</strong> — ${esc(s.descripcion || '')} — $${saldo.toLocaleString('es-AR')}${sinPrecio ? ' <strong style="color:#b00;">⚠️ sin precio</strong>' : ''}</span>
+        </label>
+      </div>`;
+  }).join('');
+
+  resBox.innerHTML = `
+    ${avisos}
+    <div style="margin:10px 0; font-weight:700;">Cliente: ${esc(nombreCliente)}</div>
+    ${filas}
+    <div style="margin:10px 0; font-size:18px;">Total: <strong id="gb-total-num"></strong></div>
+    <button class="btn btn-verde"
+      onclick='confirmarGenerarBoleta(${JSON.stringify(clienteId)}, ${JSON.stringify(nombreCliente)}, ${JSON.stringify(telefono)})'>
+      Generar boleta
+    </button>
+    <div id="gb-msg"></div>
+  `;
+  actualizarTotalBoletaNum();
+}
+window.armarBoletaPorNumeros = armarBoletaPorNumeros;
 
 // --- Buscar boleta existente ---
 function pantallaBuscarBoleta() {
