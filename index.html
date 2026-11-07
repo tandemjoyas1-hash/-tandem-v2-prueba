@@ -1763,55 +1763,23 @@ function patronBusquedaCatalogo(palabra) {
   return /\d/.test(limpia) ? limpia : limpia.replace(/[aeiouAEIOU]/g, '_');
 }
 
-async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
-  const resBox = document.getElementById('cat-resultado');
+// (07/11/2026) Consulta del catálogo SIN límite fijo: se pide de a páginas (range) a medida que se hace scroll.
+function construirConsultaCatalogo(termino, categoria) {
+  let consulta = sb.schema('public')
+    .from('products')
+    .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo, precio_mayor, precio_menor');
+  if (categoria) consulta = consulta.eq('cat', categoria);
+  // Cada palabra se busca por separado (en cualquier orden) y sin importar las tildes.
+  if (termino) {
+    termino.split(/\s+/).map(patronBusquedaCatalogo).filter(Boolean).forEach(patron => {
+      consulta = consulta.or('descripcion.ilike.%' + patron + '%,cod.ilike.%' + patron + '%');
+    });
+  }
+  // Orden alfabético por descripción (y por código para que el orden sea siempre el mismo entre páginas).
+  return consulta.order('descripcion', { ascending: true }).order('cod', { ascending: true });
+}
 
-  try {
-    await cargarPreciosMateriales();
-
-    let consulta = sb.schema('public')
-      .from('products')
-      .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo, precio_mayor, precio_menor')
-      .limit(80);
-
-    if (categoria) consulta = consulta.eq('cat', categoria);
-    // NUEVO (21/09/2026): cada palabra se busca por separado (en cualquier orden) y sin importar
-    // las tildes, para que "gendarme", "gendarmería" o "armero gendarmeria" encuentren el producto.
-    if (termino) {
-      termino.split(/\s+/).map(patronBusquedaCatalogo).filter(Boolean).forEach(patron => {
-        consulta = consulta.or('descripcion.ilike.%' + patron + '%,cod.ilike.%' + patron + '%');
-      });
-    }
-
-    // Orden: alfabético por descripción — así el orden es siempre el mismo y previsible,
-    // en vez de saltar según qué producto tenga o no una foto cargada.
-    consulta = consulta.order('descripcion', { ascending: true });
-
-    const { data: productos, error } = await consulta;
-
-    if (miId !== _catalogoBusquedaId) return; // llegó una búsqueda más nueva mientras esperaba, se descarta esta
-    const yScrollRestaurar = _catalogoScrollPendiente;
-    _catalogoScrollPendiente = null;
-
-    if (error) throw error;
-
-    if (!productos || productos.length === 0) {
-      const terminoSeguro = termino.replace(/[<>"']/g, '');
-      const enCategoria = categoria ? ` en la categoría "${categoria}"` : '';
-      // Si hay una categoría activa, se ofrece buscar en todas (un toque) por si el filtro es lo que no deja ver el producto.
-      const botonTodas = (categoria && termino)
-        ? `<button type="button" class="btn btn-outline" style="margin-top:10px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(categoria)})'>🔎 Buscar "${terminoSeguro}" en todas las categorías</button>`
-        : '';
-      resBox.innerHTML = `<div class="vacio">Sin resultados para ${terminoSeguro ? '"' + terminoSeguro + '"' : ''}${enCategoria}</div>${botonTodas}`;
-      return;
-    }
-
-    resBox.innerHTML = `
-      <div id="cat-compartir-barra" style="display:none; position:sticky; top:0; z-index:5; background:#2f6d1f; color:white; padding:10px 14px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-        <span id="cat-compartir-cantidad" style="font-weight:700; font-size:13px;"></span>
-        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
-      </div>
-      <div class="cat-grid">` + productos.map(p => {
+function tileProductoCatalogo(p) {
       const tienePrecioFijo = p.precio_fijo !== null && p.precio_fijo !== undefined && Number(p.precio_fijo) > 0;
       const tieneMayorMenor = !tienePrecioFijo && ((p.precio_mayor !== null && p.precio_mayor !== undefined && Number(p.precio_mayor) > 0) || (p.precio_menor !== null && p.precio_menor !== undefined && Number(p.precio_menor) > 0));
       const metal = (Number(p.peso) || 0) * precioGramoDeMaterial(p.material);
@@ -1849,11 +1817,84 @@ async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
           </div>
         </div>
       `;
-    }).join('') + `</div>`;
+}
+
+async function ejecutarBusquedaCatalogo(termino, categoria, miId) {
+  const resBox = document.getElementById('cat-resultado');
+
+  try {
+    await cargarPreciosMateriales();
+
+    const POR_PAGINA = 60;
+    const consulta = construirConsultaCatalogo(termino, categoria).range(0, POR_PAGINA - 1);
+
+    const { data: productos, error } = await consulta;
+
+    if (miId !== _catalogoBusquedaId) return; // llegó una búsqueda más nueva mientras esperaba, se descarta esta
+    const yScrollRestaurar = _catalogoScrollPendiente;
+    _catalogoScrollPendiente = null;
+
+    if (error) throw error;
+
+    if (!productos || productos.length === 0) {
+      const terminoSeguro = termino.replace(/[<>"']/g, '');
+      const enCategoria = categoria ? ` en la categoría "${categoria}"` : '';
+      // Si hay una categoría activa, se ofrece buscar en todas (un toque) por si el filtro es lo que no deja ver el producto.
+      const botonTodas = (categoria && termino)
+        ? `<button type="button" class="btn btn-outline" style="margin-top:10px;" onclick='buscarPorCategoriaCatalogo(${JSON.stringify(categoria)})'>🔎 Buscar "${terminoSeguro}" en todas las categorías</button>`
+        : '';
+      resBox.innerHTML = `<div class="vacio">Sin resultados para ${terminoSeguro ? '"' + terminoSeguro + '"' : ''}${enCategoria}</div>${botonTodas}`;
+      return;
+    }
+
+    resBox.innerHTML = `
+      <div id="cat-compartir-barra" style="display:none; position:sticky; top:0; z-index:5; background:#2f6d1f; color:white; padding:10px 14px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span id="cat-compartir-cantidad" style="font-weight:700; font-size:13px;"></span>
+        <button type="button" onclick="compartirFotosSeleccionadas()" style="background:white; color:#2f6d1f; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;">📤 Enviar / descargar fotos</button>
+      </div>
+      <div class="cat-grid" id="cat-grid">` + productos.map(tileProductoCatalogo).join('') + `</div><div id="cat-sentinel" style="height:1px;"></div><div id="cat-mas"></div>`;
 
     _fotosProductosActuales = {};
     productos.forEach(p => { if (p.foto) _fotosProductosActuales[p.cod] = p.foto; });
+
+    // Scroll infinito: al llegar al final se pide la página siguiente y se agrega abajo, hasta mostrar toda la categoría.
+    let offset = productos.length, hayMas = productos.length === POR_PAGINA, cargando = false;
+    const grid = document.getElementById('cat-grid');
+    const mas = document.getElementById('cat-mas');
+    const sentinel = document.getElementById('cat-sentinel');
+    const cargarSiguiente = async () => {
+      if (cargando || !hayMas || miId !== _catalogoBusquedaId || !document.body.contains(grid)) return false;
+      cargando = true;
+      mas.innerHTML = `<div class="msg">Cargando más...</div>`;
+      try {
+        const { data: otros, error: eMas } = await construirConsultaCatalogo(termino, categoria).range(offset, offset + POR_PAGINA - 1);
+        if (eMas) throw eMas;
+        if (miId !== _catalogoBusquedaId) return false;
+        (otros || []).forEach(p => { if (p.foto) _fotosProductosActuales[p.cod] = p.foto; });
+        grid.insertAdjacentHTML('beforeend', (otros || []).map(tileProductoCatalogo).join(''));
+        offset += (otros || []).length;
+        hayMas = (otros || []).length === POR_PAGINA;
+        mas.innerHTML = hayMas ? '' : `<div class="vacio" style="padding:12px;">Fin de la lista (${offset} productos)</div>`;
+      } catch (e2) {
+        mas.innerHTML = `<div class="msg msg-error">No se pudo cargar más: ${e2.message || e2}</div>`;
+        hayMas = false;
+      }
+      cargando = false;
+      return true;
+    };
+    if (!hayMas) mas.innerHTML = `<div class="vacio" style="padding:12px;">Fin de la lista (${offset} producto${offset === 1 ? '' : 's'})</div>`;
+    if ('IntersectionObserver' in window && hayMas) {
+      const obs = new IntersectionObserver(async (entradas) => {
+        if (!entradas.some(e => e.isIntersecting)) return;
+        await cargarSiguiente();
+        if (!hayMas || !document.body.contains(sentinel)) obs.disconnect();
+      }, { rootMargin: '600px 0px' });
+      obs.observe(sentinel);
+    }
     if (yScrollRestaurar) {
+      // Al volver de un detalle: se cargan las páginas necesarias para poder volver a la misma altura.
+      let vueltas = 0;
+      while (hayMas && document.documentElement.scrollHeight < yScrollRestaurar + window.innerHeight && vueltas++ < 20) await cargarSiguiente();
       window.scrollTo(0, yScrollRestaurar);
       setTimeout(() => window.scrollTo(0, yScrollRestaurar), 300); // por si las fotos terminan de acomodarse
     }
