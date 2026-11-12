@@ -1790,6 +1790,8 @@ function construirConsultaCatalogo(termino, categoria) {
     });
   }
   // Orden alfabético por descripción (y por código para que el orden sea siempre el mismo entre páginas).
+  // (12/11/2026) Dentro de una categoría manda el campo "prioridad" (los que no tienen, al final por orden alfabético).
+  if (categoria) consulta = consulta.order('prioridad', { ascending: true, nullsFirst: false });
   return consulta.order('descripcion', { ascending: true }).order('cod', { ascending: true });
 }
 
