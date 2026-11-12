@@ -130,6 +130,10 @@
   .cat-tile.btn-verde { box-shadow: inset 0 0 0 3px #2c2c2a !important; }
   .prod-tile { background: #fff; border: 1px solid #ece5d6; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
   .prod-tile .prod-foto { position: relative; aspect-ratio: 1 / 1; background: #f4efe4; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+  .prod-tile .prod-mat { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-align: center; padding: 3px 4px; text-transform: uppercase; }
+  .cat-filtro-mat { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .cat-filtro-mat .fm-chip { width:auto; margin:0; padding:6px 12px; font-size:13px; border-radius:16px; border:2px solid #d8d0bf; background:#fff; color:#555; cursor:pointer; font-weight:600; }
+  .cat-filtro-mat .fm-chip.activo { border-color:#2f6d1f; background:#2f6d1f; color:#fff; }
   .prod-tile .prod-foto img { width: 100%; height: 100%; object-fit: cover; }
   .prod-tile .prod-chk { position: absolute; top: 6px; left: 6px; width: 20px !important; height: 20px; accent-color: #2f6d1f; }
   .prod-tile .prod-edit { position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border: none; border-radius: 6px; padding: 3px 6px; font-size: 13px; cursor: pointer; }
@@ -1000,6 +1004,7 @@ function pantallaCatalogo() {
   // así que también se borra la categoría activa (antes quedaba "pegada" y la búsqueda por código
   // no encontraba nada porque seguía filtrando por la categoría de la vez anterior).
   _categoriaActivaCatalogo = null;
+  _materialFiltroCatalogo = null;
   const esConsulta = !_catalogoDesdeEntrada;
   render(`
     ${pintarUsuarioActual()}
@@ -1043,6 +1048,7 @@ function pantallaCatalogo() {
       </div>
       </div>
 
+      <div id="cat-filtro-material" class="cat-filtro-mat"></div>
       <div id="cat-bloque-categorias">
       <div class="cat-tiles">
         ${CATEGORIAS_CATALOGO.map((c, i) => `
@@ -1054,6 +1060,7 @@ function pantallaCatalogo() {
       ${!esConsulta ? `<button class="btn btn-outline" style="margin-top:14px;" onclick="volverAEntradaSinElegir()">← Volver sin elegir nada</button>` : ''}
     </div>
   `);
+  pintarFiltroMaterialCatalogo();
   const busquedaRestaurada = restaurarEstadoCatalogo();
   if (!busquedaRestaurada) document.getElementById('cat-buscar').focus();
   cargarPrecioGramoActual();
@@ -1196,6 +1203,8 @@ async function pantallaDetalleProducto(cod) {
       ${p.foto ? `<img src="${p.foto}" style="width:100%; max-height:320px; object-fit:contain; background:#fff; border-radius:12px;">` : ''}
       <h1 style="margin-top:14px;">${p.descripcion}</h1>
       <div class="sub">${p.cat} · cód. ${p.cod}${p.medidas ? ' · ' + p.medidas : ''}</div>
+      ${etiquetaMaterialHTML(p.material)}
+      ${claveMaterial(p.material) === 'ALPACA' ? `<div style="background:#c0392b; color:#fff; font-weight:800; font-size:19px; text-align:center; padding:14px 10px; border-radius:10px; margin:10px 0 0;">⚠ ALPACA — no es plata ni oro</div>` : ''}
 
       ${tienePrecioFijo ? `
         <div class="lista-sobre" style="background:#f7f7f7;">
@@ -1576,10 +1585,11 @@ let _catalogoScrollPendiente = null;
 function guardarEstadoCatalogo() {
   const inp = document.getElementById('cat-buscar');
   if (!inp) return; // no estamos en el catálogo (ej: ya en el detalle): se conserva lo guardado antes
-  if (!inp.value.trim() && !_categoriaActivaCatalogo) { _catalogoEstadoGuardado = null; return; }
+  if (!inp.value.trim() && !_categoriaActivaCatalogo && !_materialFiltroCatalogo) { _catalogoEstadoGuardado = null; return; }
   _catalogoEstadoGuardado = {
     termino: inp.value,
     categoria: _categoriaActivaCatalogo,
+    material: _materialFiltroCatalogo,
     scrollY: window.scrollY || document.documentElement.scrollTop || 0,
     hora: Date.now()
   };
@@ -1595,6 +1605,8 @@ function restaurarEstadoCatalogo() {
   if (!inp) return false;
   inp.value = e.termino || '';
   _categoriaActivaCatalogo = e.categoria || null;
+  _materialFiltroCatalogo = e.material || null;
+  pintarFiltroMaterialCatalogo();
   if (_categoriaActivaCatalogo) {
     const activo = document.getElementById('cat-btn-' + _categoriaActivaCatalogo.replace(/\s+/g, '-'));
     if (activo) { activo.classList.remove('btn-outline'); activo.classList.add('btn-verde'); }
@@ -1742,7 +1754,7 @@ function buscarEnCatalogo() {
   const categoria = _categoriaActivaCatalogo;
   const resBox = document.getElementById('cat-resultado');
   // (24/09/2026) Las categorías quedan siempre a la vista, como en Odoo.
-  if (!termino && !categoria) { resBox.innerHTML = ''; return; }
+  if (!termino && !categoria && !_materialFiltroCatalogo) { resBox.innerHTML = ''; return; }
   resBox.innerHTML = `<div class="msg">Buscando...</div>`;
 
   // Espera un poquito después de la última letra tipeada, y además se queda con el ID de esta
@@ -1769,6 +1781,7 @@ function construirConsultaCatalogo(termino, categoria) {
     .from('products')
     .select('cod, cat, descripcion, medidas, peso, labor, material, foto, precio_fijo, precio_mayor, precio_menor');
   if (categoria) consulta = consulta.eq('cat', categoria);
+  if (_materialFiltroCatalogo) consulta = consulta.eq('material', _materialFiltroCatalogo);
   // Cada palabra se busca por separado (en cualquier orden) y sin importar las tildes.
   if (termino) {
     termino.split(/\s+/).map(patronBusquedaCatalogo).filter(Boolean).forEach(patron => {
@@ -1777,6 +1790,38 @@ function construirConsultaCatalogo(termino, categoria) {
   }
   // Orden alfabético por descripción (y por código para que el orden sea siempre el mismo entre páginas).
   return consulta.order('descripcion', { ascending: true }).order('cod', { ascending: true });
+}
+
+// (12/11/2026) Material a simple vista: la etiqueta sale del campo "material" (no de la descripción).
+const MATERIALES_ETIQUETA = {
+  PLATA:       { texto: 'Plata',       fondo: '#e3e5e8', letra: '#4a4f57' },
+  PLATA_Y_ORO: { texto: 'Plata y oro', fondo: '#f6e7b0', letra: '#6b5310' },
+  ACERO:       { texto: 'Acero',       fondo: '#d6ecf8', letra: '#1d5a7a' },
+  ALPACA:      { texto: 'Alpaca',      fondo: '#c0392b', letra: '#ffffff' }
+};
+function claveMaterial(m) {
+  const k = String(m || 'PLATA').toUpperCase().replace(/\s+/g, '_');
+  return k;
+}
+function etiquetaMaterialHTML(m) {
+  const k = claveMaterial(m);
+  const e = MATERIALES_ETIQUETA[k] || { texto: (m || ''), fondo: '#ece7da', letra: '#555' };
+  return `<div class="prod-mat" style="background:${e.fondo}; color:${e.letra};">${e.texto}</div>`;
+}
+let _materialFiltroCatalogo = null;
+function filtrarPorMaterialCatalogo(m) {
+  _materialFiltroCatalogo = (_materialFiltroCatalogo === m) ? null : m;
+  pintarFiltroMaterialCatalogo();
+  buscarEnCatalogo();
+}
+window.filtrarPorMaterialCatalogo = filtrarPorMaterialCatalogo;
+function pintarFiltroMaterialCatalogo() {
+  const box = document.getElementById('cat-filtro-material');
+  if (!box) return;
+  const opciones = [[null, 'Todos'], ['PLATA', 'Plata'], ['PLATA_Y_ORO', 'Plata y oro'], ['ACERO', 'Acero'], ['ALPACA', 'Alpaca']];
+  box.innerHTML = opciones.map(([v, t]) =>
+    `<button type="button" class="fm-chip${_materialFiltroCatalogo === v ? ' activo' : ''}" onclick="filtrarPorMaterialCatalogo(${v ? "'" + v + "'" : 'null'})">${t}</button>`
+  ).join('');
 }
 
 function tileProductoCatalogo(p) {
@@ -1805,6 +1850,7 @@ function tileProductoCatalogo(p) {
 
       return `
         <div class="prod-tile">
+          ${etiquetaMaterialHTML(p.material)}
           <div class="prod-foto" onclick='pantallaDetalleProducto(${codJ})'>
             ${p.foto ? `<img src="${p.foto}" loading="lazy" alt="">` : (ICONO_CATEGORIA[p.cat] || '💍')}
             ${p.foto ? `<input type="checkbox" class="prod-chk cat-chk-compartir" title="Elegir para enviar" data-cod="${p.cod}" data-desc="${(p.descripcion || '').replace(/"/g, '&quot;')}" onclick="event.stopPropagation()" onchange="actualizarBarraCompartir()">` : ''}
