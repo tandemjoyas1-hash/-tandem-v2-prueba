@@ -2881,6 +2881,34 @@ function armarHtmlComprobante(c) {
 
   // (19/10/2026) Hoja del taller con el formato aprobado: N° de pedido grande, fecha, cliente,
   // recuadro con el trabajo y la foto de referencia grande abajo. Todo en blanco y negro, sin precios.
+  // (17/11/2026) La descripción del trabajo NUNCA se corta: se calcula cuánto lugar hace falta y, si es larga,
+  // se achican las fotos (o se sacan) y la letra antes de recortar texto. Prioridad: descripción > fotos.
+  const layoutTaller = (() => {
+    const parrafos = itemsTaller && !itemsMuchos
+      ? itemsLista.map(it => String(it.descripcion))
+      : (itemsMuchos ? ['x', 'x'] : String(c.trabajo || '(sin descripción)').split('\n'));
+    const extraPar = itemsTaller && !itemsMuchos ? 2.4 : 0; // mm de separación entre renglones de la lista
+    const anchoPx = 395;
+    const caben = (altoMm, fuente) => {
+      const cpl = Math.max(8, Math.floor(anchoPx / (fuente * 0.54)));
+      const lineas = parrafos.reduce((a, t) => a + Math.max(1, Math.ceil(t.length / cpl)), 0) + (Number(c.cantidad) > 1 ? 1 : 0);
+      const altoPx = lineas * fuente * 1.25 + parrafos.length * extraPar * 3.78 + 4;
+      return altoPx <= altoMm * 3.78;
+    };
+    let libre = 98;
+    if (/^RETORNO/i.test(String(c.trabajo || ''))) libre -= 9;
+    if (c.paraClienteDe) libre -= 9;
+    const nF = fotosMostrar.length;
+    const fuentes = [36, 31, 26, 22, 20, 18, 16, 15, 14, 13, 12, 11, 10];
+    const mejorFuente = alto => fuentes.find(f => caben(alto, f)) || 10;
+    // Fotos: la más grande que deje la descripción con letra de 18px o más. Si no alcanza, sin fotos.
+    let fotoAlto = 0;
+    if (nF) {
+      for (const h of [52, 40, 30, 22]) { if (mejorFuente(libre - h - 8 - 2) >= 18) { fotoAlto = h; break; } }
+    }
+    const descAlto = libre - (fotoAlto ? fotoAlto + 8 : 0) - 2;
+    return { fotoAlto, fuente: mejorFuente(descAlto) };
+  })();
   const hojaTaller = `
     <div class="hoja"><div class="marco tallerv2">
       ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
@@ -2895,9 +2923,9 @@ function armarHtmlComprobante(c) {
       ${c.paraClienteDe ? '<div style="text-align:center;font-size:25px;font-weight:700;margin:-2px 0 4px;word-break:break-word;">Para: ' + esc(c.paraClienteDe) + '</div>' : ''}
       <div style="text-align:center;font-size:20px;font-weight:700;margin:0 0 4px;">${c.telefono ? '📱 ' + esc(c.telefono) : 'Sin número de teléfono'}</div>
       <div class="t-linea"></div>
-      <div class="t-desc" style="font-size:${itemsTaller ? (largoItems > 330 ? 15 : largoItems > 230 ? 17 : largoItems > 150 ? 20 : 23) : largoTrabajo > 280 ? 18 : largoTrabajo > 190 ? 22 : largoTrabajo > 120 ? 26 : largoTrabajo > 60 ? 31 : 36}px;">${resumenTaller || itemsTaller || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
-      <div class="t-fotos n${fotosMostrar.length}">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>
-      ${fotosMostrar.length ? '<div class="t-cap">Foto de referencia' + (fotosExtra > 0 ? ' (+' + fotosExtra + ' más en el sistema)' : '') + '</div>' : ''}
+      <div class="t-desc" style="font-size:${layoutTaller.fuente}px;">${resumenTaller || itemsTaller || esc(c.trabajo || '(sin descripción)')}${Number(c.cantidad) > 1 ? '<br><b>Cantidad: ' + esc(c.cantidad) + '</b>' : ''}</div>
+      ${layoutTaller.fotoAlto ? `<div class="t-fotos n${fotosMostrar.length}" style="height:${layoutTaller.fotoAlto}mm;">${fotosMostrar.map(f => `<img src="${f}">`).join('')}</div>` : ''}
+      ${fotosMostrar.length ? (layoutTaller.fotoAlto ? '<div class="t-cap">Foto de referencia' + (fotosExtra > 0 ? ' (+' + fotosExtra + ' más en el sistema)' : '') + '</div>' : '<div class="t-cap" style="font-weight:700;">📷 ' + (fotosLista.length || fotosMostrar.length) + ' foto(s) de referencia: ver en la app de fotos (sin lugar en esta hoja)</div>') : ''}
     </div></div>
   `;
 
@@ -2990,7 +3018,7 @@ function armarHtmlComprobante(c) {
       .tallerv2 .t-listo { text-align: center; font-size: 17px; font-weight: 600; color: #000; margin-bottom: 3px; }
       .tallerv2 .t-cliente { text-align: center; font-size: 34px; line-height: 1.05; font-weight: 700; margin-bottom: 4px; word-break: break-word; }
       .tallerv2 .t-linea { border-top: 0.4mm dashed #000; margin: 0 0 5px; }
-      .tallerv2 .t-desc { border: 0.4mm solid #111; border-radius: 2mm; padding: 8px 10px; font-size: 25px; font-weight: 600; line-height: 1.3; flex: 1; min-height: 24mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
+      .tallerv2 .t-desc { border: 0.4mm solid #111; border-radius: 2mm; padding: 8px 10px; font-size: 25px; font-weight: 600; line-height: 1.3; flex: 1; min-height: 12mm; overflow: hidden; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
       .tallerv2 .t-fotos { flex: 0 0 auto; height: 52mm; min-height: 0; display: flex; gap: 2mm; align-items: stretch; justify-content: center; }
       .tallerv2 .t-fotos img { flex: 1; min-width: 0; height: 100%; object-fit: contain; border: 0.3mm solid #111; border-radius: 1.5mm; background: #fff; }
       .tallerv2 .t-fotos.n1 img { max-width: 100%; }

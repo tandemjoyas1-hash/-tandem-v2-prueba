@@ -43,7 +43,11 @@
   input:focus { outline: none; border-color: #c9a24a; }
   .nro { font-weight: 700; font-size: 20px; text-align: center; }
   .cliente { text-align: center; font-size: 16px; color: #7a5c00; margin-top: 2px; font-weight: 600; }
-  .desc { text-align: center; margin-top: 14px; font-size: 32px; font-weight: 600; line-height: 1.3; }
+  .desc { text-align: center; margin-top: 14px; font-size: 32px; font-weight: 600; line-height: 1.3; word-break: break-word; }
+  /* (17/11/2026) Descripción completa del trabajo: arriba de las fotos, un ítem por renglón, letra según el largo */
+  .desc.lista { text-align: left; border: 1.5px solid #e6ddc9; border-radius: 12px; padding: 10px 14px; background: #fdfcf9; white-space: pre-wrap; }
+  .desc .it { padding: 6px 0; border-bottom: 1px dotted #c9bfa8; }
+  .desc .it:last-child { border-bottom: none; }
   .fecha { text-align: center; margin-top: 8px; font-size: 16px; font-weight: 700; color: #7a5c00; }
   .vacio { color: #8a8378; text-align: center; margin-top: 10px; }
   .msg { text-align: center; margin-top: 10px; color: #8a8378; }
@@ -94,6 +98,20 @@ function normalizarSobre(valor) {
   let limpio = String(valor).replace(/[^0-9]/g, '');
   limpio = limpio.replace(/^0+/, '');
   return limpio || '0';
+}
+
+
+function escHtml(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+// (17/11/2026) Arma la descripción completa: si el pedido tiene varios trabajos (separados con " + ") va uno por renglón.
+function descripcionHtml(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return '';
+  const partes = t.split(/\s+\+\s+/).map(x => x.trim()).filter(Boolean);
+  const fuente = t.length > 400 ? 17 : t.length > 250 ? 20 : t.length > 140 ? 24 : 30;
+  if (partes.length > 1) {
+    return `<div class="desc lista" style="font-size:${fuente}px;">${partes.map((x, i) => `<div class="it"><b>${i + 1}.</b> ${escHtml(x)}</div>`).join('')}</div>`;
+  }
+  return `<div class="desc lista" style="font-size:${fuente}px;">${escHtml(t)}</div>`;
 }
 
 let _timeout = null;
@@ -147,9 +165,9 @@ input.addEventListener('input', () => {
       box.innerHTML = `
         <div class="nro">#${s.numero}</div>
         ${clienteHtml}
-        <div class="vacio">Este sobre no tiene foto cargada.</div>
-        <div class="desc">${s.descripcion || ''}</div>
         ${fechaHtml}
+        ${descripcionHtml(s.descripcion)}
+        <div class="vacio">Este sobre no tiene foto cargada.</div>
         ${duHtml}
       `;
       return;
@@ -158,12 +176,12 @@ input.addEventListener('input', () => {
     box.innerHTML = `
       <div class="nro">#${s.numero}</div>
       ${clienteHtml}
+      ${fechaHtml}
+      ${descripcionHtml(s.descripcion)}
       ${todasLasFotos.map(f => `
         ${f.etiqueta ? `<div style="text-align:center; margin-top:10px; font-size:15px; font-weight:700; color:#7a5c00;">🏷️ ${f.etiqueta}</div>` : ''}
         <img src="${f.url}" onclick="window.open('${f.url}','_blank')" style="cursor:pointer;">
       `).join('')}
-      <div class="desc">${s.descripcion || ''}</div>
-      ${fechaHtml}
       ${duHtml}
     `;
   }, 250);
