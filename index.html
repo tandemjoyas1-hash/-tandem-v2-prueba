@@ -3304,7 +3304,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, canal, clientes(nombre)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, canal, clientes(nombre, tipo_cliente)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3318,8 +3318,10 @@ async function pantallaEditarSobre(sobreId) {
 
       <label>Cliente</label>
       <input type="hidden" id="es-cliente-id" value="${esc(s.cliente_id || '')}">
+      <input type="hidden" id="es-cliente-tipo" value="${esc(s.clientes ? (s.clientes.tipo_cliente || '') : '')}">
       <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
       <div id="es-cliente-sugerencias"></div>
+      <div style="font-size:12px; color:#777; margin-top:4px;">Para corregir el nombre: escribí el nombre bien. Si ya existe en la lista, tocalo; si no, se crea un cliente con ese nombre y este sobre pasa a él.</div>
 
       <label style="margin-top:12px;">👤 Para el cliente de (opcional — solo mayoristas)</label>
       <input type="text" id="es-para-cliente-de" value="${esc(s.para_cliente_de || '')}" placeholder="Ej: María Gómez" autocomplete="off">
@@ -3422,7 +3424,7 @@ function buscarClienteEditarSobre() {
   if (nombre.length < 2) { box.innerHTML = ''; return; }
   _timeoutBusquedaClienteES = setTimeout(async () => {
     const { data } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false).ilike('nombre', '%' + nombre + '%').order('nombre').limit(8);
-    if (!data || data.length === 0) { box.innerHTML = '<div class="msg">Sin resultados — se puede escribir el nombre igual, pero conviene elegir uno de la lista para no crear un duplicado.</div>'; return; }
+    if (!data || data.length === 0) { box.innerHTML = '<div class="msg">Sin resultados — si guardás así, se crea un cliente nuevo con este nombre.</div>'; return; }
     box.innerHTML = data.map(c => `
       <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEditarSobre(${JSON.stringify(c.id)}, ${JSON.stringify(c.nombre)})'>
         <div class="nro" style="font-size:14px;">${esc(c.nombre)}</div>
@@ -3442,7 +3444,7 @@ window.elegirClienteEditarSobre = elegirClienteEditarSobre;
 
 async function guardarEdicionSobre(sobreId, numero) {
   const msgBox = document.getElementById('es-msg');
-  const clienteId = document.getElementById('es-cliente-id').value || null;
+  const clienteIdElegido = document.getElementById('es-cliente-id').value || null;
   const totalTxt = document.getElementById('es-total').value.trim();
   const total = totalTxt === '' ? null : Number(totalTxt);
   const paraElDia = document.getElementById('es-para-el-dia').value || null;
@@ -3451,9 +3453,18 @@ async function guardarEdicionSobre(sobreId, numero) {
   const senaExtra = senaExtraEl ? (parseFloat(senaExtraEl.value) || 0) : 0;
   const senaMedio = senaExtraEl ? document.getElementById('es-sena-medio').value : null;
 
-  if (document.getElementById('es-cliente-nombre').value.trim() && !clienteId) {
-    msgBox.innerHTML = `<div class="msg msg-error">Elegí el cliente de la lista (tocalo) para que quede bien vinculado.</div>`;
-    return;
+  // (18/11/2026) Se puede corregir el nombre: si escribieron uno que no tocaron de la lista, se busca o se crea el cliente
+  // (con la misma lógica que Nueva Entrada, sin tildes y en formato Título) y el sobre pasa a ese cliente.
+  let clienteId = clienteIdElegido;
+  const nombreEscrito = document.getElementById('es-cliente-nombre').value.trim();
+  if (nombreEscrito && !clienteId) {
+    try {
+      clienteId = await buscarOCrearCliente(limpiarNombreParaGuardar(nombreEscrito), document.getElementById('es-cliente-tipo').value || 'CONSUMIDOR_FINAL', '');
+    } catch (e) { clienteId = null; }
+    if (!clienteId) {
+      msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar el nombre del cliente. Probá elegirlo de la lista.</div>`;
+      return;
+    }
   }
 
   const ev = id => (document.getElementById(id).value || '').trim() || null;
@@ -6458,7 +6469,7 @@ async function pantallaEditarMovimiento(id) {
 
   const { data: m, error } = await sb
     .from('movimientos_caja')
-    .select('id, fecha, descripcion, monto, cantidad, medio_pago, ingresa_egresa, codigo, proveedor_id, clientes(nombre)')
+    .select('id, fecha, descripcion, monto, cantidad, medio_pago, ingresa_egresa, codigo, proveedor_id, sobre_id, clientes(nombre), sobres(numero)')
     .eq('id', id)
     .maybeSingle();
 
@@ -6472,6 +6483,8 @@ async function pantallaEditarMovimiento(id) {
     <div class="card">
       <h1>✏️ Corregir movimiento</h1>
       <div class="sub">${m.ingresa_egresa === 'INGRESA' ? 'Entrada' : 'Salida'} del ${fechaCortaAR(m.fecha)}${m.clientes ? ' · ' + m.clientes.nombre : ''}</div>
+
+      ${m.sobre_id ? `<button class="btn btn-outline" style="margin:10px 0;" onclick='pantallaEditarSobre(${JSON.stringify(m.sobre_id)})'>✏️ Editar el sobre${m.sobres ? ' N° ' + esc(m.sobres.numero) : ''} completo (cliente, envío, total, seña...)</button>` : ''}
 
       <label>Descripción</label>
       <input type="text" id="em-descripcion" value="${(m.descripcion || '').replace(/"/g, '&quot;')}">
