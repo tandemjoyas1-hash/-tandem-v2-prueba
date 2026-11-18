@@ -2382,10 +2382,10 @@ async function ofrecerDireccionPrevia() {
     if (!cli) { box.innerHTML = ''; _dirPrevia = null; return; }
     const { data: ult } = await sb.from('sobres')
       .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
-      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(1).maybeSingle(); // (17/11/2026) solo si la dirección anterior NO está vacía
     // por si en el medio cambió el cliente o ya escribieron una dirección
     if ((document.getElementById('ne-cliente').value || '').trim() !== nombre || (document.getElementById('ne-env-direccion').value || '').trim()) return;
-    if (!ult) { box.innerHTML = ''; _dirPrevia = null; return; }
+    if (!ult || !String(ult.envio_direccion || '').trim()) { box.innerHTML = ''; _dirPrevia = null; return; }
     _dirPrevia = ult;
     box.innerHTML = `
       <div style="background:#eef6e6; border:1px solid #b7d79a; border-radius:8px; padding:10px; margin-bottom:8px;">
