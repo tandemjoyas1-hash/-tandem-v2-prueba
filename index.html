@@ -2382,10 +2382,10 @@ async function ofrecerDireccionPrevia() {
     if (!cli) { box.innerHTML = ''; _dirPrevia = null; return; }
     const { data: ult } = await sb.from('sobres')
       .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
-      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(1).maybeSingle(); // (17/11/2026) solo si la dirección anterior NO está vacía
     // por si en el medio cambió el cliente o ya escribieron una dirección
     if ((document.getElementById('ne-cliente').value || '').trim() !== nombre || (document.getElementById('ne-env-direccion').value || '').trim()) return;
-    if (!ult) { box.innerHTML = ''; _dirPrevia = null; return; }
+    if (!ult || !String(ult.envio_direccion || '').trim()) { box.innerHTML = ''; _dirPrevia = null; return; }
     _dirPrevia = ult;
     box.innerHTML = `
       <div style="background:#eef6e6; border:1px solid #b7d79a; border-radius:8px; padding:10px; margin-bottom:8px;">
@@ -3342,6 +3342,7 @@ async function pantallaEditarSobre(sobreId) {
 
       <div class="lista-sobre" id="es-envio-box" style="margin-top:14px; display:${s.canal === 'REDES_ENVIO' ? 'block' : 'none'};">
         <div style="font-weight:700;">📦 Datos de envío</div>
+        <div id="es-dir-previa"></div>
         <label>Nombre completo</label><input type="text" id="es-env-nombre" value="${esc(s.envio_nombre || '')}">
         <label>Provincia</label><input type="text" id="es-env-provincia" value="${esc(s.envio_provincia || '')}">
         <label>Localidad</label><input type="text" id="es-env-localidad" value="${esc(s.envio_localidad || '')}">
@@ -3373,8 +3374,44 @@ async function pantallaEditarSobre(sobreId) {
       <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="volverADetalleSobre('${esc(s.numero)}')">← Volver sin guardar</button>
     </div>
   `);
+  ofrecerDireccionPreviaEditar(sobreId, s.cliente_id, s.envio_direccion);
 }
 window.pantallaEditarSobre = pantallaEditarSobre;
+
+// (17/11/2026) En ✏️ Editar sobre: si el cliente ya recibió un envío antes y la dirección de este sobre está vacía,
+// se ofrece reutilizar la última dirección. Solo si la anterior tiene TODOS los datos (nombre, provincia, localidad, dirección, CP y teléfono).
+let _dirPreviaEditar = null;
+async function ofrecerDireccionPreviaEditar(sobreId, clienteId, dirActual) {
+  const box = document.getElementById('es-dir-previa');
+  if (!box || !clienteId || String(dirActual || '').trim()) return;
+  try {
+    const { data: filas } = await sb.from('sobres')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .eq('cliente_id', clienteId).neq('id', sobreId).not('envio_direccion', 'is', null).neq('envio_direccion', '')
+      .order('created_at', { ascending: false }).limit(10);
+    const completo = r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim());
+    const ult = (filas || []).find(completo);
+    if (!ult || String(document.getElementById('es-env-direccion').value || '').trim()) return;
+    _dirPreviaEditar = ult;
+    box.innerHTML = `
+      <div style="background:#eef6e6; border:1px solid #b7d79a; border-radius:8px; padding:10px; margin:8px 0;">
+        <div style="font-weight:700;">📦 Ya le enviamos antes. ¿Es la misma dirección?</div>
+        <div style="font-size:14px; margin:4px 0;">${esc(ult.envio_nombre)}<br>${esc(ult.envio_direccion)}, ${esc(ult.envio_localidad)}, ${esc(ult.envio_provincia)} · CP ${esc(ult.envio_cp)}<br>Tel: ${esc(ult.envio_telefono)}</div>
+        <button type="button" class="btn btn-verde" onclick="usarDireccionPreviaEditar()">✅ Sí, usar esta</button>
+        <button type="button" class="btn btn-outline" style="margin-top:6px;" onclick="document.getElementById('es-dir-previa').innerHTML=''">No, cargar otra</button>
+      </div>`;
+  } catch (e) { box.innerHTML = ''; }
+}
+function usarDireccionPreviaEditar() {
+  const u = _dirPreviaEditar;
+  if (!u) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+  set('es-env-nombre', u.envio_nombre); set('es-env-provincia', u.envio_provincia); set('es-env-localidad', u.envio_localidad);
+  set('es-env-direccion', u.envio_direccion); set('es-env-cp', u.envio_cp); set('es-env-telefono', u.envio_telefono);
+  const box = document.getElementById('es-dir-previa');
+  if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala y tocá Guardar cambios.</div>`;
+}
+window.usarDireccionPreviaEditar = usarDireccionPreviaEditar;
 
 let _timeoutBusquedaClienteES = null;
 function buscarClienteEditarSobre() {
