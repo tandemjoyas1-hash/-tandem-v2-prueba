@@ -2214,19 +2214,27 @@ function buscarClienteEnEntrada() {
   _timeoutBusquedaClienteEntrada = setTimeout(async () => {
     // Traemos todos y comparamos sin tildes/mayúsculas (igual que buscarOCrearCliente), para que
     // "maria" también encuentre a "María" en las sugerencias mientras se escribe.
-    const normBuscado = normalizarNombreCliente(nombre);
-    const { data: todos } = await sb.from('clientes').select('nombre, tipo_cliente, telefono').eq('oculto', false);
+    // (17/11/2026) Palabras en cualquier orden ("maina alfredo" encuentra "Alfredo Alberto Maina") y también por teléfono
+    // (con 3 o más números, sin importar espacios ni guiones).
+    const palabras = normalizarNombreCliente(nombre).split(' ').filter(Boolean);
+    const digitos = nombre.replace(/\D/g, '');
+    const buscaTelefono = digitos.length >= 3 && digitos.length >= nombre.replace(/\s/g, '').length - 2;
+    const { data: todos } = await sb.from('clientes').select('id, nombre, tipo_cliente, telefono').eq('oculto', false);
     const data = (todos || [])
-      .filter(c => normalizarNombreCliente(c.nombre).includes(normBuscado))
+      .filter(c => {
+        const n = normalizarNombreCliente(c.nombre);
+        if (palabras.length && palabras.every(w => n.includes(w))) return true;
+        return buscaTelefono && String(c.telefono || '').replace(/\D/g, '').includes(digitos);
+      })
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
       .slice(0, 6);
 
     if (!data || data.length === 0) { box.innerHTML = ''; return; }
 
     box.innerHTML = data.map(c => `
-      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEnEntrada(${JSON.stringify(c.nombre)}, ${JSON.stringify(c.tipo_cliente)}, ${JSON.stringify(c.telefono || '')})'>
+      <div class="lista-sobre" style="cursor:pointer; padding:8px 10px;" onclick='elegirClienteEnEntrada(${JSON.stringify(c.nombre)}, ${JSON.stringify(c.tipo_cliente)}, ${JSON.stringify(c.telefono || '')}, ${JSON.stringify(c.id)})'>
         <div class="nro" style="font-size:14px;">${c.nombre}</div>
-        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}</div>
+        <div class="cli" style="font-size:12px;">${etiquetaTipoCliente(c.tipo_cliente) || c.tipo_cliente || ''}${c.telefono ? ' · ' + c.telefono : ''}</div>
       </div>
     `).join('');
   }, 250);
@@ -2243,7 +2251,9 @@ function actualizarCampoParaCliente(guardar) {
 }
 window.actualizarCampoParaCliente = actualizarCampoParaCliente;
 
-function elegirClienteEnEntrada(nombre, tipoCliente, telefono) {
+let _clienteElegidoEntrada = null; // (17/11/2026) cliente tocado en las sugerencias: se usa para ofrecer su dirección guardada
+function elegirClienteEnEntrada(nombre, tipoCliente, telefono, clienteId) {
+  _clienteElegidoEntrada = clienteId ? { id: clienteId, nombre: nombre } : null;
   document.getElementById('ne-cliente').value = nombre;
   if (tipoCliente) document.getElementById('ne-tipo-cliente').value = tipoCliente;
   actualizarCampoParaCliente();
@@ -2377,12 +2387,19 @@ async function ofrecerDireccionPrevia() {
   const dirActual = (document.getElementById('ne-env-direccion').value || '').trim();
   if (nombre.length < 3 || dirActual) { box.innerHTML = ''; _dirPrevia = null; return; }
   try {
-    const patron = nombre.replace(/[\\%_]/g, m => '\\' + m);
-    const { data: cli } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', patron).limit(1).maybeSingle();
-    if (!cli) { box.innerHTML = ''; _dirPrevia = null; return; }
-    const { data: ult } = await sb.from('sobres')
+    let cliId = null;
+    if (_clienteElegidoEntrada && normalizarNombreCliente(_clienteElegidoEntrada.nombre) === normalizarNombreCliente(nombre)) cliId = _clienteElegidoEntrada.id;
+    if (!cliId) {
+      const patron = nombre.replace(/[\\%_]/g, m => '\\' + m);
+      const { data: cli } = await sb.from('clientes').select('id').eq('oculto', false).ilike('nombre', patron).limit(1).maybeSingle();
+      if (cli) cliId = cli.id;
+    }
+    if (!cliId) { box.innerHTML = ''; _dirPrevia = null; return; }
+    // (17/11/2026) Solo se ofrece una dirección anterior que tenga TODOS los datos.
+    const { data: filas } = await sb.from('sobres')
       .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
-      .eq('cliente_id', cli.id).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(1).maybeSingle(); // (17/11/2026) solo si la dirección anterior NO está vacía
+      .eq('cliente_id', cliId).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(10);
+    const ult = (filas || []).find(r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim()));
     // por si en el medio cambió el cliente o ya escribieron una dirección
     if ((document.getElementById('ne-cliente').value || '').trim() !== nombre || (document.getElementById('ne-env-direccion').value || '').trim()) return;
     if (!ult || !String(ult.envio_direccion || '').trim()) { box.innerHTML = ''; _dirPrevia = null; return; }
