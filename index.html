@@ -5212,6 +5212,51 @@ function cambiarEmpresaEnvio() {
   document.getElementById('bs-box-correo').style.display = correo ? 'block' : 'none';
   document.getElementById('bs-box-otro').style.display = correo ? 'none' : 'block';
 }
+// (19/11/2026) Integración con la API de MiCorreo (Correo Argentino) — ver función correo-argentino en Supabase.
+async function llamarCorreo(cuerpo) {
+  const { data } = await sb.auth.getSession();
+  const token = data && data.session ? data.session.access_token : '';
+  const resp = await fetch(SUPABASE_FUNCIONES_URL + '/correo-argentino', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify(cuerpo)
+  });
+  return await resp.json();
+}
+async function correoPrevisualizar(sobreId) {
+  const msg = document.getElementById('bs-correo-msg');
+  msg.innerHTML = `<div class="msg">⏳ Revisando los datos...</div>`;
+  try {
+    const r = await llamarCorreo({ accion: 'previsualizar', sobre_id: sobreId });
+    if (r.error) { msg.innerHTML = `<div class="msg msg-error">${esc(r.error)}</div>`; return; }
+    if (r.problemas && r.problemas.length) {
+      msg.innerHTML = `<div class="msg msg-error">No se puede enviar todavía:<br>${r.problemas.map(esc).join('<br>')}<br>Corregilo en ✏️ Editar sobre y probá de nuevo.</div>`;
+      return;
+    }
+    const e = r.envio, d = e.shipping.address;
+    msg.innerHTML = `
+      <div class="msg">
+        ${r.ambiente === 'test' ? '<b>⚠️ MODO PRUEBA:</b> no se crea un envío real.<br>' : ''}
+        Se va a enviar a MiCorreo:<br>
+        <b>${esc(e.recipient.name)}</b> · Tel ${esc(e.recipient.cellPhone || '-')}<br>
+        ${esc(d.streetName)} ${esc(d.streetNumber)}${d.floor ? ' piso ' + esc(d.floor) : ''}${d.apartment ? ' dpto ' + esc(d.apartment) : ''}, ${esc(d.city)} (${esc(d.provinceCode)}) CP ${esc(d.postalCode)}<br>
+        Paquete ${e.shipping.weight} g · valor declarado $${Number(e.shipping.declaredValue).toLocaleString('es-AR')}
+      </div>
+      <button type="button" class="btn btn-verde" onclick="correoImportar('${sobreId}')">✅ Confirmar y enviar</button>`;
+  } catch (err) { msg.innerHTML = `<div class="msg msg-error">${esc(err.message || err)}</div>`; }
+}
+async function correoImportar(sobreId) {
+  const msg = document.getElementById('bs-correo-msg');
+  msg.innerHTML = `<div class="msg">⏳ Enviando a MiCorreo...</div>`;
+  try {
+    const r = await llamarCorreo({ accion: 'importar', sobre_id: sobreId });
+    if (r.error) { msg.innerHTML = `<div class="msg msg-error">${esc(r.error)}</div>`; return; }
+    msg.innerHTML = `<div class="msg msg-ok">✅ Enviado a MiCorreo${r.ambiente === 'test' ? ' (PRUEBA)' : ''}. Ahora entrá al panel de MiCorreo, pagá el envío e imprimí el rótulo. El N° de seguimiento se carga solo.</div>`;
+  } catch (err) { msg.innerHTML = `<div class="msg msg-error">${esc(err.message || err)}</div>`; }
+}
+window.correoPrevisualizar = correoPrevisualizar;
+window.correoImportar = correoImportar;
+
 async function guardarSeguimiento(sobreId, avisa, yaTenia) {
   const msg = document.getElementById('bs-seguimiento-msg');
   const btn = document.getElementById('bs-btn-seguimiento');
@@ -5251,7 +5296,7 @@ async function buscarSobreDetalle() {
 
   const { data: s, error } = await sb
     .from('sobres')
-    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, salida_taller_at, canal, tipo_cliente, seguimiento, empresa_envio, envio_datos, clientes(nombre, telefono)')
+    .select('id, numero, descripcion, precio_total, fecha_entrada, baja_taller, orfebre, listo, controlado_por, fecha_salida, foto_referencia, cliente_id, diseno_unico, foto_catalogo_ok, salida_taller_at, canal, tipo_cliente, seguimiento, empresa_envio, envio_datos, correo_ext_order_id, correo_estado, correo_ambiente, correo_error, clientes(nombre, telefono)')
     .eq('numero', normalizarSobre(numero))
     .maybeSingle();
 
@@ -5439,6 +5484,15 @@ async function buscarSobreDetalle() {
         <div id="bs-box-otro" style="display:${(s.empresa_envio || 'CORREO') === 'CORREO' ? 'none' : 'block'};">
           <label>Datos para el cliente (nombre del transporte, sucursal donde retira, N° de guía)</label>
           <input type="text" id="bs-envio-datos" value="${esc(s.envio_datos || '')}" placeholder="Ej: Retiralo en la sucursal de Rosario. Guía 0001-123456">
+        </div>
+        <div id="bs-correo-box" style="margin:10px 0; padding:10px; border:1px solid #cfd8e3; border-radius:8px; background:#f6f9fc;">
+          <div style="font-weight:700;">📮 Correo Argentino (automático)</div>
+          ${s.correo_ext_order_id
+            ? `<div style="font-size:14px; margin-top:4px;">✅ Enviado a MiCorreo${s.correo_ambiente === 'test' ? ' <b>(PRUEBA)</b>' : ''}.<br>Estado: ${esc(s.correo_estado || 'esperando')}${s.seguimiento ? '<br>N° de seguimiento: <b>' + esc(s.seguimiento) + '</b>' : '<br>El N° de seguimiento aparece solo cuando el envío está pagado en MiCorreo.'}</div>`
+            : `<div style="font-size:13px; color:#555; margin:4px 0;">Crea el envío en MiCorreo con los datos de este sobre. Después pagás el envío e imprimís el rótulo desde el panel de MiCorreo; el N° de seguimiento se carga solo.</div>
+               ${s.correo_error ? '<div class="msg msg-error">Último intento: ' + esc(s.correo_error) + '</div>' : ''}
+               <button type="button" class="btn btn-outline" onclick="correoPrevisualizar('${s.id}')">📮 Enviar a Correo Argentino</button>`}
+          <div id="bs-correo-msg"></div>
         </div>
         <button type="button" class="btn btn-verde" id="bs-btn-seguimiento" style="margin-top:8px;" onclick="guardarSeguimiento('${s.id}', ${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'true' : 'false'}, ${(s.seguimiento || s.envio_datos) ? 'true' : 'false'})">${s.tipo_cliente === 'CONSUMIDOR_FINAL' ? 'Guardar y avisar' : 'Guardar'}</button>
         <div id="bs-seguimiento-msg"></div>
