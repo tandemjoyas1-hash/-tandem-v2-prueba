@@ -3277,8 +3277,15 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
   const sena = (pagos || []).reduce((acc, p) => acc + Number(p.monto), 0);
 
   const { data: fotosExtra } = await sb
-    .from('fotos_sobre').select('url').eq('sobre_id', sobreId).order('created_at').limit(3);
+    .from('fotos_sobre').select('url').eq('sobre_id', sobreId).order('created_at', { ascending: false }).limit(3);
+  if (fotosExtra) fotosExtra.reverse(); // las 3 más recientes, en orden de carga
   const { data: itemsRep } = await sb.from('items_sobre').select('descripcion, precio').eq('sobre_id', sobreId);
+  // Si la descripción se editó después de la entrada, los ítems guardados quedaron viejos: se imprime la descripción actual
+  let descEditada = false;
+  try {
+    const { data: hEd } = await sb.from('historial_sobres').select('id').eq('sobre_id', sobreId).eq('evento', 'EDICION').ilike('detalle', '%descripción cambiada%').limit(1);
+    descEditada = !!(hEd && hEd.length);
+  } catch (e) {}
 
   // Quién cargó el sobre (para saber a quién consultar si algo de la descripción está mal)
   let quienCargo = '';
@@ -3296,7 +3303,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     cliente: s.clientes ? s.clientes.nombre : '',
     paraClienteDe: s.para_cliente_de || '',
     tipoCliente: s.tipo_cliente || '',
-    items: (itemsRep && itemsRep.length > 1) ? itemsRep : null,
+    items: (!descEditada && itemsRep && itemsRep.length > 1) ? itemsRep : null,
     telefono: s.clientes ? s.clientes.telefono : '',
     trabajo: s.descripcion,
     cantidad: 1,
