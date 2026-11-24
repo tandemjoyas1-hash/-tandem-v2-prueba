@@ -309,6 +309,7 @@ function pintarUsuarioActual() {
       <button onclick="pantallaPagosFijos()" style="position:relative;"><span class="nav-icon">💸</span><span class="nav-label">PAGOS</span><span class="pf-badge" style="position:absolute; top:2px; right:4px; background:#c0392b; color:#fff; border-radius:10px; font-size:10px; padding:1px 5px; ${_pfVencidos ? '' : 'display:none;'}">${_pfVencidos}</span></button>
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaGastos()"><span class="nav-icon">📈</span><span class="nav-label">GASTOS</span></button>' : ''}
       ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaWhatsappSalida()"><span class="nav-icon">📤</span><span class="nav-label">WHATSAPP</span></button>' : ''}
+      ${usuarioActual.rol === 'ADMIN' ? '<button onclick="pantallaCRMClientes()"><span class="nav-icon">👥</span><span class="nav-label">CLIENTES</span></button>' : ''}
     </div>`;
 }
 
@@ -7654,6 +7655,138 @@ async function pantallaWhatsappSalida() {
     </div>`).join('');
 }
 window.pantallaWhatsappSalida = pantallaWhatsappSalida;
+
+// ============================================================
+// NUEVO (24/11/2026): CRM — pantalla CLIENTES (solo ADMIN).
+// Por ahora SOLO MIRA: ficha por cliente (última compra, pedidos, total) y grupos con filtros.
+// NO manda ningún mensaje. Lee tandem.clientes y tandem.sobres; no escribe nada.
+// "Contactable" = tiene teléfono, no está marcado "sin avisos de WhatsApp" y acepta comunicaciones.
+// ============================================================
+let _crmClientes = null;
+let _crmFiltro = 'todos';
+let _crmSoloWsp = true;
+let _crmBusca = '';
+
+const CRM_GRUPOS = [
+  { id: 'todos',      txt: 'Todos' },
+  { id: 'una_vez',    txt: 'Compraron 1 vez' },
+  { id: 'recompra',   txt: 'Recompradores (2 o más)' },
+  { id: 'una_2m',     txt: '1 vez, hace +2 meses' },
+  { id: 'envio',      txt: 'Con envío' },
+  { id: 'mayorista',  txt: 'Mayoristas / talleres' },
+  { id: 'sin_pedidos', txt: 'Sin pedidos' },
+  { id: 'con_email',  txt: 'Con email' }
+];
+
+async function crmLeerTodo(tabla, columnas, filtroOculto) {
+  const filas = [];
+  for (let desde = 0; ; desde += 1000) {
+    let q = sb.from(tabla).select(columnas).order('id').range(desde, desde + 999);
+    if (filtroOculto) q = q.eq('oculto', false);
+    const { data, error } = await q;
+    if (error) throw error;
+    filas.push(...data);
+    if (data.length < 1000) break;
+  }
+  return filas;
+}
+
+async function pantallaCRMClientes() {
+  if (!usuarioActual || usuarioActual.rol !== 'ADMIN') return;
+  render(`
+    ${pintarUsuarioActual()}
+    <div class="card">
+      <h2>👥 Clientes</h2>
+      <div class="sub">Para ver quién compró, cuándo y cuánto. Por ahora solo mira: no manda mensajes.</div>
+      <div id="crm-cuerpo" style="margin-top:10px;">Cargando clientes...</div>
+    </div>`);
+  try {
+    const [clientes, sobres] = await Promise.all([
+      crmLeerTodo('clientes', 'id, nombre, telefono, tipo_cliente, email, sin_avisos_whatsapp, acepta_comunicaciones', true),
+      crmLeerTodo('sobres', 'id, cliente_id, fecha_entrada, precio_total, canal', false)
+    ]);
+    const porCliente = {};
+    sobres.forEach(s => {
+      if (!s.cliente_id) return;
+      const a = porCliente[s.cliente_id] || (porCliente[s.cliente_id] = { pedidos: 0, total: 0, ultima: null, envio: false });
+      a.pedidos++;
+      a.total += Number(s.precio_total || 0);
+      if (s.fecha_entrada && (!a.ultima || s.fecha_entrada > a.ultima)) a.ultima = s.fecha_entrada;
+      if (s.canal === 'REDES_ENVIO') a.envio = true;
+    });
+    const hoy = new Date();
+    _crmClientes = clientes.map(c => {
+      const a = porCliente[c.id] || { pedidos: 0, total: 0, ultima: null, envio: false };
+      const tel = String(c.telefono || '').replace(/\D/g, '');
+      return {
+        id: c.id, nombre: c.nombre || '', tipo: c.tipo_cliente || '', email: (c.email || '').trim(),
+        tel: tel, pedidos: a.pedidos, total: a.total, ultima: a.ultima, envio: a.envio,
+        dias: a.ultima ? Math.floor((hoy - new Date(a.ultima)) / 86400000) : null,
+        contactable: !!tel && !c.sin_avisos_whatsapp && c.acepta_comunicaciones !== false
+      };
+    });
+    crmPintar();
+  } catch (e) {
+    document.getElementById('crm-cuerpo').innerHTML = `<div class="msg msg-error">No se pudieron cargar los clientes: ${esc(e.message || String(e))}</div>`;
+  }
+}
+window.pantallaCRMClientes = pantallaCRMClientes;
+
+function crmCumple(c, grupo) {
+  const consumidor = c.tipo === 'CONSUMIDOR_FINAL';
+  switch (grupo) {
+    case 'una_vez':     return consumidor && c.pedidos === 1;
+    case 'recompra':    return consumidor && c.pedidos >= 2;
+    case 'una_2m':      return consumidor && c.pedidos === 1 && c.dias !== null && c.dias > 60;
+    case 'envio':       return c.envio;
+    case 'mayorista':   return c.tipo === 'MAYORISTA' || c.tipo === 'TALLER';
+    case 'sin_pedidos': return c.pedidos === 0;
+    case 'con_email':   return !!c.email;
+    default:            return true;
+  }
+}
+
+function crmPintar() {
+  const box = document.getElementById('crm-cuerpo');
+  if (!box || !_crmClientes) return;
+  const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const q = norm(_crmBusca);
+  const base = _crmClientes.filter(c => (!_crmSoloWsp || c.contactable) && (!q || norm(c.nombre).includes(q)));
+  const conteo = id => base.filter(c => crmCumple(c, id)).length;
+  const lista = base.filter(c => crmCumple(c, _crmFiltro))
+    .sort((a, b) => (b.ultima || '').localeCompare(a.ultima || ''));
+  const conEmail = _crmClientes.filter(c => c.email).length;
+  const plata = n => '$' + Number(n || 0).toLocaleString('es-AR');
+  const mostrar = lista.slice(0, 100);
+  box.innerHTML = `
+    <div class="msg">${_crmClientes.length} clientes · 📱 ${_crmClientes.filter(c => c.contactable).length} con WhatsApp para avisar · ✉️ ${conEmail} con email cargado</div>
+    <input type="text" placeholder="Buscar por nombre" value="${esc(_crmBusca)}" oninput="crmBuscar(this.value)" autocomplete="off" style="margin-top:8px;">
+    <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:6px 0;">
+      <input type="checkbox" ${_crmSoloWsp ? 'checked' : ''} onchange="crmSoloWspCambio(this.checked)" style="width:auto;"> Solo clientes a los que se les puede avisar por WhatsApp
+    </label>
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0;">
+      ${CRM_GRUPOS.map(g => `<button type="button" class="btn ${g.id === _crmFiltro ? 'btn-oro' : 'btn-outline'}" style="width:auto; margin:0; padding:6px 10px; font-size:13px;" onclick="crmFiltrar('${g.id}')">${g.txt} (${conteo(g.id)})</button>`).join('')}
+    </div>
+    <div style="font-size:13px; margin:6px 0;"><b>${lista.length}</b> clientes en este grupo${lista.length > 100 ? ' (se muestran los 100 con compra más reciente)' : ''}</div>
+    ${mostrar.length ? mostrar.map(c => `
+      <div style="border:1px solid #e5dfd3; border-radius:10px; padding:10px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; gap:8px;"><b>${esc(c.nombre)}</b><span style="font-size:12px; color:#8a8378;">${esc(etiquetaTipoCliente(c.tipo) || c.tipo)}</span></div>
+        <div style="font-size:13px; color:#555; margin-top:4px;">
+          ${c.pedidos ? `🛍️ ${c.pedidos} pedido${c.pedidos > 1 ? 's' : ''} · ${plata(c.total)} · última compra ${new Date(c.ultima).toLocaleDateString('es-AR')} (hace ${c.dias} días)` : 'Sin pedidos registrados'}
+        </div>
+        <div style="font-size:12px; color:#8a8378; margin-top:3px;">${c.tel ? '📱 ' + esc(c.tel) : '⚠️ sin teléfono'}${c.contactable ? '' : c.tel ? ' · 🚫 no avisar' : ''}${c.email ? ' · ✉️ ' + esc(c.email) : ''}${c.envio ? ' · 📦 con envío' : ''}</div>
+      </div>`).join('') : '<div class="vacio">No hay clientes en este grupo.</div>'}`;
+}
+
+function crmFiltrar(id) { _crmFiltro = id; crmPintar(); }
+function crmSoloWspCambio(v) { _crmSoloWsp = !!v; crmPintar(); }
+function crmBuscar(v) {
+  _crmBusca = v;
+  crmPintar();
+  const inp = document.querySelector('#crm-cuerpo input[type="text"]');
+  if (inp) { inp.focus(); inp.setSelectionRange(v.length, v.length); }
+}
+window.crmFiltrar = crmFiltrar; window.crmSoloWspCambio = crmSoloWspCambio; window.crmBuscar = crmBuscar;
 
 // ============================================================
 // NUEVO (27/09/2026): pagos fijos que se repiten todos los meses (sindicatos, impuestos,
