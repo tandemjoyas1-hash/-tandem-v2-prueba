@@ -729,6 +729,8 @@ function pantallaNuevaEntrada() {
       <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;" onchange="actualizarAvisoTelefonoEntrada()"> 📵 El cliente no quiere dejar teléfono</label>
+      <label>Email (opcional — solo si el cliente quiere dejarlo)</label>
+      <input type="email" id="ne-env-email" autocomplete="off" placeholder="cliente@gmail.com">
       <div id="ne-aviso-tel" style="display:none; background:#c0392b; color:#fff; font-weight:700; padding:10px 12px; border-radius:8px; margin-top:6px;">📵 Falta el teléfono: no le va a llegar el aviso de WhatsApp.<div style="font-weight:400; font-size:12px; margin-top:2px;">Podés guardar igual, pero si lo tenés, cargalo arriba y destildá esta opción.</div></div>
 
       <label>Tipo de cliente</label>
@@ -922,7 +924,7 @@ function guardarBorradorEntrada() {
     destino: g('ne-destino'),
     proveedor: g('ne-proveedor'),
     dUnico: !!(document.getElementById('ne-diseno-unico') && document.getElementById('ne-diseno-unico').checked),
-    envio: { nombre: g('ne-env-nombre'), provincia: g('ne-env-provincia'), localidad: g('ne-env-localidad'), direccion: g('ne-env-direccion'), cp: g('ne-env-cp'), telefono: g('ne-env-telefono') },
+    envio: { nombre: g('ne-env-nombre'), provincia: g('ne-env-provincia'), localidad: g('ne-env-localidad'), direccion: g('ne-env-direccion'), cp: g('ne-env-cp'), telefono: g('ne-env-telefono'), email: g('ne-env-email') },
     productoSel: _productoSeleccionado
   };
   try { sessionStorage.setItem('tandem_borrador_entrada', JSON.stringify(_borradorEntrada)); } catch (e) {}
@@ -1670,7 +1672,7 @@ function restaurarBorradorEntrada() {
   if (_borradorEntrada.dUnico) document.getElementById('ne-diseno-unico').checked = true;
   if (_borradorEntrada.envio) {
     const en = _borradorEntrada.envio;
-    [['nombre','nombre'],['provincia','provincia'],['localidad','localidad'],['direccion','direccion'],['cp','cp'],['telefono','telefono']].forEach(([k, id]) => { const e = document.getElementById('ne-env-' + id); if (e) e.value = en[k] || ''; });
+    [['nombre','nombre'],['provincia','provincia'],['localidad','localidad'],['direccion','direccion'],['cp','cp'],['telefono','telefono'],['email','email']].forEach(([k, id]) => { const e = document.getElementById('ne-env-' + id); if (e) e.value = en[k] || ''; });
   }
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
@@ -2397,7 +2399,7 @@ async function ofrecerDireccionPrevia() {
     if (!cliId) { box.innerHTML = ''; _dirPrevia = null; return; }
     // (17/11/2026) Solo se ofrece una dirección anterior que tenga TODOS los datos.
     const { data: filas } = await sb.from('sobres')
-      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email')
       .eq('cliente_id', cliId).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(10);
     const ult = (filas || []).find(r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim()));
     // por si en el medio cambió el cliente o ya escribieron una dirección
@@ -2434,7 +2436,7 @@ window.descartarDireccionPrevia = descartarDireccionPrevia;
 
 function leerDatosEnvioEntrada() {
   const v = id => (document.getElementById(id).value || '').trim();
-  return { nombre: v('ne-env-nombre'), provincia: v('ne-env-provincia'), localidad: v('ne-env-localidad'), direccion: v('ne-env-direccion'), cp: v('ne-env-cp'), telefono: v('ne-env-telefono') };
+  return { nombre: v('ne-env-nombre'), provincia: v('ne-env-provincia'), localidad: v('ne-env-localidad'), direccion: v('ne-env-direccion'), cp: v('ne-env-cp'), telefono: v('ne-env-telefono'), email: v('ne-env-email') };
 }
 
 async function guardarNuevaEntrada() {
@@ -2556,6 +2558,11 @@ async function guardarNuevaEntrada() {
     msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
     return;
   }
+  // Base para el CRM: si cargaron el email, queda guardado también en la ficha del cliente
+  try {
+    const em = ((document.getElementById('ne-env-email') || {}).value || '').trim().toLowerCase();
+    if (em && /^\S+@\S+\.\S+$/.test(em)) await sb.from('clientes').update({ email: em }).eq('id', clienteId);
+  } catch (e) {}
 
   // 2) Crear el sobre
   const { data: sobreNuevo, error: errSobre } = await sb
@@ -2580,7 +2587,8 @@ async function guardarNuevaEntrada() {
       envio_localidad: envioDatos ? envioDatos.localidad : null,
       envio_direccion: envioDatos ? envioDatos.direccion : null,
       envio_cp: envioDatos ? envioDatos.cp : null,
-      envio_telefono: envioDatos ? envioDatos.telefono : null
+      envio_telefono: envioDatos ? envioDatos.telefono : null,
+      envio_email: ((document.getElementById('ne-env-email') || {}).value || '').trim() || null
     })
     .select('id')
     .single();
@@ -2732,7 +2740,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
   mostrarFechaTaller();
   document.getElementById('ne-canal').value = '';
-  ['nombre','provincia','localidad','direccion','cp','telefono'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
+  ['nombre','provincia','localidad','direccion','cp','telefono','email'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
   mostrarDatosEnvio();
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
@@ -2960,6 +2968,7 @@ function armarHtmlComprobante(c) {
       ${filaEnv('Dirección', e.direccion)}
       ${filaEnv('Código postal', e.cp)}
       ${filaEnv('Teléfono', e.telefono)}
+      ${e.email ? filaEnv('Email', e.email) : ''}
       <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Encargado por ' + esc(c.vendedora) : ''}</div>
     </div></div>
   ` : '';
@@ -3264,7 +3273,7 @@ window.abrirImprimirMovimiento = abrirImprimirMovimiento;
 async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloCliente, soloEnvio) {
   const { data: s, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
   if (soloEnvio && !(s.envio_direccion || s.envio_nombre)) { alert('Este pedido todavía no tiene datos de envío. Completalos con ✏️ Editar sobre y volvé a imprimir.'); return; }
@@ -3312,7 +3321,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     sena: sena,
     medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
     destino: s.orfebre,
-    envio: (s.envio_direccion || s.envio_nombre) ? { nombre: s.envio_nombre, provincia: s.envio_provincia, localidad: s.envio_localidad, direccion: s.envio_direccion, cp: s.envio_cp, telefono: s.envio_telefono } : null,
+    envio: (s.envio_direccion || s.envio_nombre) ? { nombre: s.envio_nombre, provincia: s.envio_provincia, localidad: s.envio_localidad, direccion: s.envio_direccion, cp: s.envio_cp, telefono: s.envio_telefono, email: s.envio_email } : null,
     soloTaller: !!soloTaller,
     soloCliente: !!soloCliente,
     soloEnvio: !!soloEnvio,
@@ -3328,7 +3337,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, canal, clientes(nombre, tipo_cliente)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, canal, clientes(nombre, tipo_cliente, email)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3346,6 +3355,9 @@ async function pantallaEditarSobre(sobreId) {
       <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
       <div id="es-cliente-sugerencias"></div>
       <div style="font-size:12px; color:#777; margin-top:4px;">Para corregir el nombre: escribí el nombre bien. Si ya existe en la lista, tocalo; si no, se crea un cliente con ese nombre y este sobre pasa a él.</div>
+
+      <label style="margin-top:12px;">✉️ Email del cliente (opcional)</label>
+      <input type="email" id="es-env-email" value="${esc(s.envio_email || (s.clientes && s.clientes.email) || '')}" placeholder="cliente@gmail.com" autocomplete="off">
 
       <label style="margin-top:12px;">👤 Para el cliente de (opcional — solo mayoristas)</label>
       <input type="text" id="es-para-cliente-de" value="${esc(s.para_cliente_de || '')}" placeholder="Ej: María Gómez" autocomplete="off">
@@ -3375,6 +3387,7 @@ async function pantallaEditarSobre(sobreId) {
         <label>Dirección</label><input type="text" id="es-env-direccion" value="${esc(s.envio_direccion || '')}">
         <label>Código postal</label><input type="text" id="es-env-cp" value="${esc(s.envio_cp || '')}">
         <label>Teléfono</label><input type="tel" id="es-env-telefono" value="${esc(s.envio_telefono || '')}">
+
       </div>
 
       ${esCC ? '' : `
@@ -3412,7 +3425,7 @@ async function ofrecerDireccionPreviaEditar(sobreId, clienteId, dirActual) {
   if (!box || !clienteId || String(dirActual || '').trim()) return;
   try {
     const { data: filas } = await sb.from('sobres')
-      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email')
       .eq('cliente_id', clienteId).neq('id', sobreId).not('envio_direccion', 'is', null).neq('envio_direccion', '')
       .order('created_at', { ascending: false }).limit(10);
     const completo = r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim());
@@ -3499,7 +3512,7 @@ async function guardarEdicionSobre(sobreId, numero) {
   }
   const cambios = { canal: canalNuevo, precio_total: total, para_el_dia: paraElDia, para_cliente_de: ev('es-para-cliente-de'),
     envio_nombre: ev('es-env-nombre'), envio_provincia: ev('es-env-provincia'), envio_localidad: ev('es-env-localidad'),
-    envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono') };
+    envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono'), envio_email: ev('es-env-email') };
   if (clienteId) cambios.cliente_id = clienteId;
   const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id, canal').eq('id', sobreId).single();
   const canalCambio = !!antes && antes.canal !== canalNuevo;
@@ -3508,6 +3521,13 @@ async function guardarEdicionSobre(sobreId, numero) {
 
   const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${error.message}</div>`; return; }
+
+  // Base para el CRM: el email del envío también queda en la ficha del cliente
+  try {
+    const em = (ev('es-env-email') || '').toLowerCase();
+    const cid = clienteId || (antes && antes.cliente_id) || null;
+    if (em && cid && /^\S+@\S+\.\S+$/.test(em)) await sb.from('clientes').update({ email: em }).eq('id', cid);
+  } catch (e) {}
 
   // Mantiene los movimientos de caja de este sobre apuntando al mismo cliente
   if (clienteId) await sb.from('movimientos_caja').update({ cliente_id: clienteId }).eq('sobre_id', sobreId);
@@ -5245,7 +5265,7 @@ async function correoPrevisualizar(sobreId) {
       <div class="msg">
         ${r.ambiente === 'test' ? '<b>⚠️ MODO PRUEBA:</b> no se crea un envío real.<br>' : ''}
         Se va a enviar a MiCorreo:<br>
-        <b>${esc(e.recipient.name)}</b> · Tel ${esc(e.recipient.cellPhone || '-')}<br>
+        <b>${esc(e.recipient.name)}</b> · Tel ${esc(e.recipient.cellPhone || '-')} · ${esc(e.recipient.email || '-')}<br>
         ${esc(d.streetName)} ${esc(d.streetNumber)}${d.floor ? ' piso ' + esc(d.floor) : ''}${d.apartment ? ' dpto ' + esc(d.apartment) : ''}, ${esc(d.city)} (${esc(d.provinceCode)}) CP ${esc(d.postalCode)}<br>
         Paquete ${e.shipping.weight} g · valor declarado $${Number(e.shipping.declaredValue).toLocaleString('es-AR')}
       </div>
