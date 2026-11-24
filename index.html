@@ -7728,17 +7728,18 @@ async function pantallaCRMClientes() {
       crmLeerTodo('clientes', 'id, nombre, telefono, tipo_cliente, email, sin_avisos_whatsapp, acepta_comunicaciones', { filtro: q => q.eq('oculto', false) }),
       crmLeerTodo('sobres', 'id, cliente_id, fecha_entrada, precio_total, canal, descripcion'),
       // Qué compró: ingresos de caja con tipo de producto (códigos desde 1000), ligados a un cliente
-      crmLeerTodo('movimientos_caja', 'id, cliente_id, codigo, ingresa_egresa', { filtro: q => q.gte('codigo', 1000).not('cliente_id', 'is', null).ilike('ingresa_egresa', 'ingres%') }),
+      crmLeerTodo('movimientos_caja', 'id, cliente_id, sobre_id, codigo, ingresa_egresa', { filtro: q => q.gte('codigo', 1000).not('cliente_id', 'is', null).ilike('ingresa_egresa', 'ingres%') }),
       crmLeerTodo('codigos_producto', 'codigo, descripcion', { orden: 'codigo' })
     ]);
     const nombreCodigo = {};
     codigos.forEach(c => { nombreCodigo[c.codigo] = c.descripcion; });
     const porCliente = {};
-    const get = id => porCliente[id] || (porCliente[id] = { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '' });
+    const get = id => porCliente[id] || (porCliente[id] = { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '', sobreIds: new Set(), conTipo: new Set() });
     sobres.forEach(s => {
       if (!s.cliente_id) return;
       const a = get(s.cliente_id);
       a.pedidos++;
+      a.sobreIds.add(s.id);
       a.total += Number(s.precio_total || 0);
       if (s.fecha_entrada && (!a.ultima || s.fecha_entrada > a.ultima)) { a.ultima = s.fecha_entrada; a.ultimaDesc = s.descripcion || ''; }
       if (s.canal === 'REDES_ENVIO') a.envio = true;
@@ -7748,17 +7749,25 @@ async function pantallaCRMClientes() {
       const nom = nombreCodigo[m.codigo];
       if (!nom) return;
       const a = get(m.cliente_id);
-      a.prods[nom] = (a.prods[nom] || 0) + 1;
+      // Se cuenta por PEDIDO (no por cobro): una seña + un saldo del mismo pedido son 1 sola compra
+      const unidad = m.sobre_id ? 's' + m.sobre_id : 'm' + m.id;
+      if (!a.prods[nom]) a.prods[nom] = new Set();
+      a.prods[nom].add(unidad);
+      if (m.sobre_id) a.conTipo.add(m.sobre_id);
       a.texto += ' ' + crmNorm(nom);
     });
     const hoy = new Date();
     _crmClientes = clientes.map(c => {
-      const a = porCliente[c.id] || { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '' };
+      const a = porCliente[c.id] || { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '', sobreIds: new Set(), conTipo: new Set() };
+      const prodsN = {};
+      Object.keys(a.prods).forEach(n => { prodsN[n] = a.prods[n].size; });
+      let sinTipo = 0;
+      a.sobreIds.forEach(id => { if (!a.conTipo.has(id)) sinTipo++; });
       const tel = String(c.telefono || '').replace(/\D/g, '');
       return {
         id: c.id, nombre: c.nombre || '', tipo: c.tipo_cliente || '', email: (c.email || '').trim(),
         tel: tel, pedidos: a.pedidos, total: a.total, ultima: a.ultima, ultimaDesc: a.ultimaDesc, envio: a.envio,
-        prods: a.prods, texto: a.texto,
+        prods: prodsN, sinTipo: sinTipo, texto: a.texto,
         dias: a.ultima ? Math.floor((hoy - new Date(a.ultima)) / 86400000) : null,
         contactable: !!tel && !c.sin_avisos_whatsapp && c.acepta_comunicaciones !== false
       };
@@ -7830,7 +7839,7 @@ function crmPintar() {
         <div style="font-size:13px; color:#555; margin-top:4px;">
           ${c.pedidos ? `🛍️ ${c.pedidos} pedido${c.pedidos > 1 ? 's' : ''} · ${plata(c.total)} · última compra ${new Date(c.ultima).toLocaleDateString('es-AR')} (hace ${c.dias} días)` : 'Sin pedidos registrados'}
         </div>
-        ${prods.length ? `<div style="margin-top:5px; display:flex; flex-wrap:wrap; gap:4px;">${prods.map(n => `<span class="crm-tag">${esc(n)}${c.prods[n] > 1 ? ' ×' + c.prods[n] : ''}</span>`).join('')}</div>` : ''}
+        ${prods.length ? `<div style="margin-top:5px; display:flex; flex-wrap:wrap; gap:4px;">${prods.map(n => `<span class="crm-tag">${esc(n)}${c.prods[n] > 1 ? ' ×' + c.prods[n] : ''}</span>`).join('')}${c.sinTipo ? `<span class="crm-tag" style="background:#fff3cd; color:#7a5b00;">sin tipo de producto ×${c.sinTipo}</span>` : ''}</div>` : (c.sinTipo ? `<div style="margin-top:5px;"><span class="crm-tag" style="background:#fff3cd; color:#7a5b00;">sin tipo de producto ×${c.sinTipo}</span></div>` : '')}
         ${c.ultimaDesc ? `<div style="font-size:12px; color:#666; margin-top:5px;">📝 Último pedido: ${esc(c.ultimaDesc.length > 90 ? c.ultimaDesc.slice(0, 90) + '…' : c.ultimaDesc)}</div>` : ''}
         <div style="font-size:12px; color:#8a8378; margin-top:3px;">${c.tel ? '📱 ' + esc(c.tel) : '⚠️ sin teléfono'}${c.contactable ? '' : c.tel ? ' · 🚫 no avisar' : ''}${c.email ? ' · ✉️ ' + esc(c.email) : ''}${c.envio ? ' · 📦 con envío' : ''}</div>
       </div>`; }).join('') : '<div class="vacio">No hay clientes en este grupo.</div>'}`;
