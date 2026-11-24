@@ -844,6 +844,8 @@ function pantallaNuevaEntrada() {
         <input type="text" id="ne-env-cp" inputmode="numeric" autocomplete="off">
         <label>Teléfono</label>
         <input type="tel" id="ne-env-telefono" autocomplete="off">
+        <label>Email (para que MiCorreo le avise al cliente)</label>
+        <input type="email" id="ne-env-email" autocomplete="off" placeholder="cliente@gmail.com">
       </div>
 
       <label>Medio de pago de la seña</label>
@@ -922,7 +924,7 @@ function guardarBorradorEntrada() {
     destino: g('ne-destino'),
     proveedor: g('ne-proveedor'),
     dUnico: !!(document.getElementById('ne-diseno-unico') && document.getElementById('ne-diseno-unico').checked),
-    envio: { nombre: g('ne-env-nombre'), provincia: g('ne-env-provincia'), localidad: g('ne-env-localidad'), direccion: g('ne-env-direccion'), cp: g('ne-env-cp'), telefono: g('ne-env-telefono') },
+    envio: { nombre: g('ne-env-nombre'), provincia: g('ne-env-provincia'), localidad: g('ne-env-localidad'), direccion: g('ne-env-direccion'), cp: g('ne-env-cp'), telefono: g('ne-env-telefono'), email: g('ne-env-email') },
     productoSel: _productoSeleccionado
   };
   try { sessionStorage.setItem('tandem_borrador_entrada', JSON.stringify(_borradorEntrada)); } catch (e) {}
@@ -1670,7 +1672,7 @@ function restaurarBorradorEntrada() {
   if (_borradorEntrada.dUnico) document.getElementById('ne-diseno-unico').checked = true;
   if (_borradorEntrada.envio) {
     const en = _borradorEntrada.envio;
-    [['nombre','nombre'],['provincia','provincia'],['localidad','localidad'],['direccion','direccion'],['cp','cp'],['telefono','telefono']].forEach(([k, id]) => { const e = document.getElementById('ne-env-' + id); if (e) e.value = en[k] || ''; });
+    [['nombre','nombre'],['provincia','provincia'],['localidad','localidad'],['direccion','direccion'],['cp','cp'],['telefono','telefono'],['email','email']].forEach(([k, id]) => { const e = document.getElementById('ne-env-' + id); if (e) e.value = en[k] || ''; });
   }
   document.getElementById('ne-total').value = _borradorEntrada.total;
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
@@ -2397,7 +2399,7 @@ async function ofrecerDireccionPrevia() {
     if (!cliId) { box.innerHTML = ''; _dirPrevia = null; return; }
     // (17/11/2026) Solo se ofrece una dirección anterior que tenga TODOS los datos.
     const { data: filas } = await sb.from('sobres')
-      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email')
       .eq('cliente_id', cliId).not('envio_direccion', 'is', null).neq('envio_direccion', '').order('created_at', { ascending: false }).limit(10);
     const ult = (filas || []).find(r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim()));
     // por si en el medio cambió el cliente o ya escribieron una dirección
@@ -2418,7 +2420,7 @@ function usarDireccionPrevia() {
   if (!u) return;
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
   set('ne-env-nombre', u.envio_nombre); set('ne-env-provincia', u.envio_provincia); set('ne-env-localidad', u.envio_localidad);
-  set('ne-env-direccion', u.envio_direccion); set('ne-env-cp', u.envio_cp); set('ne-env-telefono', u.envio_telefono);
+  set('ne-env-direccion', u.envio_direccion); set('ne-env-cp', u.envio_cp); set('ne-env-telefono', u.envio_telefono); set('ne-env-email', u.envio_email);
   const box = document.getElementById('ne-dir-previa');
   if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala antes de guardar.</div>`;
   try { guardarBorradorEntrada(); } catch (e) {}
@@ -2434,7 +2436,7 @@ window.descartarDireccionPrevia = descartarDireccionPrevia;
 
 function leerDatosEnvioEntrada() {
   const v = id => (document.getElementById(id).value || '').trim();
-  return { nombre: v('ne-env-nombre'), provincia: v('ne-env-provincia'), localidad: v('ne-env-localidad'), direccion: v('ne-env-direccion'), cp: v('ne-env-cp'), telefono: v('ne-env-telefono') };
+  return { nombre: v('ne-env-nombre'), provincia: v('ne-env-provincia'), localidad: v('ne-env-localidad'), direccion: v('ne-env-direccion'), cp: v('ne-env-cp'), telefono: v('ne-env-telefono'), email: v('ne-env-email') };
 }
 
 async function guardarNuevaEntrada() {
@@ -2580,7 +2582,8 @@ async function guardarNuevaEntrada() {
       envio_localidad: envioDatos ? envioDatos.localidad : null,
       envio_direccion: envioDatos ? envioDatos.direccion : null,
       envio_cp: envioDatos ? envioDatos.cp : null,
-      envio_telefono: envioDatos ? envioDatos.telefono : null
+      envio_telefono: envioDatos ? envioDatos.telefono : null,
+      envio_email: envioDatos ? (envioDatos.email || null) : null
     })
     .select('id')
     .single();
@@ -2732,7 +2735,7 @@ async function guardarNuevaEntrada() {
   document.getElementById('ne-para-el-dia').value = sumarDiasHabiles(fechaHoyISO(), 5);
   mostrarFechaTaller();
   document.getElementById('ne-canal').value = '';
-  ['nombre','provincia','localidad','direccion','cp','telefono'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
+  ['nombre','provincia','localidad','direccion','cp','telefono','email'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
   mostrarDatosEnvio();
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
@@ -2960,6 +2963,7 @@ function armarHtmlComprobante(c) {
       ${filaEnv('Dirección', e.direccion)}
       ${filaEnv('Código postal', e.cp)}
       ${filaEnv('Teléfono', e.telefono)}
+      ${e.email ? filaEnv('Email', e.email) : ''}
       <div class="env-pie">Tándem Joyas${c.vendedora ? ' · Encargado por ' + esc(c.vendedora) : ''}</div>
     </div></div>
   ` : '';
@@ -3264,7 +3268,7 @@ window.abrirImprimirMovimiento = abrirImprimirMovimiento;
 async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloCliente, soloEnvio) {
   const { data: s, error } = await sb
     .from('sobres')
-    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
+    .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
   if (soloEnvio && !(s.envio_direccion || s.envio_nombre)) { alert('Este pedido todavía no tiene datos de envío. Completalos con ✏️ Editar sobre y volvé a imprimir.'); return; }
@@ -3312,7 +3316,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     sena: sena,
     medioPago: (pagos && pagos[0] && pagos[0].medio_pago) || '',
     destino: s.orfebre,
-    envio: (s.envio_direccion || s.envio_nombre) ? { nombre: s.envio_nombre, provincia: s.envio_provincia, localidad: s.envio_localidad, direccion: s.envio_direccion, cp: s.envio_cp, telefono: s.envio_telefono } : null,
+    envio: (s.envio_direccion || s.envio_nombre) ? { nombre: s.envio_nombre, provincia: s.envio_provincia, localidad: s.envio_localidad, direccion: s.envio_direccion, cp: s.envio_cp, telefono: s.envio_telefono, email: s.envio_email } : null,
     soloTaller: !!soloTaller,
     soloCliente: !!soloCliente,
     soloEnvio: !!soloEnvio,
@@ -3328,7 +3332,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, para_cliente_de, canal, clientes(nombre, tipo_cliente)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, canal, clientes(nombre, tipo_cliente)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3375,6 +3379,7 @@ async function pantallaEditarSobre(sobreId) {
         <label>Dirección</label><input type="text" id="es-env-direccion" value="${esc(s.envio_direccion || '')}">
         <label>Código postal</label><input type="text" id="es-env-cp" value="${esc(s.envio_cp || '')}">
         <label>Teléfono</label><input type="tel" id="es-env-telefono" value="${esc(s.envio_telefono || '')}">
+        <label>Email (para que MiCorreo le avise al cliente)</label><input type="email" id="es-env-email" value="${esc(s.envio_email || '')}" placeholder="cliente@gmail.com">
       </div>
 
       ${esCC ? '' : `
@@ -3412,7 +3417,7 @@ async function ofrecerDireccionPreviaEditar(sobreId, clienteId, dirActual) {
   if (!box || !clienteId || String(dirActual || '').trim()) return;
   try {
     const { data: filas } = await sb.from('sobres')
-      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono')
+      .select('envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email')
       .eq('cliente_id', clienteId).neq('id', sobreId).not('envio_direccion', 'is', null).neq('envio_direccion', '')
       .order('created_at', { ascending: false }).limit(10);
     const completo = r => ['envio_nombre', 'envio_provincia', 'envio_localidad', 'envio_direccion', 'envio_cp', 'envio_telefono'].every(k => String(r[k] || '').trim());
@@ -3433,7 +3438,7 @@ function usarDireccionPreviaEditar() {
   if (!u) return;
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
   set('es-env-nombre', u.envio_nombre); set('es-env-provincia', u.envio_provincia); set('es-env-localidad', u.envio_localidad);
-  set('es-env-direccion', u.envio_direccion); set('es-env-cp', u.envio_cp); set('es-env-telefono', u.envio_telefono);
+  set('es-env-direccion', u.envio_direccion); set('es-env-cp', u.envio_cp); set('es-env-telefono', u.envio_telefono); set('es-env-email', u.envio_email);
   const box = document.getElementById('es-dir-previa');
   if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala y tocá Guardar cambios.</div>`;
 }
@@ -3499,7 +3504,7 @@ async function guardarEdicionSobre(sobreId, numero) {
   }
   const cambios = { canal: canalNuevo, precio_total: total, para_el_dia: paraElDia, para_cliente_de: ev('es-para-cliente-de'),
     envio_nombre: ev('es-env-nombre'), envio_provincia: ev('es-env-provincia'), envio_localidad: ev('es-env-localidad'),
-    envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono') };
+    envio_direccion: ev('es-env-direccion'), envio_cp: ev('es-env-cp'), envio_telefono: ev('es-env-telefono'), envio_email: ev('es-env-email') };
   if (clienteId) cambios.cliente_id = clienteId;
   const { data: antes } = await sb.from('sobres').select('descripcion, cliente_id, canal').eq('id', sobreId).single();
   const canalCambio = !!antes && antes.canal !== canalNuevo;
@@ -5245,7 +5250,7 @@ async function correoPrevisualizar(sobreId) {
       <div class="msg">
         ${r.ambiente === 'test' ? '<b>⚠️ MODO PRUEBA:</b> no se crea un envío real.<br>' : ''}
         Se va a enviar a MiCorreo:<br>
-        <b>${esc(e.recipient.name)}</b> · Tel ${esc(e.recipient.cellPhone || '-')}<br>
+        <b>${esc(e.recipient.name)}</b> · Tel ${esc(e.recipient.cellPhone || '-')} · ${esc(e.recipient.email || '-')}<br>
         ${esc(d.streetName)} ${esc(d.streetNumber)}${d.floor ? ' piso ' + esc(d.floor) : ''}${d.apartment ? ' dpto ' + esc(d.apartment) : ''}, ${esc(d.city)} (${esc(d.provinceCode)}) CP ${esc(d.postalCode)}<br>
         Paquete ${e.shipping.weight} g · valor declarado $${Number(e.shipping.declaredValue).toLocaleString('es-AR')}
       </div>
