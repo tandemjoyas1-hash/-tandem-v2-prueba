@@ -1678,7 +1678,7 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.canal) { document.getElementById('ne-canal').value = _borradorEntrada.canal; const bx = document.getElementById('ne-envio-box'); if (bx) bx.style.display = _borradorEntrada.canal === 'REDES_ENVIO' ? 'block' : 'none'; }
-  if (_borradorEntrada.paraElDia) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
+  if (_borradorEntrada.paraElDia && _borradorEntrada.paraElDia >= fechaHoyISO()) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.proveedor) setTimeout(() => { const sp = document.getElementById('ne-proveedor'); if (sp) sp.value = _borradorEntrada.proveedor; }, 600);
   if (_borradorEntrada.tipoProducto) {
@@ -2459,6 +2459,11 @@ async function guardarNuevaEntrada() {
 
   if (!numeroSobre) {
     msgBox.innerHTML = `<div class="msg msg-error">Falta el N° de sobre.</div>`;
+    return;
+  }
+  // La fecha de entrega al cliente no puede ser anterior a hoy (se la mandamos por WhatsApp)
+  if (paraElDia && paraElDia < fechaHoyISO()) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ La fecha de entrega (${fechaCortaAR(paraElDia)}) ya pasó. Corregila en "Para el día" antes de guardar.</div>`;
     return;
   }
   if (!nombreCliente) {
