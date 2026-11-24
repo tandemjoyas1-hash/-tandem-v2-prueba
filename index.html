@@ -729,6 +729,8 @@ function pantallaNuevaEntrada() {
       <label>Teléfono WhatsApp (obligatorio) — código de área sin 0 + número sin 15</label>
       <input type="tel" id="ne-telefono" placeholder="Ej: 3511234567">
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px;"><input type="checkbox" id="ne-sin-telefono" style="width:auto;" onchange="actualizarAvisoTelefonoEntrada()"> 📵 El cliente no quiere dejar teléfono</label>
+      <label>Email (opcional — solo si el cliente quiere dejarlo)</label>
+      <input type="email" id="ne-env-email" autocomplete="off" placeholder="cliente@gmail.com">
       <div id="ne-aviso-tel" style="display:none; background:#c0392b; color:#fff; font-weight:700; padding:10px 12px; border-radius:8px; margin-top:6px;">📵 Falta el teléfono: no le va a llegar el aviso de WhatsApp.<div style="font-weight:400; font-size:12px; margin-top:2px;">Podés guardar igual, pero si lo tenés, cargalo arriba y destildá esta opción.</div></div>
 
       <label>Tipo de cliente</label>
@@ -844,8 +846,6 @@ function pantallaNuevaEntrada() {
         <input type="text" id="ne-env-cp" inputmode="numeric" autocomplete="off">
         <label>Teléfono</label>
         <input type="tel" id="ne-env-telefono" autocomplete="off">
-        <label>Email (para que MiCorreo le avise al cliente)</label>
-        <input type="email" id="ne-env-email" autocomplete="off" placeholder="cliente@gmail.com">
       </div>
 
       <label>Medio de pago de la seña</label>
@@ -2420,7 +2420,7 @@ function usarDireccionPrevia() {
   if (!u) return;
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
   set('ne-env-nombre', u.envio_nombre); set('ne-env-provincia', u.envio_provincia); set('ne-env-localidad', u.envio_localidad);
-  set('ne-env-direccion', u.envio_direccion); set('ne-env-cp', u.envio_cp); set('ne-env-telefono', u.envio_telefono); set('ne-env-email', u.envio_email);
+  set('ne-env-direccion', u.envio_direccion); set('ne-env-cp', u.envio_cp); set('ne-env-telefono', u.envio_telefono);
   const box = document.getElementById('ne-dir-previa');
   if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala antes de guardar.</div>`;
   try { guardarBorradorEntrada(); } catch (e) {}
@@ -2560,7 +2560,7 @@ async function guardarNuevaEntrada() {
   }
   // Base para el CRM: si cargaron el email, queda guardado también en la ficha del cliente
   try {
-    const em = envioDatos && (envioDatos.email || '').trim().toLowerCase();
+    const em = ((document.getElementById('ne-env-email') || {}).value || '').trim().toLowerCase();
     if (em && /^\S+@\S+\.\S+$/.test(em)) await sb.from('clientes').update({ email: em }).eq('id', clienteId);
   } catch (e) {}
 
@@ -2588,7 +2588,7 @@ async function guardarNuevaEntrada() {
       envio_direccion: envioDatos ? envioDatos.direccion : null,
       envio_cp: envioDatos ? envioDatos.cp : null,
       envio_telefono: envioDatos ? envioDatos.telefono : null,
-      envio_email: envioDatos ? (envioDatos.email || null) : null
+      envio_email: ((document.getElementById('ne-env-email') || {}).value || '').trim() || null
     })
     .select('id')
     .single();
@@ -3337,7 +3337,7 @@ window.reimprimirComprobante = reimprimirComprobante;
 async function pantallaEditarSobre(sobreId) {
   render(`<div class="card"><p>Cargando...</p></div>`);
   const { data: s, error } = await sb.from('sobres')
-    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, canal, clientes(nombre, tipo_cliente)')
+    .select('numero, precio_total, cliente_id, para_el_dia, descripcion, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, canal, clientes(nombre, tipo_cliente, email)')
     .eq('id', sobreId).single();
   if (error || !s) { render(`<div class="card"><p class="msg msg-error">No se pudo cargar el sobre.</p></div>`); return; }
   // (21/10/2026) seña ya cobrada de este sobre (para poder agregar una seña que faltó cargar)
@@ -3355,6 +3355,9 @@ async function pantallaEditarSobre(sobreId) {
       <input type="text" id="es-cliente-nombre" value="${esc(s.clientes ? s.clientes.nombre : '')}" oninput="buscarClienteEditarSobre()" autocomplete="off">
       <div id="es-cliente-sugerencias"></div>
       <div style="font-size:12px; color:#777; margin-top:4px;">Para corregir el nombre: escribí el nombre bien. Si ya existe en la lista, tocalo; si no, se crea un cliente con ese nombre y este sobre pasa a él.</div>
+
+      <label style="margin-top:12px;">✉️ Email del cliente (opcional)</label>
+      <input type="email" id="es-env-email" value="${esc(s.envio_email || (s.clientes && s.clientes.email) || '')}" placeholder="cliente@gmail.com" autocomplete="off">
 
       <label style="margin-top:12px;">👤 Para el cliente de (opcional — solo mayoristas)</label>
       <input type="text" id="es-para-cliente-de" value="${esc(s.para_cliente_de || '')}" placeholder="Ej: María Gómez" autocomplete="off">
@@ -3384,7 +3387,7 @@ async function pantallaEditarSobre(sobreId) {
         <label>Dirección</label><input type="text" id="es-env-direccion" value="${esc(s.envio_direccion || '')}">
         <label>Código postal</label><input type="text" id="es-env-cp" value="${esc(s.envio_cp || '')}">
         <label>Teléfono</label><input type="tel" id="es-env-telefono" value="${esc(s.envio_telefono || '')}">
-        <label>Email (para que MiCorreo le avise al cliente)</label><input type="email" id="es-env-email" value="${esc(s.envio_email || '')}" placeholder="cliente@gmail.com">
+
       </div>
 
       ${esCC ? '' : `
@@ -3443,7 +3446,7 @@ function usarDireccionPreviaEditar() {
   if (!u) return;
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
   set('es-env-nombre', u.envio_nombre); set('es-env-provincia', u.envio_provincia); set('es-env-localidad', u.envio_localidad);
-  set('es-env-direccion', u.envio_direccion); set('es-env-cp', u.envio_cp); set('es-env-telefono', u.envio_telefono); set('es-env-email', u.envio_email);
+  set('es-env-direccion', u.envio_direccion); set('es-env-cp', u.envio_cp); set('es-env-telefono', u.envio_telefono);
   const box = document.getElementById('es-dir-previa');
   if (box) box.innerHTML = `<div class="msg msg-ok">✅ Dirección anterior cargada. Revisala y tocá Guardar cambios.</div>`;
 }
