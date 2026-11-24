@@ -2558,6 +2558,11 @@ async function guardarNuevaEntrada() {
     msgBox.innerHTML = `<div class="msg msg-error">Error creando cliente: ${errCliente.message}</div>`;
     return;
   }
+  // Base para el CRM: si cargaron el email, queda guardado también en la ficha del cliente
+  try {
+    const em = envioDatos && (envioDatos.email || '').trim().toLowerCase();
+    if (em && /^\S+@\S+\.\S+$/.test(em)) await sb.from('clientes').update({ email: em }).eq('id', clienteId);
+  } catch (e) {}
 
   // 2) Crear el sobre
   const { data: sobreNuevo, error: errSobre } = await sb
@@ -3513,6 +3518,13 @@ async function guardarEdicionSobre(sobreId, numero) {
 
   const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${error.message}</div>`; return; }
+
+  // Base para el CRM: el email del envío también queda en la ficha del cliente
+  try {
+    const em = (ev('es-env-email') || '').toLowerCase();
+    const cid = clienteId || (antes && antes.cliente_id) || null;
+    if (em && cid && /^\S+@\S+\.\S+$/.test(em)) await sb.from('clientes').update({ email: em }).eq('id', cid);
+  } catch (e) {}
 
   // Mantiene los movimientos de caja de este sobre apuntando al mismo cliente
   if (clienteId) await sb.from('movimientos_caja').update({ cliente_id: clienteId }).eq('sobre_id', sobreId);
