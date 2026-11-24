@@ -7666,6 +7666,8 @@ let _crmClientes = null;
 let _crmFiltro = 'todos';
 let _crmSoloWsp = true;
 let _crmBusca = '';
+let _crmProd = '';
+let _crmBuscaCompra = '';
 
 const CRM_GRUPOS = [
   { id: 'todos',      txt: 'Todos' },
@@ -7678,11 +7680,14 @@ const CRM_GRUPOS = [
   { id: 'con_email',  txt: 'Con email' }
 ];
 
-async function crmLeerTodo(tabla, columnas, filtroOculto) {
+const crmNorm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+async function crmLeerTodo(tabla, columnas, opciones) {
+  const o = opciones || {};
   const filas = [];
   for (let desde = 0; ; desde += 1000) {
-    let q = sb.from(tabla).select(columnas).order('id').range(desde, desde + 999);
-    if (filtroOculto) q = q.eq('oculto', false);
+    let q = sb.from(tabla).select(columnas).order(o.orden || 'id').range(desde, desde + 999);
+    if (o.filtro) q = o.filtro(q);
     const { data, error } = await q;
     if (error) throw error;
     filas.push(...data);
@@ -7715,30 +7720,45 @@ async function pantallaCRMClientes() {
   </style>
     <div class="card crm-odoo">
       <h2>👥 Clientes</h2>
-      <div class="sub">Para ver quién compró, cuándo y cuánto. Por ahora solo mira: no manda mensajes.</div>
+      <div class="sub">Para ver quién compró, qué compró y cuándo. Por ahora solo mira: no manda mensajes.</div>
       <div id="crm-cuerpo" style="margin-top:10px;">Cargando clientes...</div>
     </div>`);
   try {
-    const [clientes, sobres] = await Promise.all([
-      crmLeerTodo('clientes', 'id, nombre, telefono, tipo_cliente, email, sin_avisos_whatsapp, acepta_comunicaciones', true),
-      crmLeerTodo('sobres', 'id, cliente_id, fecha_entrada, precio_total, canal', false)
+    const [clientes, sobres, movs, codigos] = await Promise.all([
+      crmLeerTodo('clientes', 'id, nombre, telefono, tipo_cliente, email, sin_avisos_whatsapp, acepta_comunicaciones', { filtro: q => q.eq('oculto', false) }),
+      crmLeerTodo('sobres', 'id, cliente_id, fecha_entrada, precio_total, canal, descripcion'),
+      // Qué compró: ingresos de caja con tipo de producto (códigos desde 1000), ligados a un cliente
+      crmLeerTodo('movimientos_caja', 'id, cliente_id, codigo, ingresa_egresa', { filtro: q => q.gte('codigo', 1000).not('cliente_id', 'is', null).ilike('ingresa_egresa', 'ingres%') }),
+      crmLeerTodo('codigos_producto', 'codigo, descripcion', { orden: 'codigo' })
     ]);
+    const nombreCodigo = {};
+    codigos.forEach(c => { nombreCodigo[c.codigo] = c.descripcion; });
     const porCliente = {};
+    const get = id => porCliente[id] || (porCliente[id] = { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '' });
     sobres.forEach(s => {
       if (!s.cliente_id) return;
-      const a = porCliente[s.cliente_id] || (porCliente[s.cliente_id] = { pedidos: 0, total: 0, ultima: null, envio: false });
+      const a = get(s.cliente_id);
       a.pedidos++;
       a.total += Number(s.precio_total || 0);
-      if (s.fecha_entrada && (!a.ultima || s.fecha_entrada > a.ultima)) a.ultima = s.fecha_entrada;
+      if (s.fecha_entrada && (!a.ultima || s.fecha_entrada > a.ultima)) { a.ultima = s.fecha_entrada; a.ultimaDesc = s.descripcion || ''; }
       if (s.canal === 'REDES_ENVIO') a.envio = true;
+      a.texto += ' ' + crmNorm(s.descripcion);
+    });
+    movs.forEach(m => {
+      const nom = nombreCodigo[m.codigo];
+      if (!nom) return;
+      const a = get(m.cliente_id);
+      a.prods[nom] = (a.prods[nom] || 0) + 1;
+      a.texto += ' ' + crmNorm(nom);
     });
     const hoy = new Date();
     _crmClientes = clientes.map(c => {
-      const a = porCliente[c.id] || { pedidos: 0, total: 0, ultima: null, envio: false };
+      const a = porCliente[c.id] || { pedidos: 0, total: 0, ultima: null, ultimaDesc: '', envio: false, prods: {}, texto: '' };
       const tel = String(c.telefono || '').replace(/\D/g, '');
       return {
         id: c.id, nombre: c.nombre || '', tipo: c.tipo_cliente || '', email: (c.email || '').trim(),
-        tel: tel, pedidos: a.pedidos, total: a.total, ultima: a.ultima, envio: a.envio,
+        tel: tel, pedidos: a.pedidos, total: a.total, ultima: a.ultima, ultimaDesc: a.ultimaDesc, envio: a.envio,
+        prods: a.prods, texto: a.texto,
         dias: a.ultima ? Math.floor((hoy - new Date(a.ultima)) / 86400000) : null,
         contactable: !!tel && !c.sin_avisos_whatsapp && c.acepta_comunicaciones !== false
       };
@@ -7767,44 +7787,66 @@ function crmCumple(c, grupo) {
 function crmPintar() {
   const box = document.getElementById('crm-cuerpo');
   if (!box || !_crmClientes) return;
-  const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const q = norm(_crmBusca);
-  const base = _crmClientes.filter(c => (!_crmSoloWsp || c.contactable) && (!q || norm(c.nombre).includes(q)));
+  const qNombre = crmNorm(_crmBusca);
+  const qCompra = crmNorm(_crmBuscaCompra).trim();
+  const baseSinProd = _crmClientes.filter(c =>
+    (!_crmSoloWsp || c.contactable) &&
+    (!qNombre || crmNorm(c.nombre).includes(qNombre)) &&
+    (!qCompra || c.texto.includes(qCompra)));
+  const base = baseSinProd.filter(c => !_crmProd || c.prods[_crmProd]);
   const conteo = id => base.filter(c => crmCumple(c, id)).length;
   const lista = base.filter(c => crmCumple(c, _crmFiltro))
     .sort((a, b) => (b.ultima || '').localeCompare(a.ultima || ''));
+  // tipos de producto para el desplegable (con cuántos clientes lo compraron)
+  const cuenta = {};
+  baseSinProd.forEach(c => Object.keys(c.prods).forEach(n => { cuenta[n] = (cuenta[n] || 0) + 1; }));
+  const tipos = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a]);
+  if (_crmProd && !cuenta[_crmProd]) tipos.unshift(_crmProd);
   const conEmail = _crmClientes.filter(c => c.email).length;
   const plata = n => '$' + Number(n || 0).toLocaleString('es-AR');
   const mostrar = lista.slice(0, 100);
   box.innerHTML = `
     <div class="crm-resumen">${_crmClientes.length} clientes · 📱 ${_crmClientes.filter(c => c.contactable).length} con WhatsApp para avisar · ✉️ ${conEmail} con email cargado</div>
-    <input type="text" placeholder="Buscar por nombre" value="${esc(_crmBusca)}" oninput="crmBuscar(this.value)" autocomplete="off" style="margin-top:8px;">
-    <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:6px 0;">
+    <input type="text" id="crm-q-nombre" placeholder="Buscar por nombre" value="${esc(_crmBusca)}" oninput="crmBuscar(this.value)" autocomplete="off" style="margin-top:8px;">
+    <label style="font-size:13px; display:block; margin-top:8px;">Qué compró</label>
+    <select id="crm-q-prod" onchange="crmProducto(this.value)" style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:4px; background:#fff;">
+      <option value="">Cualquier producto</option>
+      ${tipos.map(n => `<option value="${esc(n)}" ${n === _crmProd ? 'selected' : ''}>${esc(n)} (${cuenta[n] || 0})</option>`).join('')}
+    </select>
+    <input type="text" id="crm-q-compra" placeholder="Buscar en lo que pidió (ej: mamá, acero, inicial)" value="${esc(_crmBuscaCompra)}" oninput="crmBuscarCompra(this.value)" autocomplete="off" style="margin-top:8px;">
+    <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:8px 0 2px;">
       <input type="checkbox" ${_crmSoloWsp ? 'checked' : ''} onchange="crmSoloWspCambio(this.checked)" style="width:auto;"> Solo clientes a los que se les puede avisar por WhatsApp
     </label>
     <div class="crm-grupos">
       ${CRM_GRUPOS.map(g => `<button type="button" class="crm-chip ${g.id === _crmFiltro ? 'on' : ''}" onclick="crmFiltrar('${g.id}')">${g.txt} <b>${conteo(g.id)}</b></button>`).join('')}
     </div>
     <div style="font-size:13px; margin:6px 0;"><b>${lista.length}</b> clientes en este grupo${lista.length > 100 ? ' (se muestran los 100 con compra más reciente)' : ''}</div>
-    ${mostrar.length ? mostrar.map(c => `
-      <div class="crm-card ${c.tipo === 'MAYORISTA' || c.tipo === 'TALLER' ? 'may' : ''}">
-        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;"><b>${esc(c.nombre)}</b><span class="crm-tag ${c.tipo === 'MAYORISTA' || c.tipo === 'TALLER' ? 'may' : ''}">${esc(etiquetaTipoCliente(c.tipo) || c.tipo)}</span></div>
+    ${mostrar.length ? mostrar.map(c => {
+      const prods = Object.keys(c.prods).sort((a, b) => c.prods[b] - c.prods[a]);
+      const mayo = c.tipo === 'MAYORISTA' || c.tipo === 'TALLER';
+      return `
+      <div class="crm-card ${mayo ? 'may' : ''}">
+        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;"><b>${esc(c.nombre)}</b><span class="crm-tag ${mayo ? 'may' : ''}">${esc(etiquetaTipoCliente(c.tipo) || c.tipo)}</span></div>
         <div style="font-size:13px; color:#555; margin-top:4px;">
           ${c.pedidos ? `🛍️ ${c.pedidos} pedido${c.pedidos > 1 ? 's' : ''} · ${plata(c.total)} · última compra ${new Date(c.ultima).toLocaleDateString('es-AR')} (hace ${c.dias} días)` : 'Sin pedidos registrados'}
         </div>
+        ${prods.length ? `<div style="margin-top:5px; display:flex; flex-wrap:wrap; gap:4px;">${prods.map(n => `<span class="crm-tag">${esc(n)}${c.prods[n] > 1 ? ' ×' + c.prods[n] : ''}</span>`).join('')}</div>` : ''}
+        ${c.ultimaDesc ? `<div style="font-size:12px; color:#666; margin-top:5px;">📝 Último pedido: ${esc(c.ultimaDesc.length > 90 ? c.ultimaDesc.slice(0, 90) + '…' : c.ultimaDesc)}</div>` : ''}
         <div style="font-size:12px; color:#8a8378; margin-top:3px;">${c.tel ? '📱 ' + esc(c.tel) : '⚠️ sin teléfono'}${c.contactable ? '' : c.tel ? ' · 🚫 no avisar' : ''}${c.email ? ' · ✉️ ' + esc(c.email) : ''}${c.envio ? ' · 📦 con envío' : ''}</div>
-      </div>`).join('') : '<div class="vacio">No hay clientes en este grupo.</div>'}`;
+      </div>`; }).join('') : '<div class="vacio">No hay clientes en este grupo.</div>'}`;
 }
 
-function crmFiltrar(id) { _crmFiltro = id; crmPintar(); }
-function crmSoloWspCambio(v) { _crmSoloWsp = !!v; crmPintar(); }
-function crmBuscar(v) {
-  _crmBusca = v;
-  crmPintar();
-  const inp = document.querySelector('#crm-cuerpo input[type="text"]');
+function crmRefocar(id, v) {
+  const inp = document.getElementById(id);
   if (inp) { inp.focus(); inp.setSelectionRange(v.length, v.length); }
 }
+function crmFiltrar(id) { _crmFiltro = id; crmPintar(); }
+function crmSoloWspCambio(v) { _crmSoloWsp = !!v; crmPintar(); }
+function crmProducto(v) { _crmProd = v; crmPintar(); }
+function crmBuscar(v) { _crmBusca = v; crmPintar(); crmRefocar('crm-q-nombre', v); }
+function crmBuscarCompra(v) { _crmBuscaCompra = v; crmPintar(); crmRefocar('crm-q-compra', v); }
 window.crmFiltrar = crmFiltrar; window.crmSoloWspCambio = crmSoloWspCambio; window.crmBuscar = crmBuscar;
+window.crmProducto = crmProducto; window.crmBuscarCompra = crmBuscarCompra;
 
 // ============================================================
 // NUEVO (27/09/2026): pagos fijos que se repiten todos los meses (sindicatos, impuestos,
