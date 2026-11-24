@@ -2931,7 +2931,7 @@ function armarHtmlComprobante(c) {
       ${/^RETORNO/i.test(String(c.trabajo || '')) ? '<div class="t-retorno">🔁 TRABAJO DE RETORNO</div>' : ''}
       <div class="t-sobre">#${esc(c.numero)}</div>
       <div style="display:flex;justify-content:center;margin:2px 0 6px;">
-        <span style="border:0.5mm solid #111;border-radius:2mm;padding:1mm 3mm;font-size:15px;font-weight:900;${c.canal === 'REDES_ENVIO' ? 'background:#111;color:#fff;' : ''}">${c.canal === 'REDES_ENVIO' ? '📦 CON ENVÍO' : 'SIN ENVÍO'}</span>
+        <span style="border:0.5mm solid #111;border-radius:2mm;padding:1.5mm 4mm;font-size:24px;font-weight:900;${c.canal === 'REDES_ENVIO' ? 'background:#111;color:#fff;' : ''}">${c.canal === 'REDES_ENVIO' ? '📦 CON ENVÍO' : 'SIN ENVÍO'}</span>
       </div>
       <div class="t-fecha">FECHA DE ENTREGA: ${esc(fechaIsoALinda(fechaTaller(c.paraElDia)))}</div>
       <div style="position:absolute;top:5mm;left:5mm;text-align:left;font-size:27px;font-weight:900;color:#000;line-height:1;"><small style="display:block;font-size:11px;font-weight:700;letter-spacing:0.5px;">CLIENTE</small>${c.tipoCliente === 'MAYORISTA' ? 'POR<br>MAYOR' : c.tipoCliente === 'TALLER' ? 'TALLER' : 'POR<br>MENOR'}</div>
