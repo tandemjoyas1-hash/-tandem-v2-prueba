@@ -760,6 +760,16 @@ function pantallaNuevaEntrada() {
         <div id="ne-lista-msg" style="margin-top:6px; font-size:13px;"></div>
       </details>
 
+      <div style="margin-top:10px;">
+        <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:700;">
+          <input type="checkbox" id="ne-con-envio" style="width:auto; margin:0;" onchange="toggleEnvioEntrada()"> 📦 Con envío
+        </label>
+        <div id="ne-costo-envio-fila" style="display:none; margin-top:6px;">
+          <label style="margin-top:0;">Costo de envío $ (se suma al total)</label>
+          <input type="number" id="ne-costo-envio" inputmode="decimal" placeholder="$ precio del envío" oninput="recalcularTotalItems()">
+        </div>
+      </div>
+
       <label style="display:flex; align-items:center; gap:8px; margin-top:10px;">
         <input type="checkbox" id="ne-diseno-unico" style="width:auto; margin:0;">
         ✨ Diseño único / personalizado — tildar solo si es una creación (no sale sin foto para el catálogo)
@@ -822,7 +832,7 @@ function pantallaNuevaEntrada() {
       <input type="number" id="ne-sena" placeholder="0">
 
       <label>Canal de venta</label>
-      <select id="ne-canal" onchange="mostrarDatosEnvio()">
+      <select id="ne-canal" onchange="mostrarDatosEnvio(); recalcularTotalItems()">
         <option value="">— Elegí el canal —</option>
         <option value="LOCAL">Local</option>
         <option value="REDES_ENVIO">Redes — con envío</option>
@@ -919,6 +929,7 @@ function guardarBorradorEntrada() {
     medioPago: g('ne-medio-pago'),
     canal: g('ne-canal'),
     paraElDia: g('ne-para-el-dia'),
+    costoEnvio: g('ne-costo-envio'),
     destino: g('ne-destino'),
     proveedor: g('ne-proveedor'),
     dUnico: !!(document.getElementById('ne-diseno-unico') && document.getElementById('ne-diseno-unico').checked),
@@ -1676,6 +1687,8 @@ function restaurarBorradorEntrada() {
   document.getElementById('ne-sena').value = _borradorEntrada.sena;
   document.getElementById('ne-medio-pago').value = _borradorEntrada.medioPago;
   if (_borradorEntrada.canal) { document.getElementById('ne-canal').value = _borradorEntrada.canal; const bx = document.getElementById('ne-envio-box'); if (bx) bx.style.display = _borradorEntrada.canal === 'REDES_ENVIO' ? 'block' : 'none'; }
+  if (_borradorEntrada.costoEnvio) { const ce = document.getElementById('ne-costo-envio'); if (ce) ce.value = _borradorEntrada.costoEnvio; }
+  sincronizarEnvioEntrada();
   if (_borradorEntrada.paraElDia) { document.getElementById('ne-para-el-dia').value = _borradorEntrada.paraElDia; mostrarFechaTaller(); }
   if (_borradorEntrada.cantidad) document.getElementById('ne-cantidad').value = _borradorEntrada.cantidad;
   if (_borradorEntrada.proveedor) setTimeout(() => { const sp = document.getElementById('ne-proveedor'); if (sp) sp.value = _borradorEntrada.proveedor; }, 600);
@@ -2348,9 +2361,26 @@ function leerItemsEntrada() {
   return items;
 }
 
+function envioCostoEntrada() {
+  const c = document.getElementById('ne-canal'), i = document.getElementById('ne-costo-envio');
+  return (c && c.value === 'REDES_ENVIO' && i) ? (parseFloat(i.value) || 0) : 0;
+}
+function sincronizarEnvioEntrada() {
+  const c = document.getElementById('ne-canal'), chk = document.getElementById('ne-con-envio'), fila = document.getElementById('ne-costo-envio-fila');
+  if (!c || !chk || !fila) return;
+  const es = c.value === 'REDES_ENVIO';
+  chk.checked = es; fila.style.display = es ? 'block' : 'none';
+}
+function toggleEnvioEntrada() {
+  const c = document.getElementById('ne-canal'), chk = document.getElementById('ne-con-envio');
+  if (chk.checked) c.value = 'REDES_ENVIO'; else if (c.value === 'REDES_ENVIO') c.value = '';
+  mostrarDatosEnvio();
+  recalcularTotalItems();
+}
+window.toggleEnvioEntrada = toggleEnvioEntrada;
 function recalcularTotalItems() {
   const items = leerItemsEntrada();
-  const suma = items.reduce((a, it) => a + it.precio, 0);
+  const suma = items.reduce((a, it) => a + it.precio, 0) + envioCostoEntrada();
   if (suma > 0) document.getElementById('ne-total').value = suma;
 }
 window.recalcularTotalItems = recalcularTotalItems;
@@ -2365,6 +2395,7 @@ function limpiarItemsEntrada() {
 }
 
 function mostrarDatosEnvio() {
+  sincronizarEnvioEntrada();
   const box = document.getElementById('ne-envio-box');
   if (!box) return;
   const esEnvio = document.getElementById('ne-canal').value === 'REDES_ENVIO';
@@ -2442,8 +2473,11 @@ async function guardarNuevaEntrada() {
   const numeroSobre = normalizarSobre(document.getElementById('ne-sobre').value.trim());
   const nombreCliente = document.getElementById('ne-cliente').value.trim();
   let tipoCliente = document.getElementById('ne-tipo-cliente').value;
-  const itemsEntrada = leerItemsEntrada();
-  const trabajo = itemsEntrada.map(it => it.descripcion).filter(Boolean).join(' + ');
+  const itemsTrabajo = leerItemsEntrada();
+  const trabajo = itemsTrabajo.map(it => it.descripcion).filter(Boolean).join(' + ');
+  // El costo de envío se carga aparte (no va en la descripción del taller) y se guarda como un ítem "Envío"
+  const costoEnvio = envioCostoEntrada();
+  const itemsEntrada = costoEnvio > 0 ? [...itemsTrabajo, { descripcion: 'Envío', precio: costoEnvio }] : itemsTrabajo;
   const paraElDia = document.getElementById('ne-para-el-dia').value || null;
   const destino = document.getElementById('ne-destino').value;
   const canal = document.getElementById('ne-canal').value;
@@ -2733,6 +2767,7 @@ async function guardarNuevaEntrada() {
   mostrarFechaTaller();
   document.getElementById('ne-canal').value = '';
   ['nombre','provincia','localidad','direccion','cp','telefono'].forEach(k => { const e = document.getElementById('ne-env-' + k); if (e) e.value = ''; });
+  { const ce = document.getElementById('ne-costo-envio'); if (ce) ce.value = ''; }
   mostrarDatosEnvio();
   document.getElementById('ne-total').value = '';
   document.getElementById('ne-sena').value = '';
