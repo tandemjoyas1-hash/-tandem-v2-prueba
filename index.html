@@ -761,12 +761,12 @@ function pantallaNuevaEntrada() {
       </details>
 
       <div style="margin-top:10px;">
-        <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:700;">
-          <input type="checkbox" id="ne-con-envio" style="width:auto; margin:0;" onchange="toggleEnvioEntrada()"> 📦 Con envío
+        <label style="display:flex; align-items:center; gap:12px; margin:0; font-weight:900; font-size:22px; padding:12px 14px; border:2px solid #111; border-radius:10px; background:#fff8e1; cursor:pointer;">
+          <input type="checkbox" id="ne-con-envio" style="width:28px; height:28px; margin:0; flex:none;" onchange="toggleEnvioEntrada()"> 📦 CON ENVÍO
         </label>
         <div id="ne-costo-envio-fila" style="display:none; margin-top:6px;">
-          <label style="margin-top:0;">Costo de envío $ (se suma al total)</label>
-          <input type="number" id="ne-costo-envio" inputmode="decimal" placeholder="$ precio del envío" oninput="recalcularTotalItems()">
+          <label style="margin-top:0; font-size:16px; font-weight:700;">Costo de envío $ (se suma al total)</label>
+          <input type="number" id="ne-costo-envio" inputmode="decimal" placeholder="$ precio del envío" oninput="recalcularTotalItems()" style="font-size:20px; font-weight:700;">
         </div>
       </div>
 
