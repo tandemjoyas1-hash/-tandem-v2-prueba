@@ -5063,10 +5063,23 @@ async function pantallaClienteSobre(numero, codigo) {
       ? `<div style="margin-top:10px; font-size:13px; color:#555;">Fecha estimada: ${new Date(fila.para_el_dia + 'T00:00:00').toLocaleDateString('es-AR')}</div>`
       : '';
 
+    // NUEVO (24/11/2026): envío por Correo Argentino → código de seguimiento grande + un botón que
+    // lo copia y abre el formulario de Correo (el cliente solo pega y toca Consultar).
+    const segCod = (fila.seguimiento && (fila.empresa_envio || 'CORREO') === 'CORREO') ? String(fila.seguimiento).replace(/[^A-Za-z0-9]/g, '') : '';
+    const filaEnvio = segCod ? `
+      <div style="margin-top:18px; padding:14px; background:#eef4ee; border-radius:10px;">
+        <div style="font-size:16px; font-weight:700; color:#2f5c3d;">📦 Enviado por Correo Argentino</div>
+        <div style="margin-top:12px; font-size:13px; color:#555;">Tu código de seguimiento:</div>
+        <div style="margin-top:6px; border:2px dashed #a67c3d; background:#faf6ee; border-radius:10px; padding:12px 6px; font-size:18px; font-weight:700; letter-spacing:.5px; word-break:break-all; user-select:all;">${segCod}</div>
+        <button type="button" class="btn btn-verde" style="margin-top:12px; width:100%;" onclick="copiarYAbrirCorreo('${segCod}')">📋 Copiar código y abrir Correo</button>
+        <div id="cli-seg-msg" style="margin-top:8px; font-size:13px; color:#555;">Al abrir Correo, pegá el código en "Número" y tocá Consultar.</div>
+      </div>` : '';
+
     bloqueEstado = `
       <div style="font-size:20px; font-weight:700; color:${color};">${estado}</div>
       ${filaFecha}
-      ${filaSaldo}`;
+      ${filaSaldo}
+      ${filaEnvio}`;
   } else {
     bloqueEstado = `<div style="font-size:14px; color:#8a8378;">No encontramos el estado en el sistema — consultanos por WhatsApp.</div>`;
   }
@@ -5080,6 +5093,25 @@ async function pantallaClienteSobre(numero, codigo) {
     </div>`;
 }
 window.pantallaClienteSobre = pantallaClienteSobre;
+
+// Copia el código y abre el formulario de seguimiento de Correo Argentino (todo en un solo toque).
+async function copiarYAbrirCorreo(cod) {
+  const url = 'https://www.correoargentino.com.ar/formularios/e-commerce';
+  let copiado = false;
+  try { await navigator.clipboard.writeText(cod); copiado = true; }
+  catch (e) {
+    try {
+      const t = document.createElement('textarea'); t.value = cod; t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select(); copiado = document.execCommand('copy'); document.body.removeChild(t);
+    } catch (e2) { copiado = false; }
+  }
+  const m = document.getElementById('cli-seg-msg');
+  if (m) m.innerHTML = copiado
+    ? '✅ Código copiado. En Correo, mantené apretado el campo "Número", tocá Pegar y luego Consultar.'
+    : 'Copiá el código de arriba (mantenelo apretado) y pegalo en "Número" en la página de Correo.';
+  window.open(url, '_blank');
+}
+window.copiarYAbrirCorreo = copiarYAbrirCorreo;
 
 // ============================================================
 // NUEVO (21/09/2026): escanear con la cámara el QR del comprobante y abrir ese sobre.
