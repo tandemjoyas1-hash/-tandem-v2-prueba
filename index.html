@@ -2234,7 +2234,7 @@ function buscarClienteEnEntrada() {
     const palabras = normalizarNombreCliente(nombre).split(' ').filter(Boolean);
     const digitos = nombre.replace(/\D/g, '');
     const buscaTelefono = digitos.length >= 3 && digitos.length >= nombre.replace(/\s/g, '').length - 2;
-    const { data: todos } = await sb.from('clientes').select('id, nombre, tipo_cliente, telefono').eq('oculto', false);
+    const todos = await traerClientesVisibles('id, nombre, tipo_cliente, telefono');
     const data = (todos || [])
       .filter(c => {
         const n = normalizarNombreCliente(c.nombre);
@@ -4619,7 +4619,7 @@ async function nuevoMayoristaGuardar(forzar) {
   const tel = normalizarTelefonoAR(document.getElementById('nm-tel').value);
   if (nombre.length < 2) { msg.innerHTML = `<div class="msg msg-error">Falta el nombre.</div>`; return; }
   const norm = normalizarNombreCliente(nombre);
-  const { data: todos } = await sb.from('clientes').select('id, nombre, tipo_cliente').eq('oculto', false);
+  const todos = await traerClientesVisibles('id, nombre, tipo_cliente');
   const parecidos = (todos || []).filter(c => {
     const n = normalizarNombreCliente(c.nombre);
     return n === norm || n.includes(norm) || norm.includes(n) ||
@@ -6765,7 +6765,7 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   // "maria" (sin tilde) no encontraba a "María" (con tilde) y se duplicaba el cliente. Corregido
   // el 17/09/2026: se trae la lista completa (son ~400, no pesa nada) y se compara ya sin tildes.
   const normEscrito = normalizarNombreCliente(nombreCliente);
-  const { data: todos } = await sb.from('clientes').select('id, nombre').eq('oculto', false);
+  const todos = await traerClientesVisibles('id, nombre');
   const candidatos = todos || [];
   let parecido = null;
   for (const c of candidatos) {
@@ -6793,6 +6793,22 @@ async function buscarOCrearCliente(nombreCliente, tipoCliente, telefono) {
   return nuevo.id;
 }
 window.buscarOCrearCliente = buscarOCrearCliente;
+
+// (25/11/2026) Supabase devuelve como máximo 1000 filas por consulta. Con más de 1000 clientes, los últimos
+// (los más nuevos) no aparecían en el buscador de Nueva Entrada ni en la detección de duplicados.
+// Esta función trae TODOS los clientes visibles de a 1000.
+async function traerClientesVisibles(columnas) {
+  const todos = [];
+  const paso = 1000;
+  for (let desde = 0; desde < 20000; desde += paso) {
+    const { data, error } = await sb.from('clientes').select(columnas).eq('oculto', false).order('id').range(desde, desde + paso - 1);
+    if (error || !data) break;
+    todos.push(...data);
+    if (data.length < paso) break;
+  }
+  return todos;
+}
+window.traerClientesVisibles = traerClientesVisibles;
 
 // Herramientas para comparar nombres de clientes y detectar posibles duplicados
 // (ej. "Zipiur" vs "Zipiur Joyas" vs "Zipiun Joyas" — mismo cliente cargado distinto).
@@ -6890,7 +6906,7 @@ async function cargarChequeoDelDia(fecha, modo) {
         : `${negativos.length} movimiento(s) con monto negativo — probablemente un error al tipear.`
     });
 
-    const { data: todosClientes } = await sb.from('clientes').select('id, nombre').eq('oculto', false);
+    const todosClientes = await traerClientesVisibles('id, nombre');
     const listaClientes = (todosClientes || [])
       .map(c => ({ id: c.id, nombre: c.nombre, norm: normalizarNombreCliente(c.nombre) }))
       .filter(c => c.norm.length >= 4);
