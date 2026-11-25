@@ -7063,13 +7063,17 @@ async function cargarCajaDelDia() {
       totalIngresa += monto;
       porMedioIngresa[medio] = (porMedioIngresa[medio] || 0) + monto;
     } else {
-      totalEgresa += monto;
       porMedioEgresa[medio] = (porMedioEgresa[medio] || 0) + monto;
-      if (Number(m.codigo) === 550) totalRetiros += monto;
+      // Un "retiro" no es un gasto: la plata se va del cajón pero queda guardada en otro lado.
+      if (/^\s*retiro/i.test(m.descripcion || '')) totalRetiros += monto;
+      else totalEgresa += monto;
     }
   });
 
-  const egresosLista = movimientos.filter(m => m.ingresa_egresa !== 'INGRESA' && Number(m.codigo) !== 100).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const _esRetiroCD = m => /^\s*retiro/i.test(m.descripcion || '');
+  const _egresosTodos = movimientos.filter(m => m.ingresa_egresa !== 'INGRESA' && Number(m.codigo) !== 100).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const egresosLista = _egresosTodos.filter(m => !_esRetiroCD(m));
+  const retirosLista = _egresosTodos.filter(_esRetiroCD);
   const efectivoNetoHoy = apertura + (porMedioIngresa['EFECTIVO'] || 0) - (porMedioEgresa['EFECTIVO'] || 0);
 
   const todosLosMedios = [...new Set([...Object.keys(porMedioIngresa), ...Object.keys(porMedioEgresa)])];
@@ -7130,13 +7134,14 @@ async function cargarCajaDelDia() {
         <div style="font-size:19px; font-weight:700; color:#2f6d1f;">$${totalIngresa.toLocaleString('es-AR')}</div>
       </div>
       <div class="lista-sobre" style="text-align:center; padding:12px; cursor:pointer;" onclick="var b=document.getElementById('cd-egresos-detalle'); b.style.display = b.style.display==='none' ? 'block' : 'none';">
-        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Total de egresos hoy</div>
+        <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Gastos de hoy</div>
         <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalEgresa.toLocaleString('es-AR')}</div>
         <div style="font-size:11px; color:#9a3a1e; margin-top:2px;">👆 tocá para ver cuáles</div>
       </div>
-      <div class="lista-sobre" style="text-align:center; padding:12px;">
+      <div class="lista-sobre" style="text-align:center; padding:12px; cursor:pointer;" onclick="var b=document.getElementById('cd-retiros-detalle'); b.style.display = b.style.display==='none' ? 'block' : 'none';">
         <div style="font-size:11px; color:#8a8378; margin-bottom:4px;">Retiros de efectivo hoy</div>
         <div style="font-size:19px; font-weight:700; color:#9a3a1e;">$${totalRetiros.toLocaleString('es-AR')}</div>
+        <div style="font-size:11px; color:#9a3a1e; margin-top:2px;">👆 tocá para ver</div>
       </div>
       <div style="background:#1a1a1a; border-radius:14px; padding:12px; text-align:center;">
         <div style="font-size:11px; color:#d4af6a; margin-bottom:4px;">Efectivo en caja hoy</div>
@@ -7145,8 +7150,17 @@ async function cargarCajaDelDia() {
     </div>
 
     <div id="cd-egresos-detalle" class="lista-sobre" style="display:none; margin-top:8px;">
-      <div style="font-weight:700; margin-bottom:6px;">📤 Egresos (${egresosLista.length})</div>
-      ${egresosLista.length === 0 ? '<div style="color:#8a8378;">No hubo egresos.</div>' : egresosLista.map(m => `
+      <div style="font-weight:700; margin-bottom:6px;">📤 Gastos (${egresosLista.length})</div>
+      ${egresosLista.length === 0 ? '<div style="color:#8a8378;">No hubo gastos.</div>' : egresosLista.map(m => `
+        <div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-top:1px solid #eee; font-size:13px;">
+          <span><strong>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</strong> · ${String(m.descripcion || '(sin descripción)').replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}<br><span style="color:#8a8378; font-size:11px;">${m.vendedora || ''} · ${m.medio_pago || ''}</span></span>
+          <strong style="color:#9a3a1e; white-space:nowrap;">$${(Number(m.monto) || 0).toLocaleString('es-AR')}</strong>
+        </div>`).join('')}
+    </div>
+
+    <div id="cd-retiros-detalle" class="lista-sobre" style="display:none; margin-top:8px;">
+      <div style="font-weight:700; margin-bottom:6px;">💰 Retiros (${retirosLista.length})</div>
+      ${retirosLista.length === 0 ? '<div style="color:#8a8378;">No hubo retiros.</div>' : retirosLista.map(m => `
         <div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-top:1px solid #eee; font-size:13px;">
           <span><strong>${new Date(m.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}</strong> · ${String(m.descripcion || '(sin descripción)').replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}<br><span style="color:#8a8378; font-size:11px;">${m.vendedora || ''} · ${m.medio_pago || ''}</span></span>
           <strong style="color:#9a3a1e; white-space:nowrap;">$${(Number(m.monto) || 0).toLocaleString('es-AR')}</strong>
@@ -7154,7 +7168,7 @@ async function cargarCajaDelDia() {
     </div>
 
     <div style="text-align:right; font-size:13px; color:#8a8378; margin-top:8px;">
-      ${apertura > 0 ? `Apertura del día: <strong>$${apertura.toLocaleString('es-AR')}</strong> · ` : ''}Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa).toLocaleString('es-AR')}</strong>
+      ${apertura > 0 ? `Apertura del día: <strong>$${apertura.toLocaleString('es-AR')}</strong> · ` : ''}Neto del día: <strong style="color:#2c2c2a;">$${(totalIngresa - totalEgresa - totalRetiros).toLocaleString('es-AR')}</strong>
     </div>
 
     <label style="margin-top:16px;">Por medio de pago (ya descontando gastos/retiros de ese medio)</label>
