@@ -3601,6 +3601,16 @@ async function guardarEdicionSobre(sobreId, numero) {
   const descCambio = !!antes && descripcionNueva !== (antes.descripcion || '').trim();
   if (descCambio) cambios.descripcion = descripcionNueva;
 
+  // (26/11/2026) Seña agregada después: el sobre tiene que tener tipo de producto (se hereda del primer movimiento).
+  let tipoSenaExtra = '';
+  if (senaExtra > 0) {
+    tipoSenaExtra = await tipoProductoDeSobre(sobreId);
+    if (!tipoSenaExtra) {
+      msgBox.innerHTML = `<div class="msg msg-error">⚠️ Este sobre no tiene tipo de producto cargado, así que no se puede agregar la seña desde acá. Registrá el pago desde "Pago parcial" (ahí se elige el tipo de producto). No se guardó ningún cambio.</div>`;
+      return;
+    }
+  }
+
   const { error } = await sb.from('sobres').update(cambios).eq('id', sobreId);
   if (error) { msgBox.innerHTML = `<div class="msg msg-error">No se pudo guardar: ${error.message}</div>`; return; }
 
@@ -3630,7 +3640,7 @@ async function guardarEdicionSobre(sobreId, numero) {
       canal: b.canal || null,
       cliente_id: clienteId || b.cliente_id || null,
       sobre_id: sobreId,
-      codigo: b.codigo || null,
+      codigo: parseInt(b.codigo || tipoSenaExtra),
       proveedor_id: b.proveedor_id || null
     });
     if (errSena) { msgBox.innerHTML = `<div class="msg msg-error">Se guardó el sobre, pero NO la seña: ${errSena.message}</div>`; return; }
@@ -3802,13 +3812,24 @@ async function guardarFichaCatalogo(sobreId, numero, modo, extra) {
     const esCuentaCorriente = medioPago === 'CUENTA CORRIENTE';
     const montoCobrado = esCuentaCorriente ? 0 : saldo;
 
+    // (26/11/2026) No se cobra sin tipo de producto: si el sobre no tiene, se vuelve a Retiro (ahí se elige de la lista).
+    let tipoProductoCobro = '';
+    if (montoCobrado > 0) {
+      tipoProductoCobro = await tipoProductoDeSobre(sobreId);
+      if (!tipoProductoCobro) {
+        render(`<div class="card"><p class="msg msg-error">⚠️ La foto quedó cargada, pero el sobre ${esc(numero)} NO tiene tipo de producto, así que todavía no se cobró ni se entregó. Volvé a Retiro, elegí el tipo de producto y confirmá el cobro.</p><button class="btn btn-verde" style="margin-top:8px;" onclick="irARetiroConSobre('${esc(numero)}')">← Volver a Retiro</button></div>`);
+        return;
+      }
+    }
+
     const { data: sobreData } = await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', sobreId).select('cliente_id').single();
 
     if (montoCobrado > 0) {
       await sb.from('movimientos_caja').insert({
         vendedora: usuarioActual.nombre, descripcion: 'cobro saldo sobre ' + numero, ingresa_egresa: 'INGRESA',
         tipo_cliente: tipoCliente, medio_pago: medioPago, monto: montoCobrado,
-        cliente_id: sobreData ? sobreData.cliente_id : null, sobre_id: sobreId
+        cliente_id: sobreData ? sobreData.cliente_id : null, sobre_id: sobreId,
+        codigo: parseInt(tipoProductoCobro)
       });
     }
 
@@ -6354,16 +6375,24 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
     .eq('boleta_id', boletaId);
 
   const errores = [];
+  const sinTipoBoleta = [];
   for (const r of relaciones) {
     const s = r.sobres;
     if (s.fecha_salida) continue;
-
-    await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', s.id);
 
     const { data: pagos } = await sb.from('movimientos_caja').select('monto').eq('sobre_id', s.id).eq('ingresa_egresa', 'INGRESA').neq('medio_pago', 'CUENTA CORRIENTE');
     const pagado = (pagos || []).reduce((acc, m) => acc + Number(m.monto), 0);
     const saldo = Math.max(0, (Number(s.precio_total) || 0) - pagado);
     const montoCobrado = esCuentaCorriente ? 0 : saldo;
+
+    // (26/11/2026) No se cobra sin tipo de producto: ese sobre queda sin retirar y se avisa.
+    let tipoProductoCobro = '';
+    if (montoCobrado > 0) {
+      tipoProductoCobro = await tipoProductoDeSobre(s.id);
+      if (!tipoProductoCobro) { sinTipoBoleta.push('#' + s.numero); continue; }
+    }
+
+    await sb.from('sobres').update({ fecha_salida: new Date().toISOString() }).eq('id', s.id);
 
     if (montoCobrado > 0) {
       const { error: errCobro } = await sb.from('movimientos_caja').insert({
@@ -6374,7 +6403,8 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
         medio_pago: medioPago,
         monto: montoCobrado,
         cliente_id: clienteId,
-        sobre_id: s.id
+        sobre_id: s.id,
+        codigo: parseInt(tipoProductoCobro)
       });
       if (errCobro) errores.push('#' + s.numero + ' ($' + montoCobrado.toLocaleString('es-AR') + ')');
     }
@@ -6386,14 +6416,16 @@ async function marcarBoletaRetirada(boletaId, numeroBoleta, clienteId, nombreCli
     });
   }
 
-  await sb.from('boletas').update({ estado: 'RETIRADA' }).eq('id', boletaId);
+  if (sinTipoBoleta.length === 0) await sb.from('boletas').update({ estado: 'RETIRADA' }).eq('id', boletaId);
 
   const mensajeWa = esCuentaCorriente
     ? `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu boleta N° ${numeroBoleta} en Joyería Tándem fue retirada. Queda un saldo de $${totalBoleta.toLocaleString('es-AR')} en tu cuenta corriente. 💍`
     : `Hola${nombreCliente ? ' ' + nombreCliente : ''}! Te avisamos que tu boleta N° ${numeroBoleta} en Joyería Tándem fue retirada y pagada correctamente. ¡Gracias por tu confianza! 💍`;
 
   msgBox.innerHTML = `
-    <div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>
+    ${sinTipoBoleta.length > 0
+      ? `<div class="msg msg-error">⚠️ NO se retiraron ni se cobraron: ${sinTipoBoleta.join(', ')} — no tienen tipo de producto. Retiralos de a uno desde Retiro, eligiendo el tipo de producto. El resto de la boleta sí quedó retirado.</div>`
+      : `<div class="msg msg-ok">✅ Boleta completa, todos los sobres retirados.</div>`}
     ${errores.length > 0 ? `<div class="msg msg-error">⚠️ El cobro de ${errores.join(', ')} NO se guardó. Avisale a Mauricio para cargarlo a mano.</div>` : ''}
     ${botonWhatsApp(telefonoCliente, mensajeWa)}
   `;
@@ -8664,6 +8696,14 @@ function elegirTipoProducto(prefix, codigo, descripcion) {
 }
 window.elegirTipoProducto = elegirTipoProducto;
 
+// (26/11/2026) Tipo de producto ya cargado en algún movimiento de este sobre ('' si nunca tuvo).
+// Se usa para NO dejar cobrar nada sin tipo de producto.
+async function tipoProductoDeSobre(sobreId) {
+  const { data } = await sb.from('movimientos_caja').select('codigo').eq('sobre_id', sobreId).not('codigo', 'is', null).limit(1).maybeSingle();
+  return data && data.codigo ? data.codigo : '';
+}
+window.tipoProductoDeSobre = tipoProductoDeSobre;
+
 // NUEVO (06/10/2026): devuelve el tipo de producto de un selector. Si ya tocaron una opción,
 // usa esa. Si solo escribieron texto y no tocaron nada, lo toma cuando coincide con UNA sola
 // categoría (ej: "acero" -> ACERO); si hay dudas (ej: "anillo" -> varias), devuelve vacío y
@@ -8759,6 +8799,7 @@ async function guardarVentaDirecta() {
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
   if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
   if (medioPago === 'CUENTA CORRIENTE' && !nombreCliente) { msgBox.innerHTML = `<div class="msg msg-error">Para Cuenta Corriente hace falta elegir o escribir el cliente.</div>`; return; }
+  if (!document.getElementById('vd-tipo-producto').value) { msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen). No se puede cargar la venta sin esto.</div>`; return; }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
