@@ -3033,14 +3033,18 @@ function armarHtmlComprobante(c) {
   `;
 
   // (21/10/2026) Hoja de datos de envío (solo si el sobre es con envío): se imprime junto a la del taller.
-  const e = c.envio || null;
+  // (26/11/2026) Si el sobre es con envío pero todavía no hay datos, sale igual la hoja de envío LISA (para completar a mano).
+  const envioVacio = !c.envio && c.canal === 'REDES_ENVIO';
+  const e = c.envio || (envioVacio ? {} : null);
   const filaEnv = (rot, val) => `<div class="env-fila"><span>${rot}</span><b>${esc(val || '')}</b></div>`;
   const hojaEnvio = e ? `
     <div class="hoja"><div class="marco envio">
       <div class="env-tit">DATOS DE ENVÍO</div>
       <div class="env-sobre">#${esc(c.numero)}</div>
       <div class="env-linea"></div>
+      ${envioVacio ? filaEnv('Enviar por (Correo / colectivo / transporte)', '') : ''}
       ${filaEnv('Nombre completo', e.nombre)}
+      ${envioVacio ? filaEnv('DNI', '') : ''}
       ${filaEnv('Provincia', e.provincia)}
       ${filaEnv('Localidad', e.localidad)}
       ${filaEnv('Dirección', e.direccion)}
