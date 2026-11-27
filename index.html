@@ -3037,8 +3037,14 @@ function armarHtmlComprobante(c) {
 
   // (21/10/2026) Hoja de datos de envío (solo si el sobre es con envío): se imprime junto a la del taller.
   // (26/11/2026) Si el sobre es con envío pero todavía no hay datos, sale igual la hoja de envío LISA (para completar a mano).
-  const envioVacio = !c.envio && c.canal === 'REDES_ENVIO';
-  const e = c.envio || (envioVacio ? {} : null);
+  // (27/11/2026) Los datos de envío se cargan en MiCorreo: con datos cargados YA NO se imprime la hoja de envío junto al
+  // pedido del taller. Solo sale la hoja LISA (en blanco). La reimpresión "Solo hoja de envío" sigue imprimiendo lo que haya.
+  let envioVacio = false, e = null;
+  if (c.canal === 'REDES_ENVIO') {
+    if (c.soloEnvio) { e = c.envio || {}; envioVacio = !c.envio; }   // reimpresión pedida: con lo que haya (o lisa)
+    else if (!c.envio) { e = {}; envioVacio = true; }                 // sin datos: sale la lisa
+    // con datos cargados: no se imprime hoja de envío
+  }
   const filaEnv = (rot, val) => `<div class="env-fila"><span>${rot}</span><b>${esc(val || '')}</b></div>`;
   const hojaEnvio = e ? `
     <div class="hoja"><div class="marco envio">
@@ -3361,7 +3367,7 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
-  if (soloEnvio && !(s.envio_direccion || s.envio_nombre)) { alert('Este pedido todavía no tiene datos de envío. Completalos con ✏️ Editar sobre y volvé a imprimir.'); return; }
+  // (27/11/2026) Sin datos de envío, "Solo hoja de envío" imprime la hoja lisa para completar a mano.
 
   const { data: pagos } = await sb
     .from('movimientos_caja')
