@@ -2594,6 +2594,9 @@ async function guardarNuevaEntrada() {
   }
   if (!tipoProducto) {
     msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen).</div>`;
+    alert('⚠️ FALTA EL TIPO DE PRODUCTO\n\nNo se puede guardar el pedido sin esto.\nEscribí en el casillero "Tipo de producto" y TOCÁ una de las opciones que aparecen en la lista.');
+    const _campoTP = document.getElementById('ne-tipo-producto-busqueda');
+    if (_campoTP) { _campoTP.scrollIntoView({ behavior: 'smooth', block: 'center' }); _campoTP.focus(); _campoTP.style.outline = '3px solid #c0392b'; }
     return;
   }
   if (canal === 'LOCAL' && /(env[ií]o|enviar|correo|andreani|encomienda)/i.test(trabajo)) {
@@ -8799,7 +8802,13 @@ async function guardarVentaDirecta() {
   if (!descripcion) { msgBox.innerHTML = `<div class="msg msg-error">Falta la descripción.</div>`; return; }
   if (monto <= 0) { msgBox.innerHTML = `<div class="msg msg-error">Poné un monto mayor a cero.</div>`; return; }
   if (medioPago === 'CUENTA CORRIENTE' && !nombreCliente) { msgBox.innerHTML = `<div class="msg msg-error">Para Cuenta Corriente hace falta elegir o escribir el cliente.</div>`; return; }
-  if (!document.getElementById('vd-tipo-producto').value) { msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen). No se puede cargar la venta sin esto.</div>`; return; }
+  if (!document.getElementById('vd-tipo-producto').value) {
+    msgBox.innerHTML = `<div class="msg msg-error">⚠️ Falta elegir el tipo de producto (escribí y tocá una de las opciones que aparecen). No se puede cargar la venta sin esto.</div>`;
+    alert('⚠️ FALTA EL TIPO DE PRODUCTO\n\nNo se puede cargar la venta sin esto.\nEscribí en el casillero "Tipo de producto" y TOCÁ una de las opciones que aparecen en la lista.');
+    const _campoTPvd = document.getElementById('vd-tipo-producto-busqueda');
+    if (_campoTPvd) { _campoTPvd.scrollIntoView({ behavior: 'smooth', block: 'center' }); _campoTPvd.focus(); _campoTPvd.style.outline = '3px solid #c0392b'; }
+    return;
+  }
 
   msgBox.innerHTML = `<div class="msg">Guardando...</div>`;
 
