@@ -3039,12 +3039,10 @@ function armarHtmlComprobante(c) {
   // (26/11/2026) Si el sobre es con envío pero todavía no hay datos, sale igual la hoja de envío LISA (para completar a mano).
   // (27/11/2026) Los datos de envío se cargan en MiCorreo: con datos cargados YA NO se imprime la hoja de envío junto al
   // pedido del taller. Solo sale la hoja LISA (en blanco). La reimpresión "Solo hoja de envío" sigue imprimiendo lo que haya.
+  // Decisión final (27/11/2026): la hoja de envío NUNCA sale sola junto al pedido. Solo sale la hoja LISA (en blanco)
+  // cuando se toca el botón de imprimirla en blanco (Nueva Entrada / "Solo hoja de envío" en un sobre sin datos).
   let envioVacio = false, e = null;
-  if (c.canal === 'REDES_ENVIO') {
-    if (c.soloEnvio) { e = c.envio || {}; envioVacio = !c.envio; }   // reimpresión pedida: con lo que haya (o lisa)
-    else if (!c.envio) { e = {}; envioVacio = true; }                 // sin datos: sale la lisa
-    // con datos cargados: no se imprime hoja de envío
-  }
+  if (c.soloEnvio && c.canal === 'REDES_ENVIO' && !c.envio) { e = {}; envioVacio = true; }
   const filaEnv = (rot, val) => `<div class="env-fila"><span>${rot}</span><b>${esc(val || '')}</b></div>`;
   const hojaEnvio = e ? `
     <div class="hoja"><div class="marco envio">
@@ -3367,7 +3365,8 @@ async function reimprimirComprobante(sobreId, soloTaller, hojaRecibo, soloClient
     .select('numero, descripcion, precio_total, fecha_entrada, para_el_dia, canal, orfebre, envio_nombre, envio_provincia, envio_localidad, envio_direccion, envio_cp, envio_telefono, envio_email, para_cliente_de, tipo_cliente, clientes(nombre, telefono)')
     .eq('id', sobreId).single();
   if (error || !s) { alert('No se pudo cargar el sobre para reimprimir.'); return; }
-  // (27/11/2026) Sin datos de envío, "Solo hoja de envío" imprime la hoja lisa para completar a mano.
+  // (27/11/2026) Con datos de envío ya cargados no se imprime nada (van en MiCorreo). Sin datos, "Solo hoja de envío" imprime la lisa.
+  if (soloEnvio && (s.envio_direccion || s.envio_nombre)) { alert('Este pedido ya tiene los datos de envío cargados (se usan en MiCorreo), por eso no se imprime la hoja de envío.\n\nPara una hoja en blanco, usá el botón "Imprimir hoja en blanco" de Nueva Entrada.'); return; }
 
   const { data: pagos } = await sb
     .from('movimientos_caja')
